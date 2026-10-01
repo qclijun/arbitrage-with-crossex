@@ -37,6 +37,26 @@ const port = Number(process.env.PORT ?? 6688);
 // Loopback only, always: this server exposes a credentialed trading API and
 // must never be reachable off the machine that runs it.
 const host = '127.0.0.1';
+
+function isSqliteLockError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const sqliteError = error as { errcode?: unknown; errstr?: unknown; message?: unknown };
+  const details = [sqliteError.errstr, sqliteError.message]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
+  return (
+    sqliteError.errcode === 5 ||
+    sqliteError.errcode === 6 ||
+    /database.*\b(?:locked|busy)\b/i.test(details)
+  );
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 // Overridable so installed deployments can keep user data outside the app dir
 // (which updates wipe). Defaults preserve the repo-rooted dev layout.
@@ -90,7 +110,17 @@ let loopDeps: LoopDeps | undefined;
   // The store's EXCLUSIVE lock doubles as the single-instance guard: a second
   // process (e.g. a dev run beside the LaunchAgent service) fails here, BEFORE it
   // can touch the venue.
-  const store = new Store(path.join(dataDir, 'deals.sqlite'));
+  let store: Store;
+  try {
+    store = new Store(path.join(dataDir, 'deals.sqlite'));
+  } catch (err) {
+    if (!isSqliteLockError(err)) throw err;
+    console.error(
+      `Cannot start arb-tools: the trading database is locked. Another server instance may already be running.\n` +
+        `Check http://localhost:${port}; if it is not available, look for another process using this data directory before retrying.`,
+    );
+    process.exit(1);
+  }
 
   // One-time migration guard: a retired basket engine journaled to baskets.jsonl.
   // If that journal's last word on any basket was non-terminal, the process died
@@ -282,6 +312,13 @@ app
     console.log(`arb-tools server listening on http://${shown}:${port}`);
   })
   .catch((err) => {
+    if (errorCode(err) === 'EADDRINUSE') {
+      console.error(
+        `Cannot start arb-tools: port ${port} is already in use.\n` +
+          `Another server instance may be available at http://localhost:${port}; use it or stop it before starting another.`,
+      );
+      process.exit(1);
+    }
     console.error(err);
     process.exit(1);
   });
