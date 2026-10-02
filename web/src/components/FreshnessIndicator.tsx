@@ -6,7 +6,8 @@ import { useNow } from '../lib/useNow';
 
 /** Shared "⟳ Ns ago" freshness button: a ticking age since `dataUpdatedAt`,
  * amber "stale Ns — retrying" while `staleError`, "⟳ —" before the first
- * data. `dense` = the tighter py-0.5 variant for inline header strips. */
+ * data, or an actionable error if the first read failed.
+ * `dense` = the tighter py-0.5 variant for inline header strips. */
 export function FreshnessButton({
   dataUpdatedAt,
   staleError,
@@ -25,7 +26,7 @@ export function FreshnessButton({
   className?: string;
 }) {
   const now = useNow(1000);
-  if (!dataUpdatedAt)
+  if (!dataUpdatedAt && !staleError)
     return (
       <span className="num inline-flex items-center gap-1.5 text-xs text-ink-500">
         <RotateCw size={12} aria-hidden /> loading
@@ -44,7 +45,7 @@ export function FreshnessButton({
       }`}
     >
       {staleError ? (
-        `stale ${age} · retrying`
+        dataUpdatedAt ? `stale ${age} · retrying` : 'fetch failed · retry'
       ) : (
         <span className="inline-flex items-center gap-1.5">
           <RotateCw size={12} aria-hidden /> {age} ago
@@ -68,7 +69,7 @@ export function FreshnessIndicator() {
   // query says "0s ago" while another panel is minutes behind.
   const stamps = queries.map((q) => q.dataUpdatedAt || 0).filter((t) => t > 0);
   const newest = stamps.length ? Math.min(...stamps) : 0;
-  const staleError = queries.some((q) => q.isError && q.data !== undefined);
+  const staleError = queries.some((q) => q.isError);
 
   return (
     <FreshnessButton

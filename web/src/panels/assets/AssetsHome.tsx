@@ -222,6 +222,11 @@ export function AssetsHome() {
 
   return (
     <section>
+      {data.warnings.length > 0 && (
+        <div role="alert" className="mb-4 rounded border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-400">
+          {data.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+        </div>
+      )}
       {gateHidden && address && loggedInRoot && (
         <p className="mb-4 text-xs text-ink-400">
           Viewing <span className="num text-ink-200">{short(address)}</span>, not logged in: read-only, Boros

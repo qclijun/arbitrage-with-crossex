@@ -12,12 +12,23 @@ import { Skeleton } from './Skeleton';
  * noise — the asset cards carry the PnL that means something.) */
 export function AccountHealthStrip({ children }: { children?: ReactNode }) {
   const now = useNow(60_000);
-  const { data: acc } = useAccount();
+  const { data: acc, isError, refetch } = useAccount();
   const { data: positions } = usePositions();
   // The strip is the logged-in account's Gate margin: viewing another wallet,
   // it would read as that wallet's. Keep the spacer so the controls stay right.
   if (useActiveWallet().viewOnly) return <div className="ml-auto" />;
   if (!acc) {
+    if (isError) {
+      return (
+        <button
+          type="button"
+          className="ml-auto text-xs text-amber-400"
+          onClick={() => void refetch()}
+        >
+          Gate account unavailable · retry
+        </button>
+      );
+    }
     return (
       <div className="ml-auto flex items-center justify-end gap-4">
         <Skeleton className="h-4 w-56" />

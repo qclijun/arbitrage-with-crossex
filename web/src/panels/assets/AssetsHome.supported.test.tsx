@@ -94,6 +94,15 @@ describe('AssetsHome with a held coin the terminal does not support', () => {
     expect(strip).toHaveTextContent('$17.20');
   });
 
+  it('explains missing Gate legs when the server can only return partial data', async () => {
+    const warning = "Couldn't load Gate positions right now (network) — showing the Boros side only.";
+    server.use(http.get('/api/asset-view/:address', () => HttpResponse.json(env({
+      ...assetView, assets: [], warnings: [warning],
+    }))));
+    renderWithClient(<AssetsHome />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(warning);
+  });
+
   it('keeps every digit of a $6M SOL leg in the totals strip, held coin counts in totals', async () => {
     const whale = group('SOL', { supported: false, perpOpen: [{ ...perp('SOL', 6_000_000.37), notionalUsd: 30_000_000 }] });
     server.use(http.get('/api/asset-view/:address', () => HttpResponse.json(env({ ...assetView, assets: [whale] }))));

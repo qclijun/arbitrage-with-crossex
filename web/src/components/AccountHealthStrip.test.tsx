@@ -59,6 +59,17 @@ function show(...coins: Coin[]) {
 
 afterEach(cleanup);
 
+it('reports an initial Gate account failure instead of keeping loading placeholders', async () => {
+  server.use(
+    http.get('/api/account', () => HttpResponse.json({ ok: false, error: {
+      category: 'network', message: 'TLS connection failed', retryable: true,
+    } }, { status: 502 })),
+    ...baseHandlers(),
+  );
+  renderWithClient(<AccountHealthStrip />);
+  expect(await screen.findByRole('button', { name: /Gate account unavailable.*retry/i })).toBeInTheDocument();
+});
+
 describe('the account strip when Gate stops sending a mark', () => {
   it('keeps the nearest line and names the coin with no price after it', async () => {
     show(coin('ETH'), coin('HYPE', true));
