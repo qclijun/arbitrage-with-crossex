@@ -1,0 +1,14 @@
+{
+  "_instructions": "Copy to data/risk-monitor/observations.json. Entries need real value, observed_at Unix seconds, ttl_seconds, source and evidence. Expired/missing evidence reports UNKNOWN; never copy example numbers as live evidence.",
+  "metrics": {},
+  "_entry_shape": {
+    "metric.id.from.checklist": {
+      "value": null,
+      "unit": "use the metric's unit",
+      "observed_at": 0,
+      "ttl_seconds": 3600,
+      "source": "official API, dashboard, or named human review",
+      "evidence": "source URL or local evidence reference"
+    }
+  }
+}

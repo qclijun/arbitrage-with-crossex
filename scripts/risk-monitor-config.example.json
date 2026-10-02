@@ -1,0 +1,14 @@
+{
+  "terminal_url": "http://localhost:6688",
+  "interval_seconds": 300,
+  "timeout_seconds": 15,
+  "debounce_runs": 2,
+  "reminder_seconds": 21600,
+  "recovery_margin_fraction": 0.03,
+  "base": "ETH",
+  "collateral_token_id": 2,
+  "eth_stress_drop": 0.2,
+  "scan_rollover": true,
+  "notional_usd": 10000,
+  "thresholds": {}
+}
