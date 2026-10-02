@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import axios from 'axios';
+import axios, { type AxiosProxyConfig } from 'axios';
 import { ApiClient, CrossExApi, FuturesApi, SpotApi } from 'gate-api';
 import { CoreError } from './errors';
 
@@ -29,6 +29,23 @@ export interface Credentials {
 }
 
 /**
+ * Optional HTTP(S) proxy for Gate API calls — `.env`: `GATE_PROXY=http://127.0.0.1:7899`.
+ * Scoped per axios instance (never process-wide) so Boros and other venues keep their
+ * own routes. Axios CONNECT-tunnels HTTPS targets through it, so signed TLS stays
+ * end-to-end and the proxy only sees the destination host.
+ */
+export function gateProxy(): AxiosProxyConfig | undefined {
+  const raw = process.env.GATE_PROXY?.trim();
+  if (!raw) return undefined;
+  const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`);
+  return {
+    protocol: u.protocol.replace(/:$/, ''),
+    host: u.hostname,
+    port: u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80,
+  };
+}
+
+/**
  * Build an authenticated official `gate-api` ApiClient and the typed API objects.
  * The official SDK (v7.2+) ships a native `CrossExApi`; we use it directly.
  * Credentials default to `.env` (GATE_API_KEY / GATE_API_SECRET); pass `creds`
@@ -42,7 +59,7 @@ export function makeClients(creds?: Credentials): Clients {
       'Missing GATE_API_KEY / GATE_API_SECRET. Add them to a .env file in the project root.',
     );
   }
-  const api = new ApiClient(undefined, axios.create({ timeout: HTTP_TIMEOUT_MS }));
+  const api = new ApiClient(undefined, axios.create({ timeout: HTTP_TIMEOUT_MS, proxy: gateProxy() }));
   api.setApiKeySecret(key, secret);
   // Mutate rather than assign: the SDK's defaultHeaders setter replaces the
   // whole object, which would drop its stock X-Gate-Size-Decimal header.
@@ -77,7 +94,7 @@ export function makeClientsIfConfigured(): Clients | null {
  */
 let publicClient: CrossExApi | undefined;
 export function publicCrossEx(): CrossExApi {
-  publicClient ??= new CrossExApi(new ApiClient(undefined, axios.create({ timeout: HTTP_TIMEOUT_MS })));
+  publicClient ??= new CrossExApi(new ApiClient(undefined, axios.create({ timeout: HTTP_TIMEOUT_MS, proxy: gateProxy() })));
   return publicClient;
 }
 

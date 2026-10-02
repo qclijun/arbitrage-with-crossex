@@ -5,6 +5,7 @@
  * `estimateFill` down its fallback chain.
  */
 import axios from 'axios';
+import { gateProxy } from '../clients';
 
 export interface NormalizedBook {
   /** [price, baseQty], sorted best-first: bids desc, asks asc. */
@@ -240,6 +241,8 @@ const marketIdCache = new Map<string, string>();
 export async function fetchVenueBook(exchange: string, base: string, quote: string): Promise<NormalizedBook | null> {
   const src = BOOK_SOURCES[exchange.toUpperCase()];
   if (!src) return null;
+  // Same Gate routing as clients.ts — api.gateio.ws must go through the configured proxy.
+  const proxy = exchange.toUpperCase() === 'GATE' ? gateProxy() : undefined;
   try {
     let sizeMult = 1;
     if (src.meta) {
@@ -248,7 +251,7 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
       if (cached != null) {
         sizeMult = cached;
       } else {
-        const { data } = await axios.get(src.meta.url(base, quote), { timeout: TIMEOUT_MS });
+        const { data } = await axios.get(src.meta.url(base, quote), { timeout: TIMEOUT_MS, proxy });
         const m = src.meta.extract(data);
         // Without the multiplier the sizes would be off by orders of magnitude — bail.
         if (m == null) return null;
@@ -261,7 +264,7 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
       const key = `${exchange.toUpperCase()}:${base}`;
       marketId = marketIdCache.get(key) ?? null;
       if (marketId === null) {
-        const { data } = await axios.get(src.market.url, { timeout: TIMEOUT_MS });
+        const { data } = await axios.get(src.market.url, { timeout: TIMEOUT_MS, proxy });
         marketId = src.market.extract(data, base);
         if (marketId === null) return null;
         marketIdCache.set(key, marketId);
@@ -270,8 +273,8 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
     const url = src.url(base, quote, marketId);
     const { data } =
       src.method === 'POST'
-        ? await axios.post(url, src.body?.(base, quote), { timeout: TIMEOUT_MS })
-        : await axios.get(url, { timeout: TIMEOUT_MS });
+        ? await axios.post(url, src.body?.(base, quote), { timeout: TIMEOUT_MS, proxy })
+        : await axios.get(url, { timeout: TIMEOUT_MS, proxy });
     return src.parse(data, sizeMult);
   } catch {
     return null;
