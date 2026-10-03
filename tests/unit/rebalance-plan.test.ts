@@ -125,6 +125,18 @@ describe('bucketsFrom interest', () => {
     expect(usdc.ratePerYear).toBeNull();
   });
 
+  it.each([undefined, '', ' ', 'bad', 'NaN', 'Infinity', '-0.00001'])('preserves unknown hourly interest %s', (hourly) => {
+    const account = accountOf([asset('USDT', 'CROSSEX', { liability: 2000 })]);
+    const rates = [{ coin: 'USDT', exchangeType: 'CROSSEX', hourInterestRate: hourly }] as RateLike[];
+    expect(bucketsFrom(account, rates, {})[0].ratePerYear).toBeNull();
+  });
+
+  it('accepts an explicitly zero hourly interest rate', () => {
+    const account = accountOf([asset('USDT', 'CROSSEX', { liability: 2000 })]);
+    const rates = [{ coin: 'USDT', exchangeType: 'CROSSEX', hourInterestRate: '0' }];
+    expect(bucketsFrom(account, rates, {})[0]).toMatchObject({ ratePerYear: 0, interestPerDayUsd: 0 });
+  });
+
   it('reads the all-time interest paid by wallet key', () => {
     const account = accountOf([asset('USDC', 'HYPERLIQUID', { equity: -500 }), asset('USDT', 'CROSSEX')]);
     const paid = { 'USDC/HYPERLIQUID': 3.75, 'USDC/GATE': 9, 'USDT/CROSSEX': 4 };

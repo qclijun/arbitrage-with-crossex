@@ -197,7 +197,7 @@
       "gate.liability_usdc",
       "gate.interest_daily_usd"
     ],
-    "sourcePlan": "/account liabilities; external official daily interest evidence",
+    "sourcePlan": "/account liabilities; /account/interest current daily interest estimate",
     "action": "核对负权益和计息规则，检查Rebalance或补资金",
     "conditions": [
       [

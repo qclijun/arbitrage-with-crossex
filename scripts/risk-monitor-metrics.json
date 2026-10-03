@@ -30,7 +30,7 @@
   "execution.pending_age_s": {"unit": "seconds", "type": "number", "max_age_seconds": 3600, "source": "/deals、/alerts、/orders/open", "collection": "automatic"},
   "execution.unhedged_eth": {"unit": "ETH", "type": "number", "max_age_seconds": 3600, "source": "/deals、/alerts、/orders/open", "collection": "automatic"},
   "gate.im_coverage": {"unit": "ratio", "type": "number", "max_age_seconds": 3600, "source": "/account", "collection": "derived"},
-  "gate.interest_daily_usd": {"unit": "USD/day", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities; external official daily interest evidence", "collection": "external"},
+  "gate.interest_daily_usd": {"unit": "USD/day", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities matched to /account/interest buckets.interestPerDayUsd; current daily estimate, USDT/USDC valued at $1", "collection": "derived"},
   "gate.liability_usdc": {"unit": "USDC", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities; external official daily interest evidence", "collection": "automatic"},
   "gate.liability_usdt": {"unit": "USDT", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities; external official daily interest evidence", "collection": "automatic"},
   "gate.liquidation_distance_pct": {"unit": "ratio", "type": "number", "max_age_seconds": 3600, "source": "官方/终端模型，必须明确模型假设", "collection": "external"},

@@ -135,7 +135,7 @@ class Collector:
     def collect(self):
         agent = self.get('agent', '/boros/agent?fresh=1')
         root = self.config.get('root') or (agent or {}).get('root')
-        paths = {'account': '/account?fresh=1', 'positions': '/positions?fresh=1',
+        paths = {'interest': '/account/interest?fresh=1', 'positions': '/positions?fresh=1',
                  'health': '/health', 'deals': '/deals?active=1',
                  'orders': '/orders/open?fresh=1', 'alerts': '/alerts?unacked=1'}
         if root and re.fullmatch(r'0x[0-9a-fA-F]{40}', root):
@@ -151,6 +151,7 @@ class Collector:
                     futures[pool.submit(self.public_boros, name, path, root)] = name
             for future in concurrent.futures.as_completed(futures):
                 data[futures[future]] = future.result()
+        data['account'] = (data.get('interest') or {}).get('account')
         return data
 
     def public_boros(self, name, path, root):
@@ -276,6 +277,35 @@ def evaluate(data, config, state, rules, now, errors=None):
             vals = [number(r.get('liability')) for r in rows]
             put('gate.liability_' + coin.lower(), sum(abs(v) for v in vals) if vals and all(v is not None for v in vals) else None,
                 'account.assets.liability', unit=coin)
+        buckets = (data.get('interest') or {}).get('buckets')
+        daily = 0.0
+        rows = account.get('assets')
+        known = isinstance(rows, list) and isinstance(buckets, list)
+        seen = set()
+        for row in rows if known else []:
+            borrow = number(row.get('liability'))
+            key = (row.get('coin'), row.get('exchangeType'))
+            if borrow is None or borrow < 0 or key in seen:
+                known = False
+                break
+            seen.add(key)
+            if borrow == 0:
+                continue
+            matches = [b for b in buckets or [] if (b.get('coin'), b.get('venue')) == key]
+            if key[0] not in ('USDT', 'USDC') or len(matches) != 1:
+                known = False
+                break
+            bucket = matches[0]
+            rate = number(bucket.get('ratePerYear'))
+            cost = number(bucket.get('interestPerDayUsd'))
+            if (number(bucket.get('borrow')) != borrow or rate is None or rate < 0
+                    or cost is None or cost < 0):
+                known = False
+                break
+            daily += cost
+        put('gate.interest_daily_usd', daily if known and math.isfinite(daily) else None,
+            '/account/interest buckets.interestPerDayUsd; current borrow/rate estimate, HL USDC free allowance; USDT/USDC valued at $1',
+            unit='USD/day', coverage='derived')
     if data.get('farm') is not None and data['farm'].get('coverage', {}).get('borosTxnsComplete') and expected:
         live_boros = {str(b['marketId']): b['sizeToken'] * (-1 if b['side'] == 'SHORT' else 1) for b in boros}
         gap = sum(abs(live_boros.get(k, 0) - v) for k, v in expected.items())

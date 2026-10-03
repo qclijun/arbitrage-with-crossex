@@ -43,7 +43,7 @@ Source freshness for automatic values follows the actual endpoint fields and cov
 | `execution.pending_age_s` | seconds | number | automatic | 3600 | /deals、/alerts、/orders/open |
 | `execution.unhedged_eth` | ETH | number | automatic | 3600 | /deals、/alerts、/orders/open |
 | `gate.im_coverage` | ratio | number | derived | 3600 | /account |
-| `gate.interest_daily_usd` | USD/day | number | external | 3600 | /account liabilities; external official daily interest evidence |
+| `gate.interest_daily_usd` | USD/day | number | derived | 3600 | /account liabilities matched to /account/interest buckets.interestPerDayUsd; current daily estimate, USDT/USDC valued at $1 |
 | `gate.liability_usdc` | USDC | number | automatic | 3600 | /account liabilities; external official daily interest evidence |
 | `gate.liability_usdt` | USDT | number | automatic | 3600 | /account liabilities; external official daily interest evidence |
 | `gate.liquidation_distance_pct` | ratio | number | external | 3600 | 官方/终端模型，必须明确模型假设 |

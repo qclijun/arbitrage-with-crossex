@@ -375,7 +375,9 @@ export function bucketsFrom(account: AccountLike, rates: RateLike[], interestPai
     const equity = num(asset.equity);
     const borrow = num(asset.liability);
     const rate = rates.find((r) => r.coin === coin && r.exchangeType === venue);
-    const hourly = rate ? num(rate.hourInterestRate) : 0;
+    const rawHourly = rate?.hourInterestRate;
+    const parsedHourly = typeof rawHourly === 'string' && rawHourly.trim() !== '' ? Number(rawHourly) : NaN;
+    const hourly = Number.isFinite(parsedHourly) && parsedHourly >= 0 ? parsedHourly : null;
     const paid = interestPaid[walletKey(coin, venue)];
     const interestPaidUsd = Number.isFinite(paid) ? paid : 0;
     return {
@@ -388,8 +390,8 @@ export function bucketsFrom(account: AccountLike, rates: RateLike[], interestPai
       imHeldUsd: num(asset.borrowingInitialMargin),
       mmHeldUsd: num(asset.borrowingMaintenanceMargin),
       interestPaidUsd,
-      interestPerDayUsd: chargedBorrow({ coin, venue }, borrow) * hourly * 24,
-      ratePerYear: rate ? hourly * 24 * 365 : null,
+      interestPerDayUsd: chargedBorrow({ coin, venue }, borrow) * (hourly ?? 0) * 24,
+      ratePerYear: hourly !== null ? hourly * 24 * 365 : null,
     };
   });
 }

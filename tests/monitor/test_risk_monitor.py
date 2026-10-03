@@ -33,6 +33,7 @@ def fixture():
             'borosHistory': [{'tradeFeeUsd': 1, 'settleUsd': 0}, {'tradeFeeUsd': 1, 'settleUsd': 0}]}]},
         'context': {'crossByToken': [{'tokenId': 2, 'available': .03}], 'isolatedByMarket': []},
         'agent': {'approval': 'approved', 'expiry': NOW + 86400 * 365},
+        'interest': {'buckets': []},
         'orders': [], 'deals': [], 'alerts': [], 'health': {'status': 'ok'}}
 
 
@@ -73,6 +74,80 @@ class RiskMonitorTest(unittest.TestCase):
         self.assertEqual(im, 1.25)
         self.assertEqual(mm, 4)
         self.assertEqual(self.check(data, 'boros.mm_health_ratio')['status'], 'UNKNOWN')
+
+    def test_current_daily_interest_reuses_wallet_estimates(self):
+        data = fixture()
+        data['account']['assets'] = [
+            {'coin': 'USDT', 'exchangeType': 'CROSSEX', 'liability': '2000'},
+            {'coin': 'USDC', 'exchangeType': 'HYPERLIQUID', 'liability': '12000'},
+            {'coin': 'USDC', 'exchangeType': 'LIGHTER', 'liability': '1000'}]
+        data['interest']['buckets'] = [
+            {'coin': 'USDT', 'venue': 'CROSSEX', 'borrow': 2000, 'ratePerYear': .0876, 'interestPerDayUsd': .48},
+            {'coin': 'USDC', 'venue': 'HYPERLIQUID', 'borrow': 12000, 'ratePerYear': .1752, 'interestPerDayUsd': .96},
+            {'coin': 'USDC', 'venue': 'LIGHTER', 'borrow': 1000, 'ratePerYear': .0876, 'interestPerDayUsd': .24}]
+        metric = self.check(data, 'gate.liability_usdt')['metrics']['gate.interest_daily_usd']
+        self.assertAlmostEqual(metric['value'], 1.68)
+        self.assertEqual(metric['coverage'], 'derived')
+        self.assertEqual(metric['unit'], 'USD/day')
+
+    def test_hl_interest_free_borrow_is_still_a_liability(self):
+        data = fixture()
+        data['account']['assets'] = [{'coin': 'USDC', 'exchangeType': 'HYPERLIQUID', 'liability': '10000'}]
+        data['interest']['buckets'] = [{'coin': 'USDC', 'venue': 'HYPERLIQUID', 'borrow': 10000,
+                                      'ratePerYear': .0876, 'interestPerDayUsd': 0}]
+        metrics = self.check(data, 'gate.liability_usdt')['metrics']
+        self.assertEqual(metrics['gate.liability_usdc']['value'], 10000)
+        self.assertEqual(metrics['gate.interest_daily_usd']['value'], 0)
+
+    def test_daily_interest_missing_or_inconsistent_inputs_are_unknown(self):
+        for change in ('offline', 'missing', 'invalid_buckets', 'rate', 'cost', 'borrow', 'duplicate', 'coin'):
+            with self.subTest(change=change):
+                data = fixture()
+                data['account']['assets'] = [{'coin': 'USDT', 'exchangeType': 'CROSSEX', 'liability': '2000'}]
+                bucket = {'coin': 'USDT', 'venue': 'CROSSEX', 'borrow': 2000,
+                          'ratePerYear': .0876, 'interestPerDayUsd': .48}
+                data['interest'] = {'buckets': [bucket]}
+                if change == 'offline':
+                    data['interest'] = None
+                elif change == 'missing':
+                    data['interest']['buckets'] = []
+                elif change == 'invalid_buckets':
+                    data['interest']['buckets'] = {'invalid': True}
+                elif change == 'rate':
+                    bucket['ratePerYear'] = None
+                elif change == 'cost':
+                    bucket['interestPerDayUsd'] = float('nan')
+                elif change == 'borrow':
+                    bucket['borrow'] = 1000
+                elif change == 'duplicate':
+                    data['interest']['buckets'].append(dict(bucket))
+                else:
+                    data['account']['assets'][0]['coin'] = 'ETH'
+                self.assertIsNone(self.check(data, 'gate.liability_usdt')['metrics']['gate.interest_daily_usd']['value'])
+
+    def test_no_borrow_has_zero_daily_interest_and_overrides_external_record(self):
+        save(self.config['observations_file'], {'metrics': {'gate.interest_daily_usd': {
+            'value': 99, 'observed_at': NOW, 'ttl_seconds': 3600, 'source': 'synthetic', 'evidence': 'synthetic'}}})
+        metric = self.check(fixture(), 'gate.liability_usdt')['metrics']['gate.interest_daily_usd']
+        self.assertEqual(metric['value'], 0)
+        self.assertEqual(metric['coverage'], 'derived')
+
+    def test_collector_reads_interest_without_starting_a_job(self):
+        token = Path(self.temp.name) / 'token'
+        token.write_text('synthetic')
+        collector = Collector({'token_file': str(token)})
+        calls = []
+
+        def get(name, path):
+            calls.append((name, path))
+            return {'account': {'assets': []}, 'buckets': []} if name == 'interest' else {}
+
+        with patch.object(collector, 'get', side_effect=get):
+            data = collector.collect()
+        self.assertIn(('interest', '/account/interest?fresh=1'), calls)
+        self.assertFalse(any('/rebalance' in path for _, path in calls))
+        self.assertEqual(data['account'], {'assets': []})
+        self.assertEqual(data['interest']['buckets'], [])
 
     def test_critical_survives_missing_sibling_metric(self):
         data = fixture()
