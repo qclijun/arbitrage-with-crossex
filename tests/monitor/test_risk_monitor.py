@@ -75,6 +75,21 @@ class RiskMonitorTest(unittest.TestCase):
         self.assertEqual(mm, 4)
         self.assertEqual(self.check(data, 'boros.mm_health_ratio')['status'], 'UNKNOWN')
 
+    def test_automatic_liquidation_distance_and_thresholds(self):
+        for distance, status in ((.4, 'OK'), (.2, 'WARNING'), (.1, 'CRITICAL'), (0, 'CRITICAL'),
+                                 (None, 'UNKNOWN'), (-.1, 'UNKNOWN'), (float('nan'), 'UNKNOWN')):
+            with self.subTest(distance=distance):
+                data = fixture()
+                data['liquidation'] = {'distance': distance, 'assumptions': 'synthetic model'}
+                check = self.check(data, 'gate.liquidation_distance_pct')
+                self.assertEqual(check['status'], status)
+                self.assertIn('synthetic model', check['metrics']['gate.liquidation_distance_pct']['source'])
+
+    def test_failed_liquidation_read_is_unknown(self):
+        data = fixture()
+        data['liquidation'] = None
+        self.assertEqual(self.check(data, 'gate.liquidation_distance_pct')['status'], 'UNKNOWN')
+
     def test_current_daily_interest_reuses_wallet_estimates(self):
         data = fixture()
         data['account']['assets'] = [
@@ -145,6 +160,7 @@ class RiskMonitorTest(unittest.TestCase):
         with patch.object(collector, 'get', side_effect=get):
             data = collector.collect()
         self.assertIn(('interest', '/account/interest?fresh=1'), calls)
+        self.assertIn(('liquidation', '/account/liquidation?fresh=1'), calls)
         self.assertFalse(any('/rebalance' in path for _, path in calls))
         self.assertEqual(data['account'], {'assets': []})
         self.assertEqual(data['interest']['buckets'], [])

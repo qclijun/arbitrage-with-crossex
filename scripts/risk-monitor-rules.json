@@ -221,7 +221,7 @@
     "metrics": [
       "gate.liquidation_distance_pct"
     ],
-    "sourcePlan": "官方/终端模型，必须明确模型假设",
+    "sourcePlan": "/account/liquidation: nearest absolute modeled move across coins",
     "action": "结合MM、借款与价差决定补缓冲或缩仓",
     "conditions": [
       [

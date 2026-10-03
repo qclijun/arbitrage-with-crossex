@@ -33,7 +33,7 @@
   "gate.interest_daily_usd": {"unit": "USD/day", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities matched to /account/interest buckets.interestPerDayUsd; current daily estimate, USDT/USDC valued at $1", "collection": "derived"},
   "gate.liability_usdc": {"unit": "USDC", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities; external official daily interest evidence", "collection": "automatic"},
   "gate.liability_usdt": {"unit": "USDT", "type": "number", "max_age_seconds": 3600, "source": "/account liabilities; external official daily interest evidence", "collection": "automatic"},
-  "gate.liquidation_distance_pct": {"unit": "ratio", "type": "number", "max_age_seconds": 3600, "source": "官方/终端模型，必须明确模型假设", "collection": "external"},
+  "gate.liquidation_distance_pct": {"unit": "ratio", "type": "number", "max_age_seconds": 3600, "source": "/account/liquidation: nearest absolute move in terminal model; one coin moves, others fixed", "collection": "derived"},
   "gate.mm_health_ratio": {"unit": "ratio", "type": "number", "max_age_seconds": 3600, "source": "/account", "collection": "derived"},
   "hedge.binance_size_gap_eth": {"unit": "ETH", "type": "number", "max_age_seconds": 3600, "source": "asset-view与交易所实际持仓；逐venue核对方向", "collection": "derived"},
   "hedge.direction_match": {"unit": "bool", "type": "bool", "max_age_seconds": 3600, "source": "asset-view与交易所实际持仓；逐venue核对方向", "collection": "derived"},

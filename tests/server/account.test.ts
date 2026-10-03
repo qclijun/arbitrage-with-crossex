@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOST, makeTestApp, mockGateGet } from './helpers/gate-nock';
+import * as positionRoutes from '../../src/server/routes/positions';
 
 describe('GET /api/account', () => {
   let app: FastifyInstance;
   afterEach(async () => {
     await app?.close();
+    vi.restoreAllMocks();
   });
 
   it('returns the ok envelope with camelCase account fields', async () => {
@@ -76,5 +78,55 @@ describe('GET /api/account', () => {
     expect(res.json().data.account.marginBalance).toBe('993.4877');
     expect(res.json().data.buckets).toBeNull();
     expect(res.json().meta.stale).toBeUndefined();
+  });
+
+  it('reports the nearest absolute liquidation move across coins', async () => {
+    app = makeTestApp();
+    vi.spyOn(positionRoutes, 'marginTiersFor').mockResolvedValue({});
+    mockGateGet('/accounts', { body: {
+      margin_balance: '200', maintenance_margin: '20',
+      assets: [{ coin: 'USDT', exchange_type: 'CROSSEX', equity: '200' }],
+    } });
+    mockGateGet('/positions', { body: [
+      { symbol: 'BINANCE_FUTURE_ETH_USDT', position_qty: '1', position_side: 'LONG', position_value: '1000', mark_price: '1000', maintenance_margin: '10' },
+      { symbol: 'BINANCE_FUTURE_BTC_USDT', position_qty: '-1', position_side: 'SHORT', position_value: '2000', mark_price: '2000', maintenance_margin: '10' },
+    ] });
+    const res = await app.inject({ method: 'GET', url: '/api/account/liquidation?fresh=1', headers: HOST });
+    expect(res.statusCode).toBe(200);
+    const { distance, view, assumptions } = res.json().data;
+    expect(view.lines).toHaveLength(2);
+    expect(view.lines.find((l: { base: string }) => l.base === 'ETH').move).toBeLessThan(0);
+    expect(view.lines.find((l: { base: string }) => l.base === 'BTC').move).toBeGreaterThan(0);
+    expect(distance).toBeCloseTo(Math.min(...view.lines.map((l: { move: number }) => Math.abs(l.move))));
+    expect(distance).toBeCloseTo(180 / 2010);
+    expect(assumptions).toContain('One coin moves at a time');
+  });
+
+  it.each(['mark_price', 'maintenance_margin', 'position_qty'])('keeps distance unknown when a position lacks %s', async (field) => {
+    app = makeTestApp();
+    vi.spyOn(positionRoutes, 'marginTiersFor').mockResolvedValue({});
+    mockGateGet('/accounts', { body: {
+      margin_balance: '200', maintenance_margin: '10',
+      assets: [{ coin: 'USDT', exchange_type: 'CROSSEX', equity: '200' }],
+    } });
+    const position: Record<string, string | undefined> = {
+      symbol: 'BINANCE_FUTURE_ETH_USDT', position_qty: '1', position_value: '1000',
+      mark_price: '1000', maintenance_margin: '10',
+    };
+    position[field] = undefined;
+    mockGateGet('/positions', { body: [position] });
+    const res = await app.inject({ method: 'GET', url: '/api/account/liquidation?fresh=1', headers: HOST });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.distance).toBeNull();
+  });
+
+  it('does not invent a finite distance for an account with no positions', async () => {
+    app = makeTestApp();
+    vi.spyOn(positionRoutes, 'marginTiersFor').mockResolvedValue({});
+    mockGateGet('/accounts', { body: { margin_balance: '200', maintenance_margin: '0', assets: [] } });
+    mockGateGet('/positions', { body: [] });
+    const res = await app.inject({ method: 'GET', url: '/api/account/liquidation?fresh=1', headers: HOST });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.distance).toBeNull();
   });
 });

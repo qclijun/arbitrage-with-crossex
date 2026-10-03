@@ -46,7 +46,7 @@ Source freshness for automatic values follows the actual endpoint fields and cov
 | `gate.interest_daily_usd` | USD/day | number | derived | 3600 | /account liabilities matched to /account/interest buckets.interestPerDayUsd; current daily estimate, USDT/USDC valued at $1 |
 | `gate.liability_usdc` | USDC | number | automatic | 3600 | /account liabilities; external official daily interest evidence |
 | `gate.liability_usdt` | USDT | number | automatic | 3600 | /account liabilities; external official daily interest evidence |
-| `gate.liquidation_distance_pct` | ratio | number | external | 3600 | 官方/终端模型，必须明确模型假设 |
+| `gate.liquidation_distance_pct` | ratio | number | derived | 3600 | /account/liquidation: nearest absolute move in terminal model; one coin moves, others fixed |
 | `gate.mm_health_ratio` | ratio | number | derived | 3600 | /account |
 | `hedge.binance_size_gap_eth` | ETH | number | derived | 3600 | asset-view与交易所实际持仓；逐venue核对方向 |
 | `hedge.direction_match` | bool | bool | derived | 3600 | asset-view与交易所实际持仓；逐venue核对方向 |

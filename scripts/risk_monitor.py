@@ -178,6 +178,7 @@ class Collector:
         agent = self.get('agent', '/boros/agent?fresh=1')
         root = self.config.get('root') or (agent or {}).get('root')
         paths = {'interest': '/account/interest?fresh=1', 'positions': '/positions?fresh=1',
+                 'liquidation': '/account/liquidation?fresh=1',
                  'health': '/health', 'deals': '/deals?active=1',
                  'orders': '/orders/open?fresh=1', 'alerts': '/alerts?unacked=1'}
         if root and re.fullmatch(r'0x[0-9a-fA-F]{40}', root):
@@ -218,6 +219,12 @@ def evaluate(data, config, state, rules, now, errors=None):
                         'coverage': coverage}
 
     account = data.get('account')
+    liquidation = data.get('liquidation')
+    if isinstance(liquidation, dict):
+        distance = number(liquidation.get('distance'))
+        put('gate.liquidation_distance_pct', distance if distance is not None and distance >= 0 else None,
+            '/account/liquidation: nearest absolute modeled move across coins; ' + str(liquidation.get('assumptions', '')),
+            unit='ratio', coverage='derived')
     positions = (data.get('positions') or {}).get('positions')
     assets = (data.get('farm') or {}).get('assets', [])
     asset = next((a for a in assets if a.get('base') == config.get('base', 'ETH')), None)
