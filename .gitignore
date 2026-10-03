@@ -22,6 +22,9 @@ tests/fixtures/gate/recorded/
 web/dist/
 # local tooling state
 .claude/
+.codebuddy/
+# tgrep search index — rebuilt on demand, never commit
+.tgrep/
 
 # git worktrees made by `gwta`, which land inside the repo
 .worktrees/

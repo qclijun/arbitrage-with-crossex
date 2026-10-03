@@ -49,6 +49,48 @@ def metric_unit(key):
     return CONTRACTS.get(key, {}).get('unit', 'enum')
 
 
+def format_metric_value(value, unit):
+    """Format human-readable output without rounding stored or evaluated metrics."""
+    if value is None:
+        return 'UNKNOWN'
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return str(value)
+    decimals = {
+        'USD': 2, 'USD/ETH': 2, 'USD/day': 2, 'USDT': 2, 'USDC': 2,
+        'ETH': 6, 'ETH/24h': 6,
+        'ratio': 4, 'ratio lower bound': 4, 'APR fraction': 4,
+        'percentage points': 2, 'days': 2, 'hours': 2,
+        'seconds': 1, 'unix seconds': 0, 'count': 0,
+    }.get(unit, 4)
+    if value == 0:
+        value = 0  # Do not display negative zero.
+    text = f'{value:.{decimals}f}'
+    if value != 0 and float(text) == 0:
+        return f'{value:.3g}'
+    return text
+
+
+def format_check(check):
+    """Show each metric beside its configured warning and critical conditions."""
+    operators = {'lt': '<', 'gt': '>', 'eq': '=', 'ne': '!='}
+    values = []
+    for key, metric in check['metrics'].items():
+        conditions = []
+        for condition_key, op, threshold, level in check['thresholds']:
+            if condition_key != key:
+                continue
+            comparison = '|value| >' if op == 'abs_gt' else operators.get(op, op)
+            conditions.append(f'{level} {comparison} {threshold}')
+        text = f"{key}={format_metric_value(metric['value'], metric['unit'])} {metric['unit']}"
+        if conditions:
+            text += ' (' + '; '.join(conditions) + ')'
+        values.append(text)
+    output = f"{check['status']:8} {check['id']}: " + ', '.join(values)
+    if check['reason']:
+        output += '\n  ' + check['reason']
+    return output
+
+
 def save(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -517,7 +559,7 @@ def evaluate(data, config, state, rules, now, errors=None):
             reasons.append('fresh review evidence only; not proof of safety')
         checks.append({'id': rule['id'], 'risk': rule['risk'], 'label': rule['label'],
                        'status': status, 'metrics': values, 'thresholds': conditions,
-                       'coverageComplete': not missing, 'reason': '; '.join(reasons) or 'within configured management thresholds',
+                       'coverageComplete': not missing, 'reason': '; '.join(reasons),
                        'recommendedAction': rule['action']})
     return {'observedAt': now, 'checks': checks, 'errors': errors,
             'conditionalRollingProfitUsd': profit, 'borosEquityUsd': boros_equity,
@@ -736,8 +778,7 @@ def main():
             else:
                 print(dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).isoformat(timespec='seconds'), 'risk checks', flush=True)
                 for check in report['checks']:
-                    vals = ', '.join(f"{k}={m['value']} {m['unit']}" for k, m in check['metrics'].items())
-                    print(f"{check['status']:8} {check['id']}: {vals}\n  {check['reason']}", flush=True)
+                    print(format_check(check), flush=True)
             if not args.watch:
                 return 2 if any(c['status'] != 'OK' for c in report['checks']) else 0
             time.sleep(max(0, interval - (time.time() - started)))
