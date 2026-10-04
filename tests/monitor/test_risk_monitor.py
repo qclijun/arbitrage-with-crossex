@@ -54,8 +54,8 @@ class RiskMonitorTest(unittest.TestCase):
 
     def test_every_risk_and_check_emitted_with_no_data(self):
         report = evaluate({}, self.config, {}, self.rules, NOW, {'collector': 'offline'})
-        self.assertEqual(len(report['checks']), 32)
-        self.assertEqual({c['risk'] for c in report['checks']}, set(range(1, 9)))
+        self.assertEqual(len(report['checks']), 29)
+        self.assertEqual({c['risk'] for c in report['checks']}, set(range(1, 9)) - {3})
         self.assertTrue(all(c['metrics'] for c in report['checks']))
         self.assertTrue(all(c['status'] != 'OK' for c in report['checks']))
 
@@ -165,12 +165,23 @@ class RiskMonitorTest(unittest.TestCase):
         self.assertEqual(data['account'], {'assets': []})
         self.assertEqual(data['interest']['buckets'], [])
 
-    def test_critical_survives_missing_sibling_metric(self):
+    def test_unexpected_change_is_critical_without_adl_evidence(self):
         data = fixture()
         data['farm']['assets'][0]['borosOpen'][0]['sizeToken'] = 2
         check = self.check(data, 'positions.unexpected_change_eth')
         self.assertEqual(check['status'], 'CRITICAL')
-        self.assertFalse(check['coverageComplete'])
+        self.assertTrue(check['coverageComplete'])
+        self.assertEqual(set(check['metrics']), {'positions.unexpected_change_eth'})
+
+    def test_removed_adl_metric_does_not_latch_old_critical(self):
+        state = {'critical_metrics': {'positions.unexpected_change_eth': ['positions.adl_event_count']},
+                 'risk_status': {'positions.unexpected_change_eth': 'CRITICAL'}}
+        report = evaluate(fixture(), self.config, state, self.rules, NOW)
+        check = next(c for c in report['checks'] if c['id'] == 'positions.unexpected_change_eth')
+        self.assertEqual(check['status'], 'OK')
+        self.assertEqual(check['metrics']['positions.unexpected_change_eth']['value'], 0)
+        self.assertTrue(check['coverageComplete'])
+        self.assertEqual(state['critical_metrics']['positions.unexpected_change_eth'], [])
 
     def test_wrong_direction_is_immediate_critical(self):
         data = fixture()
@@ -312,6 +323,19 @@ class RiskMonitorTest(unittest.TestCase):
         check = self.check(fixture(), 'rollover.days_to_maturity')
         self.assertEqual(check['metrics']['rollover.days_to_maturity']['unit'], 'days')
         self.assertEqual(check['metrics']['rollover.days_to_maturity']['value'], 80)
+        self.assertEqual(set(check['metrics']), {'rollover.days_to_maturity'})
+        self.assertEqual(check['status'], 'OK')
+        self.assertTrue(check['coverageComplete'])
+
+    def test_maturity_alerts_without_plan_evidence(self):
+        for days, expected in ((13, 'WARNING'), (.5, 'CRITICAL')):
+            with self.subTest(days=days):
+                data = fixture()
+                for leg in data['farm']['assets'][0]['borosOpen']:
+                    leg['maturity'] = NOW + days * 86400
+                check = self.check(data, 'rollover.days_to_maturity')
+                self.assertEqual(check['status'], expected)
+                self.assertTrue(check['coverageComplete'])
 
 
     def test_group_maturity_and_market_book_status_for_roll(self):
@@ -333,6 +357,9 @@ class RiskMonitorTest(unittest.TestCase):
         self.assertAlmostEqual(self.check(data, 'boros.mm_health_ratio')['metrics']['boros.mm_health_ratio']['value'], 2.5)
 
     def test_selected_cross_balance_is_not_total_eth_exposure(self):
+        for rule in self.rules:
+            if rule['risk'] == 3:
+                rule['enabled'] = True
         data = fixture()
         self.config['root'] = '0x' + '1' * 40
         data['boros_raw'] = {'results': [{'marketAcc': self.config['root'] + '000002ffffff',
@@ -341,6 +368,27 @@ class RiskMonitorTest(unittest.TestCase):
         check = self.check(data, 'collateral.eth_net')
         self.assertIsNone(check['metrics']['collateral.eth_net']['value'])
         self.assertEqual(check['status'], 'UNKNOWN')
+
+    def test_disabled_checks_clear_queued_alerts(self):
+        disabled = ('collateral.eth_net', 'collateral.stress_loss_usd', 'basis.executable_exit_cost_usd')
+        state = {'pending': {key: {'id': key, 'status': 'UNKNOWN'} for key in disabled},
+                 'observed_status': {key: 'UNKNOWN' for key in disabled},
+                 'risk_status': {key: 'CRITICAL' for key in disabled},
+                 'critical_metrics': {key: ['collateral.stress_loss_profit_ratio'] for key in disabled}}
+        save(self.config['observations_file'], {'metrics': {'collateral.eth_net': {
+            'value': 1, 'observed_at': NOW, 'ttl_seconds': 3600,
+            'source': 'synthetic total exposure', 'evidence': 'synthetic reference'}}})
+        report = evaluate(fixture(), self.config, state, self.rules, NOW)
+        self.assertFalse(any(c['risk'] == 3 for c in report['checks']))
+        self.assertFalse(any(key.startswith('collateral.') for c in report['checks'] for key in c['metrics']))
+        self.assertFalse(any(c['id'] == 'basis.executable_exit_cost_usd' for c in report['checks']))
+        self.assertTrue(any(c['id'] == 'basis.mark_spread_usd_per_eth' for c in report['checks']))
+        for key in ('pending', 'observed_status', 'risk_status', 'critical_metrics'):
+            self.assertFalse(any(check_id in state[key] for check_id in disabled))
+        sent = []
+        notify_report(report, state, {}, {}, NOW, sent.append)
+        self.assertFalse(any('collateral.' in message for message in sent))
+        self.assertFalse(any('basis.executable_exit_cost_usd' in message for message in sent))
 
 
     def test_critical_not_erased_by_lost_data(self):

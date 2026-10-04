@@ -1,6 +1,6 @@
 # 日常风险检查与 Telegram 预警
 
-本清单覆盖四腿资金费套利的八类风险，共32个检查项。监控只读，默认每300秒运行一次，频率和全部阈值可配置。阈值是资金管理线，不是平台清算规则。
+本清单覆盖四腿资金费套利的八类风险，共32个检查项，其中ETH抵押品价格风险的2项及实际退出成本的1项暂不监控，当前启用29项。监控只读，默认每300秒运行一次，频率和全部阈值可配置。阈值是资金管理线，不是平台清算规则。
 
 ## 八类风险简要说明
 
@@ -16,6 +16,14 @@
 8. **稳定币、托管与协议风险**：稳定币脱锚、平台提现受限、托管损失、合约漏洞或预言机异常，都可能影响资产价值和资金可用性。近期公告正常或人工核查有效，只说明证据新鲜，不能保证平台或协议安全。
 
 ## 每日检查清单
+
+到期提醒只监控剩余天数，不监控计划确认时间；进入临近到期预警后，再制定展期或退出方案。
+
+暂不统计ADL事件次数；非预期仓位变化检查只使用`positions.unexpected_change_eth`，不因缺少ADL事件证据而报UNKNOWN。偏离基线时仍需核对原因；数值为0不替代数量、方向和到期检查。
+
+风险3的“ETH抵押品价格暴露”和“美元压力损失”暂不监控，相关四个指标不输出、不触发告警。规则中的`enabled:false`保留其定义，恢复时改为`true`并提供完整敞口证据；暂停不代表该风险消失。
+
+风险4的“实际退出成本”也暂不监控，相关三个指标不输出、不触发告警；“永续标记价差”及其三个指标继续监控。恢复退出成本检查时需启用规则并提供有效盘口与成本证据。
 
 | 风险 | 检查项 / 指标ID | 默认预警规则 | 应对措施 |
 |---|---|---|---|
@@ -36,8 +44,8 @@
 | 5 | 5. 每条资金费腿匹配：`hedge.hl_size_gap_eth`、`hedge.binance_size_gap_eth`、`hedge.direction_match` | hedge.hl_size_gap_eth gt 0.001 → WARNING；hedge.binance_size_gap_eth gt 0.001 → WARNING；hedge.hl_size_gap_eth gt 0.01 → CRITICAL；hedge.binance_size_gap_eth gt 0.01 → CRITICAL；hedge.direction_match eq False → CRITICAL | 协调修复对应腿，避免只看总净delta |
 | 5 | 5. 期限匹配：`hedge.maturity_match`、`hedge.market_identity_match` | hedge.maturity_match eq False → CRITICAL；hedge.market_identity_match eq False → CRITICAL | 暂停扩大规模，核对原始成交 |
 | 5 | 5. 执行残留：`execution.unhedged_eth`、`execution.halted_count`、`execution.pending_age_s` | execution.unhedged_eth abs_gt 0.001 → CRITICAL；execution.halted_count gt 0 → CRITICAL；execution.pending_age_s gt 120 → WARNING | 查真实订单状态，不把超时当作未成交 |
-| 5 | 5. 非预期减仓/ADL：`positions.unexpected_change_eth`、`positions.adl_event_count` | positions.unexpected_change_eth gt 0.001 → CRITICAL；positions.adl_event_count gt 0 → CRITICAL | 核对是否清算/ADL，重建四腿对冲 |
-| 6 | 6. 到期提醒：`rollover.days_to_maturity`、`rollover.plan_confirmed_at` | rollover.days_to_maturity lt 14 → WARNING；rollover.days_to_maturity lt 1 → CRITICAL | 准备展期和退出两套方案 |
+| 5 | 5. 非预期仓位变化：`positions.unexpected_change_eth` | positions.unexpected_change_eth gt 0.001 → CRITICAL | 核对是否清算/ADL，重建四腿对冲 |
+| 6 | 6. 到期提醒：`rollover.days_to_maturity` | rollover.days_to_maturity lt 14 → WARNING；rollover.days_to_maturity lt 1 → CRITICAL | 临近到期时制定展期或退出方案 |
 | 6 | 6. 下一期机会：`rollover.next_net_apr`、`rollover.depth_coverage_ratio` | rollover.next_net_apr lt 0 → WARNING；rollover.depth_coverage_ratio lt 1 → WARNING | 不为省手续费强行展期 |
 | 6 | 6. 重叠保证金：`rollover.incremental_margin_usd`、`rollover.post_roll_coverage` | rollover.post_roll_coverage lt 1.3 → WARNING | 预留展期抵押品；逐笔确认新旧仓 |
 | 6 | 6. 资金费对冲空档：`rollover.uncovered_funding_seconds`、`rollover.uncovered_funding_eth` | rollover.uncovered_funding_eth gt 0.001 → WARNING；rollover.uncovered_funding_seconds gt 300 → CRITICAL | 建立正确下一期对冲或执行既定退出方案 |
@@ -52,7 +60,7 @@
 | 8 | 8. 托管事件与提现通道：`custody.incident_status`、`custody.review_age_h`、`custody.withdrawal_status` | custody.incident_status ne clear → CRITICAL；custody.withdrawal_status ne available → WARNING；custody.review_age_h gt 24 → WARNING | 不扩大托管规模，确认可执行的资金访问路径 |
 | 8 | 8. 协议/预言机事件：`protocol.incident_status`、`protocol.review_age_h`、`oracle.settlement_lag_s` | protocol.incident_status ne clear → CRITICAL；protocol.review_age_h gt 24 → WARNING；oracle.settlement_lag_s gt 7200 → WARNING | 对照实际结算与公告，保持备用资金 |
 
-比较符号：`lt`小于、`gt`大于、`abs_gt`绝对值大于、`eq`相等、`ne`不相等。比率使用倍数或小数（0.30=30%），APR使用小数，APR利差变化使用百分点。每个指标输出值、单位、来源、采集/观察时间、数据年龄和覆盖状态。70个指标的类型、允许值、外部证据有效期及部署验收见 [指标契约](RISK-MONITOR-CONTRACTS.md)。70个指标的类型、允许值、外部证据有效期及部署验收见 [指标契约](RISK-MONITOR-CONTRACTS.md)。
+比较符号：`lt`小于、`gt`大于、`abs_gt`绝对值大于、`eq`相等、`ne`不相等。比率使用倍数或小数（0.30=30%），APR使用小数，APR利差变化使用百分点。每个指标输出值、单位、来源、采集/观察时间、数据年龄和覆盖状态。68个指标的类型、允许值、外部证据有效期及部署验收见 [指标契约](RISK-MONITOR-CONTRACTS.md)。68个指标的类型、允许值、外部证据有效期及部署验收见 [指标契约](RISK-MONITOR-CONTRACTS.md)。
 
 `gate.interest_daily_usd` 自动汇总终端 `/account/interest` 各钱包的当前每日利息估算，并与 `/account` 的负债核对：计息借款额 × 当前小时利率 × 24。HL USDC 钱包扣除 10,000 USDC 免息额度，其他钱包不套用该额度。金额沿用终端 USDT/USDC 按 $1 估值的口径，不代表过去24小时实际扣息，也不代替独立稳定币报价。接口失败、借款不一致、计息钱包利率缺失或数据无效时，自动值为 UNKNOWN；仍可按指标契约提供有效外部证据作为后备。
 

@@ -1,6 +1,6 @@
 # Risk monitor metric contracts
 
-The 32 checks reference 70 distinct metrics. `scripts/risk-monitor-rules.json` defines thresholds and actions; `scripts/risk-monitor-metrics.json` defines value types, units, intended sources and maximum external evidence age. Threshold overrides remain management limits, not exchange liquidation rules.
+The 32 defined checks reference 68 distinct metrics. The two ETH collateral price-risk checks and the executable exit-cost check are temporarily disabled (`enabled: false`); the monitor emits 29 checks referencing 61 metrics. The perpetual mark-spread check remains enabled. Maturity alerts use only days remaining; plan-confirmation timestamps are not monitored. Plans are prepared when maturity approaches. ADL event counting is temporarily omitted; the unexpected-position-change check uses only the baseline quantity deviation. Disabled checks are omitted from reports and notifications, and their queued alerts and prior statuses are cleared on evaluation. `scripts/risk-monitor-rules.json` defines thresholds and actions; `scripts/risk-monitor-metrics.json` defines value types, units, intended sources and maximum external evidence age. Threshold overrides remain management limits, not exchange liquidation rules.
 
 Missing, invalid, future-dated or expired evidence produces UNKNOWN unless another measured condition establishes WARNING/CRITICAL. A previously measured CRITICAL remains CRITICAL while its triggering metric cannot be verified. `coverageComplete` describes metric availability only; it does not guarantee safety.
 
@@ -62,15 +62,13 @@ Source freshness for automatic values follows the actual endpoint fields and cov
 | `notify.last_success_at` | unix seconds | number | local | 3600 | Telegram确认返回+本机持久化队列 |
 | `notify.pending_count` | count | number | local | 3600 | Telegram确认返回+本机持久化队列 |
 | `oracle.settlement_lag_s` | seconds | number | external | 3600 | 官方事件核查+实际settlement epoch进度 |
-| `positions.adl_event_count` | count | number | external | 3600 | 持久化基线+成交/ADL记录；记录不全UNKNOWN |
-| `positions.unexpected_change_eth` | ETH | number | automatic | 3600 | 持久化基线+成交/ADL记录；记录不全UNKNOWN |
+| `positions.unexpected_change_eth` | ETH | number | automatic | 3600 | 已确认基线与当前四腿仓位；数据不完整UNKNOWN |
 | `protocol.incident_status` | enum | clear, active | external | 86400 | 官方事件核查+实际settlement epoch进度 |
 | `protocol.review_age_h` | hours | number | automatic | 86400 | 官方事件核查+实际settlement epoch进度 |
-| `rollover.days_to_maturity` | days | number | automatic | 3600 | 实际maturity、人工展期/退出计划时间戳 |
+| `rollover.days_to_maturity` | days | number | automatic | 3600 | 实际Boros到期时间 |
 | `rollover.depth_coverage_ratio` | ratio lower bound | number | derived | 3600 | 实际size模拟/盘口及两腿全部费用，不只mid |
 | `rollover.incremental_margin_usd` | USD | number | external | 3600 | 模拟旧/新仓共存阶段的保证金 |
 | `rollover.next_net_apr` | APR fraction | number | automatic | 3600 | 实际size模拟/盘口及两腿全部费用，不只mid |
-| `rollover.plan_confirmed_at` | unix seconds | number | external | 86400 | 实际maturity、人工展期/退出计划时间戳 |
 | `rollover.post_roll_coverage` | ratio | number | external | 3600 | 模拟旧/新仓共存阶段的保证金 |
 | `rollover.uncovered_funding_eth` | ETH | number | automatic | 3600 | 永续存在且对应Boros不存在/已到期 |
 | `rollover.uncovered_funding_seconds` | seconds | number | automatic | 3600 | 永续存在且对应Boros不存在/已到期 |

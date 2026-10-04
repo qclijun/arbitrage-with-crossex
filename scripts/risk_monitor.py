@@ -211,6 +211,13 @@ class Collector:
 def evaluate(data, config, state, rules, now, errors=None):
     """Pure risk computation; no requests and no automatic trading actions."""
     errors = errors or {}
+    disabled = {rule['id'] for rule in rules if rule.get('enabled', True) is False}
+    for key in ('pending', 'observed_status', 'notified_status', 'consecutive_status',
+                'notified_at', 'risk_status', 'critical_metrics'):
+        for check_id in disabled:
+            state.get(key, {}).pop(check_id, None)
+    rules = [rule for rule in rules if rule['id'] not in disabled]
+    active_metrics = {key for rule in rules for key in rule['metrics']}
     metrics = {}
 
     def put(key, value, source, observed=None, unit='', coverage='measured'):
@@ -446,7 +453,7 @@ def evaluate(data, config, state, rules, now, errors=None):
     except (ValueError, OSError, AttributeError):
         observations = {}
     for key, obs in observations.items():
-        if key not in CONTRACTS:
+        if key not in active_metrics:
             continue
         # Runtime state cannot be vouched for by a manual record.
         if key.startswith(('notify.', 'service.')) or key == 'monitor.last_complete_run_at':
@@ -556,7 +563,7 @@ def evaluate(data, config, state, rules, now, errors=None):
                 if level == 'CRITICAL':
                     hits.append(key)
         old_hits = state.get('critical_metrics', {}).get(rule['id'], [])
-        unresolved = [key for key in old_hits if values.get(key, {}).get('value') is None]
+        unresolved = [key for key in old_hits if key in values and values[key]['value'] is None]
         if unresolved:
             status = 'CRITICAL'
             reasons.append('previous critical not verifiable: ' + ', '.join(unresolved))

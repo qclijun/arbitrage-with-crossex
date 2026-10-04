@@ -240,6 +240,7 @@
   },
   {
     "id": "collateral.eth_net",
+    "enabled": false,
     "risk": 3,
     "label": "3. ETH抵押品价格暴露",
     "metrics": [
@@ -260,6 +261,7 @@
   },
   {
     "id": "collateral.stress_loss_usd",
+    "enabled": false,
     "risk": 3,
     "label": "3. 美元压力损失",
     "metrics": [
@@ -305,6 +307,7 @@
   },
   {
     "id": "basis.executable_exit_cost_usd",
+    "enabled": false,
     "risk": 4,
     "label": "4. 实际退出成本",
     "metrics": [
@@ -457,24 +460,17 @@
   {
     "id": "positions.unexpected_change_eth",
     "risk": 5,
-    "label": "5. 非预期减仓/ADL",
+    "label": "5. 非预期仓位变化",
     "metrics": [
-      "positions.unexpected_change_eth",
-      "positions.adl_event_count"
+      "positions.unexpected_change_eth"
     ],
-    "sourcePlan": "持久化基线+成交/ADL记录；记录不全UNKNOWN",
+    "sourcePlan": "已确认基线与当前四腿仓位；数据不完整UNKNOWN",
     "action": "核对是否清算/ADL，重建四腿对冲",
     "conditions": [
       [
         "positions.unexpected_change_eth",
         "gt",
         0.001,
-        "CRITICAL"
-      ],
-      [
-        "positions.adl_event_count",
-        "gt",
-        0,
         "CRITICAL"
       ]
     ]
@@ -484,11 +480,10 @@
     "risk": 6,
     "label": "6. 到期提醒",
     "metrics": [
-      "rollover.days_to_maturity",
-      "rollover.plan_confirmed_at"
+      "rollover.days_to_maturity"
     ],
-    "sourcePlan": "实际maturity、人工展期/退出计划时间戳",
-    "action": "准备展期和退出两套方案",
+    "sourcePlan": "实际Boros到期时间",
+    "action": "临近到期时制定展期或退出方案",
     "conditions": [
       [
         "rollover.days_to_maturity",

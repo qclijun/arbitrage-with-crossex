@@ -50,7 +50,7 @@ class ContractTest(unittest.TestCase):
             'hedge.hl_size_gap_eth': ('hedge.direction_match', False, 'CRITICAL'),
             'hedge.maturity_match': ('hedge.maturity_match', False, 'CRITICAL'),
             'execution.unhedged_eth': ('execution.unhedged_eth', .01, 'CRITICAL'),
-            'positions.unexpected_change_eth': ('positions.adl_event_count', 1, 'CRITICAL'),
+            'positions.unexpected_change_eth': ('positions.unexpected_change_eth', .01, 'CRITICAL'),
             'rollover.days_to_maturity': ('rollover.days_to_maturity', .5, 'CRITICAL'),
             'rollover.next_net_apr': ('rollover.next_net_apr', -.01, 'WARNING'),
             'rollover.incremental_margin_usd': ('rollover.post_roll_coverage', 1, 'WARNING'),
@@ -71,7 +71,8 @@ class ContractTest(unittest.TestCase):
             with self.subTest(check=rule['id']):
                 key, value, expected = cases[rule['id']]
                 save(self.config['observations_file'], {'metrics': {key: self.observation(value)}})
-                report = evaluate({}, self.config, {'notify_failures': 3}, [rule], NOW)
+                # Retain coverage for paused checks so they can be restored safely.
+                report = evaluate({}, self.config, {'notify_failures': 3}, [{**rule, 'enabled': True}], NOW)
                 self.assertEqual(report['checks'][0]['status'], expected)
 
     def test_invalid_evidence_and_contract_expiry_cannot_clear_risk(self):
@@ -113,7 +114,7 @@ class ContractTest(unittest.TestCase):
 
     def test_contract_covers_every_metric_with_units_and_source(self):
         self.assertEqual(set(CONTRACTS), {m for r in self.rules for m in r['metrics']})
-        self.assertEqual(len(CONTRACTS), 70)
+        self.assertEqual(len(CONTRACTS), 68)
         for contract in CONTRACTS.values():
             self.assertTrue(contract['unit'])
             self.assertTrue(contract['source'])
