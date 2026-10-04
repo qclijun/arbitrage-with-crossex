@@ -27,7 +27,7 @@ export function positionsRoutes(deps: AppDeps) {
   return async function plugin(app: FastifyInstance): Promise<void> {
     app.get('/positions', async (req, reply) => {
       const fresh = (req.query as { fresh?: string }).fresh === '1';
-      const { value, stale } = await deps.cache.get(
+      const { value, stale, observedAt } = await deps.cache.get(
         'positions',
         TTL.live,
         async () => (await deps.getClients().crossEx.listCrossexPositions()).body,
@@ -39,7 +39,7 @@ export function positionsRoutes(deps: AppDeps) {
         rows.map((r) => r.symbol ?? ''),
         fresh,
       );
-      return reply.ok({ positions: rows, exposure: computeExposure(rows), marginTiers }, { stale });
+      return reply.ok({ positions: rows, exposure: computeExposure(rows), marginTiers }, { stale, observedAt });
     });
   };
 }

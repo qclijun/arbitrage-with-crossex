@@ -16,6 +16,7 @@ import { ACTIVE_TAB_KEY, isTabId, TabBar, TabPanel, type TabId } from './compone
 import { readJson, writeJson } from './lib/storage';
 import { BalancesPanel } from './panels/BalancesPanel';
 import { CollateralPanel } from './panels/CollateralPanel';
+import { RiskPanel } from './panels/RiskPanel';
 import { FeesPanel } from './panels/FeesPanel';
 import { OpenOrdersPanel } from './panels/OpenOrdersPanel';
 import { OpportunitiesPanel } from './panels/OpportunitiesPanel';
@@ -211,6 +212,7 @@ export default function App() {
                     { id: 'opportunities', label: 'Opportunities', primary: true },
                     { id: 'positions', label: 'Positions', primary: true },
                     { id: 'collateral', label: 'Collateral' },
+                    { id: 'risk', label: 'Risk' },
                     { id: 'balances', label: 'Balances' },
                     { id: 'orders', label: 'Open Orders', badge: ordersBadge },
                     { id: 'trades', label: 'Trades' },
@@ -250,6 +252,9 @@ export default function App() {
                   </TabPanel>
                   <TabPanel id="collateral" active={activeTab === 'collateral'}>
                     <CollateralPanel />
+                  </TabPanel>
+                  <TabPanel id="risk" active={activeTab === 'risk'}>
+                    <RiskPanel />
                   </TabPanel>
                   <TabPanel id="orders" active={activeTab === 'orders'}>
                     <OpenOrdersPanel />

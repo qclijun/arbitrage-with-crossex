@@ -8,7 +8,7 @@
 import { privateKeyToAccount } from 'viem/accounts';
 import { fetchBorosAgentExpiry, type FetchLike } from '../core/boros/client';
 
-export type AgentApproval =
+type ApprovalValue =
   /** Approved and not expired. */
   | { state: 'approved'; expiry: number }
   /** Approved once, and the approval ended. */
@@ -17,6 +17,7 @@ export type AgentApproval =
   | { state: 'not-approved'; expiry: null }
   /** The read failed. Fall back to the .env expiry. */
   | { state: 'unknown'; expiry: null };
+export type AgentApproval = ApprovalValue & { observedAt?: number };
 
 /** A good answer is kept this long. A "not approved" answer is never kept,
  * so the check right after a login sees the approval land. */
@@ -61,6 +62,7 @@ export async function readAgentApproval(
     return { state: 'unknown', expiry: null };
   }
   cached = value.state === 'not-approved' ? null : { key, at: nowMs, value };
+  value.observedAt = nowMs;
   if (value.state === 'approved' && announced !== key && opts.onApproved) {
     // The first read of a new approval. On startup this fires once for the
     // key already in place, which is a harmless extra sync. A read with no

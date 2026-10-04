@@ -52,6 +52,8 @@ import { TTL } from '../cache';
 import { currentRebateClient, loggedInRoot } from '../borosRebate';
 import { GATE_HISTORY_FLOOR_MS, INTEREST_MAX_PAGES, INTEREST_PAGE_SIZE } from '../interestLedger';
 import { LedgerStore } from '../ledgerStore';
+import { netSettlementWindow } from '../../core/boros/riskSettlement';
+import type { RiskAssetEvidence, RiskBorosPosition } from '../../../web/src/lib/risk';
 import { earliestSupportedOpenMs, TrackingStartFile } from '../trackingStart';
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -216,6 +218,7 @@ export interface AssetGroupOut {
 }
 
 export interface AssetViewOut {
+  risk?: RiskAssetEvidence;
   sinceSec: number;
   nowSec: number;
   defaultSinceSec: number | null;
@@ -382,6 +385,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
       prev !== undefined &&
       prev.coversFromSec === next.coversFromSec &&
       prev.rows.length === next.rows.length &&
+      prev.validationError === next.validationError &&
       prev.rows[0]?.id === next.rows[0]?.id;
     if (!unchanged) ledgerStore.write(address, next);
   };
@@ -411,16 +415,16 @@ export function createAssetViewBuilder(deps: AppDeps) {
     return prev ?? { rows: [], coversFromSec: Math.floor(Date.now() / 1000) };
   };
 
-  const readLedger = async (address: string, floorSec: number, fresh: boolean): Promise<BorosSettlementLedger> => {
+  const readLedger = async (address: string, floorSec: number, fresh: boolean) => {
     const running = backfills.has(address) ? settlementLedgers.get(address) : undefined;
-    if (running) return running;
-    const { value } = await deps.cache.get(
+    if (running) return { ledger: running, observedAt: null, stale: true };
+    const { value, observedAt, stale } = await deps.cache.get(
       `boros:settlements:${address}`,
       BOROS_LIVE_TTL_MS,
       () => syncHead(address, floorSec),
       { fresh },
     );
-    return value;
+    return { ledger: value, observedAt, stale };
   };
 
   /**
@@ -468,14 +472,16 @@ export function createAssetViewBuilder(deps: AppDeps) {
 
     let perpPositions: PerpPositionLike[] = [];
     let perpAvailable = true;
+    let sourceStale = false;
     try {
-      const { value } = await deps.cache.get(
+      const { value, stale } = await deps.cache.get(
         'positions',
         TTL.live,
         async () => (await deps.getClients().crossEx.listCrossexPositions()).body,
         { fresh },
       );
       perpPositions = rememberMarks(value as PerpPositionLike[]).rows;
+      if (stale) warnings.push('Gate position snapshot is stale; only historical values are available.');
     } catch (err) {
       perpAvailable = false;
       const category = classifyGateError(err).category;
@@ -532,20 +538,23 @@ export function createAssetViewBuilder(deps: AppDeps) {
     const floorFor = (marketId: number): number => Math.max(sinceSec, legSince.get(marketId) ?? 0);
 
     // --- Boros reads (shared cache keys with the strategy feed) ----------
+    let marketObservedAt = 0;
+    let collateralObservedAt = 0;
     const marketsP = deps.cache
       .get('boros:markets', TTL.boros, () => fetchBorosMarkets(fetchImpl), { fresh })
-      .then((r) => r.value);
-    const [markets, zones, ledger] = await Promise.all([
+      .then((r) => { marketObservedAt = r.observedAt; sourceStale ||= r.stale; return r.value; });
+    const [markets, zones, ledgerRead] = await Promise.all([
       marketsP,
       marketsP.then((ms) =>
         deps.cache
           .get(`boros:collaterals:strict:${address}`, TTL.boros, () => fetchBorosCollaterals(fetchImpl, address, ms, 0, true), {
             fresh,
           })
-          .then((r) => r.value),
+          .then((r) => { collateralObservedAt = r.observedAt; sourceStale ||= r.stale; return r.value; }),
       ),
       readLedger(address, sinceSec, fresh),
     ]);
+    const ledger = ledgerRead.ledger;
     const settlements = settlementWindow(ledger, sinceSec);
     // Backend-provided per-settlement rebate amounts, joined onto the windowed
     // events by (marketId, timeSec). Nothing before the program start is ever
@@ -1113,7 +1122,40 @@ export function createAssetViewBuilder(deps: AppDeps) {
 
     if (ledger.coversFromSec !== 0 && ledger.coversFromSec > sinceSec) startSync(address, sinceSec);
 
+    // Keep quantities and directions even when USD pricing is unavailable.
+    const riskPositions: RiskBorosPosition[] = [];
+    let riskPositionsComplete = zones.every(z => !z.cross || z.cross.positionsComplete === true);
+    const amount18 = (v: unknown): number | null => typeof v === 'string' && /^-?\d+$/.test(v)
+      && Number.isFinite(Number(v)) ? Number(v) / 1e18 : null;
+    for (const zone of zones.filter(z => z.tokenId === 2)) {
+      const group = zone.cross;
+      if (!group) continue;
+      const expected = address.toLowerCase() + '000002ffffff';
+      if (group.marketAcc.toLowerCase() !== expected) { riskPositionsComplete = false; continue; }
+      for (const position of group.marketPositions) {
+        const size = amount18(position.notionalSize);
+        if (size === null) { riskPositionsComplete = false; continue; }
+        if (size === 0) continue;
+        const market = marketById.get(position.marketId);
+        if (!market || market.base !== 'ETH' || market.tokenId !== 2 || !Number.isFinite(market.maturity)) riskPositionsComplete = false;
+        const price = collateralPriceUsd.get(2);
+        const mtm = amount18(position.pnl.unrealisedPnl);
+        riskPositions.push({ marketAcc: group.marketAcc, marketId: position.marketId,
+          venue: market ? normalizeVenue(market.venue) : null, maturity: market?.maturity ?? null,
+          side: size > 0 ? 'LONG' : 'SHORT', sizeToken: Math.abs(size),
+          entryApr: position.fixedApr, markApr: Number.isFinite(position.markApr) ? position.markApr : null,
+          mtmUsd: mtm !== null && price && price > 0 ? mtm * price : null,
+          notionalUsd: price && price > 0 ? Math.abs(size) * price : null,
+          settleFeeApr: market?.settleFeeApr ?? null });
+      }
+    }
+    const ledgerThrough = ledgerRead.observedAt === null ? nowSec : Math.floor(ledgerRead.observedAt / 1000);
+    const net = netSettlementWindow(ledger, address, 0, ledgerThrough);
+    const settlement = ledgerRead.stale ? { ...net, netEth: null, complete: false,
+      reason: 'Settlement producer read incomplete / stale' } : net;
     const out: AssetViewOut = {
+      risk: { address, accountId: 0, observedAt: Math.min(marketObservedAt, collateralObservedAt),
+        stale: sourceStale, positionsComplete: riskPositionsComplete, positions: riskPositions, settlement },
       sinceSec,
       nowSec,
       defaultSinceSec,

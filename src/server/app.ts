@@ -37,6 +37,8 @@ import { telegramRoutes } from './routes/telegram';
 import { transferRoutes } from './routes/transfer';
 import { versionRoutes } from './routes/version';
 import { tradesRoutes } from './routes/trades';
+import { credentialIdentity } from './readScope';
+import { riskEvidenceRoutes } from './routes/riskEvidence';
 import type { BotClient } from './telegram/botClient';
 import type { TelegramLink } from './telegram/link';
 import type { TelegramStatus } from './telegram/status';
@@ -111,12 +113,13 @@ export interface AppDeps {
 declare module 'fastify' {
   interface FastifyReply {
     /** Success envelope: { ok: true, data, meta: { ts, stale? } }. */
-    ok(data: unknown, opts?: { stale?: boolean }): FastifyReply;
+    ok(data: unknown, opts?: { stale?: boolean; observedAt?: number; coverageComplete?: boolean }): FastifyReply;
   }
 }
 
 export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
+  const requestIdentities = new WeakMap<object, string>();
   // Any localhost port is trusted (the Vite dev server proxies from its own port);
   // DNS-rebinding/CSRF attackers can reach 127.0.0.1 but can't forge a localhost
   // Host/Origin. No CORS headers are ever emitted.
@@ -133,6 +136,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     : null;
 
   app.addHook('onRequest', async (req, reply) => {
+    requestIdentities.set(reply, credentialIdentity(deps));
     // The Host/Origin guard cannot stop framing: a page that iframes
     // http://localhost:6688 IS same-origin with /api, so its requests carry a
     // localhost Host and Origin and pass the check below. With no auth of any
@@ -186,8 +190,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
   });
 
-  app.decorateReply('ok', function (this: FastifyReply, data: unknown, opts?: { stale?: boolean }) {
-    const meta: { ts: number; stale?: boolean } = { ts: Date.now() };
+  app.decorateReply('ok', function (this: FastifyReply, data: unknown, opts?: { stale?: boolean; observedAt?: number; coverageComplete?: boolean }) {
+    const meta: { ts: number; stale?: boolean; observedAt?: number; credentialId?: string; coverageComplete?: boolean } = { ts: Date.now(), observedAt: opts?.observedAt,
+      credentialId: requestIdentities.get(this), coverageComplete: opts?.coverageComplete };
     if (opts?.stale) meta.stale = true;
     return this.send({ ok: true, data, meta });
   });
@@ -199,6 +204,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     credentialsRoutes,
     disclaimerRoutes,
     accountRoutes,
+    riskEvidenceRoutes,
     feesRoutes,
     positionsRoutes,
     ordersRoutes,

@@ -203,12 +203,18 @@ export function opportunitiesRoutes(deps: AppDeps) {
       // "re-read upstream".
       const fresh = query.fresh === '1';
 
-      const { value: allMarkets, stale } = await deps.cache.get(
+      const { value: allMarkets, stale, observedAt: marketObservedAt } = await deps.cache.get(
         'boros:markets',
         TTL.boros,
         () => fetchBorosMarkets(fetchImpl),
         { fresh },
       );
+      let inputsStale = stale;
+      let observedAt = marketObservedAt;
+      const observe = (result: { observedAt: number; stale: boolean }) => {
+        observedAt = Math.min(observedAt, result.observedAt);
+        inputsStale ||= result.stale;
+      };
       const markets = allMarkets.filter((m) => isSupportedCoin(normalizeUnderlying(m.base)));
 
       // The CrossEx universe decides which Boros market can carry a perp leg.
@@ -223,13 +229,14 @@ export function opportunitiesRoutes(deps: AppDeps) {
       let rulesAvailable = false;
       let feeRows: VenueFeeRow[] | null = null;
       try {
-        const { value } = await deps.cache.get(
+        const snapshot = await deps.cache.get(
           'rules:all',
           TTL.static,
           async () => (await ruleClient(deps).listCrossexRuleSymbols()).body,
           { fresh },
         );
-        symbolsByVenueBase = resolveHedgeSymbols(value);
+        observe(snapshot);
+        symbolsByVenueBase = resolveHedgeSymbols(snapshot.value);
         rulesAvailable = true;
       } catch (err) {
         const { category } = classifyGateError(err);
@@ -250,13 +257,14 @@ export function opportunitiesRoutes(deps: AppDeps) {
         assumedTier = feeTier;
       } else {
         try {
-          const { value } = await deps.cache.get(
+          const snapshot = await deps.cache.get(
             'fees',
             TTL.static,
             async () => (await deps.getClients().crossEx.getCrossexFee()).body,
             { fresh },
           );
-          feeRows = value as VenueFeeRow[];
+          observe(snapshot);
+          feeRows = snapshot.value as VenueFeeRow[];
         } catch {
           feeRows = feeRowsForTier('vip0', crossexVenues);
           assumedTier = 'vip0';
@@ -296,20 +304,21 @@ export function opportunitiesRoutes(deps: AppDeps) {
       await Promise.all([
         ...(borosEntry === 'market' ? bookMarketIds : []).map(async (marketId) => {
           try {
-            const { value } = await deps.cache.get(
+            const snapshot = await deps.cache.get(
               `boros:book:${marketId}`,
               TTL.borosBook,
               () => fetchBorosOrderBook(fetchImpl, marketId),
               { fresh },
             );
-            borosBooks.set(marketId, value);
+            observe(snapshot);
+            borosBooks.set(marketId, snapshot.value);
           } catch {
             borosBooks.set(marketId, null);
           }
         }),
         // NOT the `books:` key — that one caches a BookTouch for /api/books/:symbol.
         ...[...perpSymbols].map(async (symbol) => {
-          const { value } = await deps.cache.get(
+          const snapshot = await deps.cache.get(
             `fullbook:${symbol}`,
             TTL.book,
             () => {
@@ -318,12 +327,13 @@ export function opportunitiesRoutes(deps: AppDeps) {
             },
             { fresh },
           );
-          venueBooks.set(symbol, value);
+          observe(snapshot);
+          venueBooks.set(symbol, snapshot.value);
         }),
         // Fallback keys carry a colon, symbols carry underscores — the cache
         // namespace can't collide with the symbol-keyed entries above.
         ...[...fallbackBooks].map(async (key) => {
-          const { value } = await deps.cache.get(
+          const snapshot = await deps.cache.get(
             `fullbook:${key}`,
             TTL.book,
             () => {
@@ -332,7 +342,8 @@ export function opportunitiesRoutes(deps: AppDeps) {
             },
             { fresh },
           );
-          venueBooks.set(key, value);
+          observe(snapshot);
+          venueBooks.set(key, snapshot.value);
         }),
         loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol).then((warning) => {
           if (warning !== null) warnings.push(warning);
@@ -355,7 +366,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
       );
       return reply.ok(
         { ...result, warnings: [...new Set([...warnings, ...result.warnings])] },
-        { stale },
+        { stale: inputsStale, observedAt },
       );
     });
   };

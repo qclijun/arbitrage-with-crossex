@@ -34,7 +34,8 @@ function parseLedger(raw: unknown): BorosSettlementLedger | null {
     if (!row) return null;
     rows.push(row);
   }
-  return { rows, coversFromSec: r.coversFromSec, olderToken: typeof r.olderToken === 'string' ? r.olderToken : null };
+  return { rows, coversFromSec: r.coversFromSec, olderToken: typeof r.olderToken === 'string' ? r.olderToken : null,
+    validationError: typeof r.validationError === 'string' ? r.validationError : undefined };
 }
 
 export class LedgerStore {

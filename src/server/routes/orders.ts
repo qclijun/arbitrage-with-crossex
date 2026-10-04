@@ -50,7 +50,7 @@ export function ordersRoutes(deps: AppDeps) {
   return async function plugin(app: FastifyInstance): Promise<void> {
     app.get('/orders/open', async (req, reply) => {
       const q = req.query as { symbol?: string; fresh?: string };
-      const { value, stale } = await deps.cache.get(
+      const { value, stale, observedAt } = await deps.cache.get(
         `openOrders:${q.symbol ?? ''}`,
         TTL.live,
         async () =>
@@ -63,7 +63,7 @@ export function ordersRoutes(deps: AppDeps) {
           ),
         { fresh: q.fresh === '1' },
       );
-      return reply.ok(value, { stale });
+      return reply.ok(value, { stale, observedAt });
     });
 
     app.get('/orders/history', async (req, reply) => {

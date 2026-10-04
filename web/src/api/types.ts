@@ -23,6 +23,9 @@
 import type { MarginTiers } from '../lib/liquidation';
 
 export interface ApiMeta {
+  credentialId?: string;
+  observedAt?: number;
+  coverageComplete?: boolean;
   ts: number;
   stale?: boolean;
 }
@@ -64,6 +67,7 @@ export type Envelope<T> =
 // ---------------------------------------------------------------------------
 
 export interface CredentialsInfo {
+  identity?: string;
   configured: boolean;
   keyMasked: string | null;
 }
@@ -1561,6 +1565,7 @@ export interface AssetGroup {
 }
 
 export interface AssetViewResponse {
+  risk?: import('../lib/risk').RiskAssetEvidence;
   sinceSec: number;
   nowSec: number;
   defaultSinceSec: number | null;

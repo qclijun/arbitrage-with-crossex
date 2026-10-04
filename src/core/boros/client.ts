@@ -804,6 +804,7 @@ export interface BorosSettlementRow extends BorosSettlementEvent {
 }
 
 export interface BorosSettlementLedger {
+  validationError?: string;
   /** Newest first — the feed's own order (eventIndex descending). */
   rows: BorosSettlementRow[];
   coversFromSec: number;
@@ -832,6 +833,7 @@ export function createRequestPacer(opts: {
 }
 
 interface SettlementPage {
+  validationError?: string;
   rows: BorosSettlementRow[];
   resumeToken: string | null;
   isLast: boolean;
@@ -873,11 +875,17 @@ async function fetchSettlementPage(
     throw new CoreError('Boros settlement-events: unexpected response shape (no results[])', 'network');
   }
   const rows: BorosSettlementRow[] = [];
+  let validationError: string | undefined;
   for (const r of body.results) {
     const timeSec = Number(r.timestamp);
-    if (!Number.isFinite(timeSec) || timeSec <= 0) continue;
+    if (!Number.isFinite(timeSec) || timeSec <= 0) { validationError = 'Malformed settlement timestamp'; continue; }
     const marketAcc = String(r.marketAcc ?? '');
     const seg = decodeMarketAcc(marketAcc);
+    if (!r.id || !seg || marketAcc.slice(2, 42).toLowerCase() !== address.slice(2).toLowerCase()
+      || seg.accountId !== accountId || !Number.isInteger(Number(r.marketId))
+      || ![r.positionSize, r.settlement, r.fee].every(v => typeof v === 'string' && /^-?\d+$/.test(v))) {
+      validationError = 'Malformed or foreign settlement event';
+    }
     rows.push({
       id: String(r.id ?? ''),
       marketAcc,
@@ -891,7 +899,7 @@ async function fetchSettlementPage(
     });
   }
   const next = body.resumeToken ?? null;
-  return { rows, resumeToken: next, isLast: !next || body.results.length === 0 };
+  return { rows, resumeToken: next, isLast: !next || body.results.length === 0, validationError };
 }
 
 async function sweepSettlements(
@@ -903,15 +911,17 @@ async function sweepSettlements(
 ): Promise<BorosSettlementLedger | null> {
   const headId = prev?.rows[0]?.id;
   const known = new Set(prev?.rows.map((r) => r.id));
+  const previousRows = new Map(prev?.rows.map(r => [r.id, r]));
   const fresh: BorosSettlementRow[] = [];
   const older: BorosSettlementRow[] = [];
   let metHead = false;
   let oldestSec = Number.POSITIVE_INFINITY;
   let token: string | null = null;
+  let validationError = prev?.validationError;
   const ledger = (coversFromSec: number, olderToken: string | null): BorosSettlementLedger =>
     prev && metHead
-      ? { rows: [...fresh.filter((r) => !known.has(r.id)), ...prev.rows, ...older], coversFromSec, olderToken }
-      : { rows: fresh, coversFromSec, olderToken };
+      ? { rows: [...fresh.filter((r) => !known.has(r.id)), ...prev.rows, ...older], coversFromSec, olderToken, validationError }
+      : { rows: fresh, coversFromSec, olderToken, validationError };
   for (let pages = 0; pages < opts.maxPages; pages += 1) {
     await opts.pace();
     let page: SettlementPage;
@@ -922,8 +932,11 @@ async function sweepSettlements(
       return ledger(prev ? Math.min(oldestSec, prev.coversFromSec) : oldestSec, token);
     }
     let pageOldestSec = Number.POSITIVE_INFINITY;
+    validationError = page.validationError ?? validationError;
     let jumpTo: string | null = null;
     for (const row of page.rows) {
+      const old = previousRows.get(row.id);
+      if (old && JSON.stringify(old) !== JSON.stringify(row)) validationError = 'Conflicting duplicate settlement event';
       pageOldestSec = Math.min(pageOldestSec, row.timeSec);
       if (prev && !metHead && row.id === headId) {
         metHead = true;

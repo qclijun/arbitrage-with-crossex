@@ -7,6 +7,7 @@ import { classifyGateError, CoreError } from '../../core/errors';
 import type { AppDeps } from '../app';
 import { LOCK_TEXT } from '../rebalanceJob';
 import { restrictToOwner } from '../secretFile';
+import { credentialIdentity, rotateCredentialIdentity } from '../readScope';
 
 const PAY_DOWN_RUNNING = {
   ok: false,
@@ -43,7 +44,7 @@ export function credentialsRoutes(deps: AppDeps) {
     app.get('/credentials', async (_req, reply) => {
       const key = process.env.GATE_API_KEY;
       const keyMasked = key ? `${key.slice(0, 4)}…${key.slice(-4)}` : null;
-      return reply.ok({ configured: Boolean(key), keyMasked });
+      return reply.ok({ configured: Boolean(key), keyMasked, identity: credentialIdentity(deps) });
     });
 
     app.put('/credentials', async (req, reply) => {
@@ -119,13 +120,15 @@ export function credentialsRoutes(deps: AppDeps) {
       process.env.GATE_API_KEY = key;
       process.env.GATE_API_SECRET = secret;
       svc.setClients(candidate);
+      rotateCredentialIdentity(deps);
       // This user is now "active" — tag subsequent Boros API traffic accordingly.
       // Credentials can only be added/replaced here, never removed, so there is
       // no active:false path.
       setClientTagContext({ active: true });
       deps.cache.bust(''); // every cached read may belong to the old account
 
-      return reply.ok({ ok: true, accountMode });
+      return reply.ok({ ok: true, accountMode, configured: true,
+        keyMasked: `${key.slice(0, 4)}…${key.slice(-4)}`, identity: credentialIdentity(deps) });
     });
   };
 }

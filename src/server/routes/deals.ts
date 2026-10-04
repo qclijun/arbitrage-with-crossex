@@ -181,11 +181,9 @@ export function dealsRoutes(deps: AppDeps) {
     app.get('/deals', async (req, reply) => {
       const q = req.query as { active?: string; limit?: string };
       const limit = Math.min(100, Math.max(1, Number(q.limit ?? 20) || 20));
-      const rows = deps.engine!.store
-        .listPairs(q.active === '1' ? { activeOnly: true } : undefined)
-        .slice(-limit)
-        .reverse();
-      return reply.ok(rows.map((p) => dealView(deps, p)));
+      const all = deps.engine!.store.listPairs(q.active === '1' ? { activeOnly: true } : undefined);
+      const rows = all.slice(-limit).reverse();
+      return reply.ok(rows.map((p) => dealView(deps, p)), { observedAt: Date.now(), coverageComplete: rows.length === all.length });
     });
 
     app.get('/deals/:id', async (req, reply) => {

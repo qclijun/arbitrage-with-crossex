@@ -10,7 +10,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { del, fetchJson, patchJson, postJson, putJson } from './client';
+import { copyReadEvidence, del, fetchJson, patchJson, postJson, putJson } from './client';
 import { useTabActive } from '../components/TabBar';
 import { uuid } from '../lib/uuid';
 import type {
@@ -111,6 +111,7 @@ export function useAccount() {
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.account,
+    structuralSharing: false, // retain producer evidence alongside the shared snapshot
     queryFn: () => fetchJson<CrossexAccount>('/account'),
     enabled: (query) => canFetch(shown, query),
     refetchInterval: shown ? 5_000 : false,
@@ -122,6 +123,7 @@ export function usePositions(enabled = true) {
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.positions,
+    structuralSharing: false,
     queryFn: () => fetchJson<PositionsResponse>('/positions'),
     enabled: (query) => enabled && canFetch(shown, query),
     refetchInterval: shown ? 4_000 : false,
@@ -134,6 +136,7 @@ export function useOpenOrders(symbol?: string) {
   const shown = useTabActive();
   return useQuery({
     queryKey: [...qk.openOrders, symbol ?? ''] as const,
+    structuralSharing: false,
     queryFn: () => fetchJson<OpenOrder[]>(`/orders/open${search}`),
     enabled: (query) => canFetch(shown, query),
     refetchInterval: shown ? 4_000 : false,
@@ -173,6 +176,7 @@ export function useAssetView(address: string | null, since?: number, legSince = 
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.assetView(address ?? '', since, legSince),
+    structuralSharing: false,
     queryFn: () =>
       fetchJson<AssetViewResponse>(
         `/asset-view/${encodeURIComponent(address ?? '')}${assetViewSearch(since, legSince)}`,
@@ -198,6 +202,7 @@ export function useAssetViewWindows(
   const results = useQueries({
     queries: distinct.map((since) => ({
       queryKey: qk.assetView(address ?? '', since, legSince),
+      structuralSharing: false,
       queryFn: () =>
         fetchJson<AssetViewResponse>(
           `/asset-view/${encodeURIComponent(address ?? '')}${assetViewSearch(since, legSince)}`,
@@ -252,15 +257,16 @@ export function isValidOpportunityNotional(notionalUsd: number): boolean {
  * a different computation. `keepPreviousData` covers both the 12s poll and a
  * size/mode switch, so the cards never blank out mid-recompute (read
  * `isPlaceholderData` to dim them). */
-export function useOpportunities(p: OpportunitiesParams) {
+export function useOpportunities(p: OpportunitiesParams, active = true) {
   const search =
     `?notionalUsd=${p.notionalUsd}&borosEntry=${p.borosEntry}` + `&entryMode=${p.entryMode}&exitMode=${p.exitMode}`;
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.opportunities(p.notionalUsd, p.borosEntry, p.entryMode, p.exitMode),
+    structuralSharing: false,
     queryFn: () => fetchJson<OpportunitiesResult>(`/opportunities${search}`),
-    enabled: (query) => isValidOpportunityNotional(p.notionalUsd) && canFetch(shown, query),
-    refetchInterval: shown ? 12_000 : false,
+    enabled: (query) => active && isValidOpportunityNotional(p.notionalUsd) && canFetch(shown, query),
+    refetchInterval: shown && active ? 12_000 : false,
     placeholderData: keepPreviousData,
   });
 }
@@ -440,6 +446,7 @@ export function useActiveDeals() {
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.activeDeals,
+    structuralSharing: false,
     queryFn: () => fetchJson<DealView[]>('/deals?active=1'),
     enabled: (query) => canFetch(shown, query),
     refetchInterval: shown ? 5_000 : false,
@@ -452,9 +459,12 @@ export function useAlerts() {
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.alerts,
+    structuralSharing: false,
     queryFn: async () => {
       const rows = await fetchJson<(DealAlert & { pair_id?: string | null })[]>('/alerts?unacked=1');
-      return rows.map((row) => ({ ...row, pairId: row.pairId ?? row.pair_id ?? null }));
+      const normalized = rows.map((row) => ({ ...row, pairId: row.pairId ?? row.pair_id ?? null }));
+      copyReadEvidence(rows, normalized);
+      return normalized;
     },
     enabled: (query) => canFetch(shown, query),
     refetchInterval: shown ? 10_000 : false,
@@ -577,8 +587,37 @@ export function usePutCredentials() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CredentialsInput) => putJson<CredentialsInfo>('/credentials', body),
-    onSuccess: () => qc.invalidateQueries(), // credentials changed — everything is suspect
+    onSuccess: async (data) => {
+      // Drop old-account snapshots before mounting observers for the new identity.
+      await qc.cancelQueries();
+      qc.removeQueries({ predicate: query => query.queryKey[0] !== 'credentials' });
+      qc.setQueryData(qk.credentials, data);
+      await qc.invalidateQueries();
+    },
   });
+}
+
+export interface AccountInterest {
+  account: CrossexAccount;
+  buckets: import('./types').RebalanceBucket[] | null;
+}
+export function useAccountInterest() {
+  const shown = useTabActive();
+  return useQuery({ queryKey: ['account', 'interest'], structuralSharing: false,
+    queryFn: () => fetchJson<AccountInterest>('/account/interest'),
+    enabled: shown, refetchInterval: shown ? 5_000 : false });
+}
+export function useRiskEvidence(scope: import('../lib/risk').RiskScope) {
+  const shown = useTabActive();
+  return useQuery({ queryKey: ['risk', 'evidence', scope.credentialId, scope.address, scope.accountId], structuralSharing: false,
+    queryFn: () => fetchJson<import('../lib/risk').RiskSupplement>(`/risk/evidence${scope.address ? '?address=' + scope.address : ''}`),
+    enabled: shown && Boolean(scope.credentialId), refetchInterval: shown ? 30_000 : false });
+}
+export function useTerminalHealth() {
+  const shown = useTabActive();
+  return useQuery({ queryKey: ['health'], structuralSharing: false,
+    queryFn: () => fetchJson<{ status: string }>('/health'), enabled: shown,
+    refetchInterval: shown ? 30_000 : false });
 }
 
 // ---------------------------------------------------------------------------
@@ -591,6 +630,7 @@ export function useBorosCollateral(address: string | null) {
   const shown = useTabActive();
   return useQuery({
     queryKey: qk.borosCollateral(address ?? ''),
+    structuralSharing: false,
     queryFn: () => fetchJson<BorosCollateralResponse>(`/boros/collateral?address=${address}&fresh=1`),
     enabled: (query) => Boolean(address) && canFetch(shown, query),
     refetchInterval: shown ? 15_000 : false,

@@ -3,6 +3,15 @@
  * transport-level failures. */
 import type { ClassifiedError, Envelope } from './types';
 
+export interface ReadEvidence { credentialId?: string; observedAt?: number; ts: number; stale?: boolean; coverageComplete?: boolean }
+const reads = new WeakMap<object, ReadEvidence>();
+export const readEvidence = (data: unknown): ReadEvidence | undefined =>
+  data !== null && typeof data === 'object' ? reads.get(data) : undefined;
+export function copyReadEvidence(from: object, to: object): void {
+  const evidence = reads.get(from);
+  if (evidence) reads.set(to, evidence);
+}
+
 export class ApiError extends Error {
   readonly category: ClassifiedError['category'];
   readonly label?: string;
@@ -71,7 +80,10 @@ export async function fetchJson<T>(path: string, init: RequestInit = {}): Promis
 
   if (body !== null && typeof body === 'object' && 'ok' in (body as Record<string, unknown>)) {
     const env = body as Envelope<T>;
-    if (env.ok) return env.data;
+    if (env.ok) {
+      if (env.data !== null && typeof env.data === 'object') reads.set(env.data, env.meta);
+      return env.data;
+    }
     throw new ApiError({ httpStatus: resp.status, ...env.error });
   }
 

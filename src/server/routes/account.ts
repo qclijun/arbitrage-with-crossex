@@ -28,7 +28,7 @@ export function accountRoutes(deps: AppDeps) {
         ? Math.min(...view.lines.map((line) => Math.abs(line.move))) : null;
       return reply.ok({ distance, view,
         assumptions: 'One coin moves at a time; other coins fixed; no future funding, interest or venue price gaps; missing tiers use current margin rate',
-      }, { stale: account.stale || positions.stale });
+      }, { stale: account.stale || positions.stale, observedAt: Math.min(account.observedAt, positions.observedAt) });
     });
     app.get('/account/interest', async (req, reply) => {
       const fresh = (req.query as { fresh?: string }).fresh === '1';
@@ -39,17 +39,18 @@ export function accountRoutes(deps: AppDeps) {
       ]);
       // Interest unavailability must not discard independently valid account data.
       const buckets = rates && !rates.stale ? bucketsFrom(account.value, rates.value, {}) : null;
-      return reply.ok({ account: account.value, buckets }, { stale: account.stale });
+      return reply.ok({ account: account.value, buckets }, { stale: account.stale,
+        observedAt: Math.min(account.observedAt, rates?.observedAt ?? account.observedAt) });
     });
     app.get('/account', async (req, reply) => {
       const fresh = (req.query as { fresh?: string }).fresh === '1';
-      const { value, stale } = await deps.cache.get(
+      const { value, stale, observedAt } = await deps.cache.get(
         'account',
         TTL.live,
         async () => (await deps.getClients().crossEx.getCrossexAccount()).body,
         { fresh },
       );
-      return reply.ok(value, { stale });
+      return reply.ok(value, { stale, observedAt });
     });
   };
 }

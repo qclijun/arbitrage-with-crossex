@@ -564,7 +564,7 @@ class TtlSpy extends TtlCache {
     ttlMs: number,
     fetch: () => Promise<T>,
     opts?: { fresh?: boolean },
-  ): Promise<{ value: T; stale: boolean }> {
+    ): Promise<{ value: T; stale: boolean; observedAt: number }> {
     this.ttls.set(key, ttlMs);
     return super.get(key, ttlMs, fetch, opts);
   }

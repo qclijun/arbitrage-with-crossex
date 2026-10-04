@@ -27,6 +27,7 @@ const TAB_POLLS: Record<TabId, readonly string[]> = {
   opportunities: ['/api/opportunities'],
   positions: [ASSET_VIEW_PATH],
   collateral: ['/api/boros/collateral'],
+  risk: ['/api/account/interest', '/api/risk/evidence', '/api/health'],
   balances: ['/api/transfer'],
   orders: [],
   trades: ['/api/trades'],
@@ -50,7 +51,10 @@ const count = (path: string) => hits.filter((p) => p === path).length;
 
 function mockApp() {
   server.use(
-    http.get('/api/credentials', () => HttpResponse.json(env({ configured: true, keyMasked: 'gk_****abcd' }))),
+    http.get('/api/credentials', () => HttpResponse.json(env({ configured: true, keyMasked: 'gk_****abcd', identity: 'fixture-account' }))),
+    http.get('/api/account/interest', () => HttpResponse.json(env({ buckets: null, account: { assets: [] } }))),
+    http.get('/api/health', () => HttpResponse.json(env({ status: 'ok' }))),
+    http.get('/api/risk/evidence', () => HttpResponse.json(env({ scope: { credentialId: 'fixture-account', address: ADDRESS, accountId: 0, pool: 'ETH-cross' }, metrics: {}, baseline: null }))),
     ...baseHandlers(),
     opportunitiesHandler(makeOpportunitiesResult()),
     http.get('/api/orders/open', () => HttpResponse.json(env<OpenOrder[]>([]))),
@@ -68,8 +72,9 @@ function mockApp() {
 const SWITCHES: [TabId, TabId][] = TAB_IDS.map((id, i) => [id, TAB_IDS[(i + 1) % TAB_IDS.length]]);
 
 function expectOnlyShownTabPolls(shown: TabId) {
+  const sharedRiskPaths = shown === 'risk' ? [ASSET_VIEW_PATH, '/api/boros/collateral'] : [];
   TAB_IDS.filter((id) => id !== shown).forEach((hidden) =>
-    TAB_POLLS[hidden].forEach((path) => expect(count(path), `${hidden} ${path}`).toBe(0)),
+    TAB_POLLS[hidden].filter(path => !sharedRiskPaths.includes(path)).forEach((path) => expect(count(path), `${hidden} ${path}`).toBe(0)),
   );
   TAB_POLLS[shown].forEach((path) => expect(count(path), path).toBeGreaterThan(0));
   HEADER_POLLS.forEach((path) => expect(count(path), path).toBeGreaterThan(0));
@@ -95,7 +100,7 @@ describe('hidden tabs do not poll', () => {
       recordRequests();
       renderWithClient(<App />);
       await screen.findByRole('tablist', { name: 'Sections' });
-      const everyTabPoll = TAB_IDS.flatMap((id) => TAB_POLLS[id]);
+      const everyTabPoll = TAB_IDS.filter(id => id !== 'risk' || shown === 'risk').flatMap((id) => TAB_POLLS[id]);
       await waitFor(() => everyTabPoll.forEach((path) => expect(count(path)).toBeGreaterThan(0)));
 
       hits = [];

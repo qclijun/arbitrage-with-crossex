@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import datetime as dt
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -21,6 +22,21 @@ ROOT = Path(__file__).resolve().parents[1]
 RULES = ROOT / 'scripts/risk-monitor-rules.json'
 DEFAULT_CONFIG = ROOT / 'data/risk-monitor/config.json'
 SEVERITY = {'OK': 0, 'UNKNOWN': 1, 'WARNING': 2, 'CRITICAL': 3}
+
+
+def producer_scope(config, data):
+    """Approved non-secret identity for read-only terminal evidence consumers."""
+    root = config.get('root') or (data.get('agent') or {}).get('root')
+    user_id = (data.get('account') or {}).get('userId')
+    if not isinstance(root, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', root) or user_id is None:
+        return None
+    identity = {'account_id': config.get('account_id', 0), 'base': config.get('base', 'ETH'),
+                'collateral_token_id': config.get('collateral_token_id', 2), 'root': root.lower(),
+                'terminal_url': config.get('terminal_url', 'http://localhost:6688').rstrip('/'),
+                'recovery_margin_fraction': config.get('recovery_margin_fraction', .03), 'thresholds': config.get('thresholds', {})}
+    scope = {key: identity[key] for key in ('account_id', 'base', 'collateral_token_id', 'root', 'terminal_url')}
+    return {**scope, 'gate_user_id': str(user_id),
+            'config_id': hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
 
 
 def number(value):
@@ -720,7 +736,7 @@ def notify_report(report, state, config, env, now, sender=None, state_path=None)
     batches.append((chunk, keys))
     for text, keys in batches:
         try:
-            sender(text)
+            delivered = sender(text)
         except Exception:
             state['notify_failures'] = state.get('notify_failures', 0) + 1
             if state_path is not None:
@@ -732,6 +748,10 @@ def notify_report(report, state, config, env, now, sender=None, state_path=None)
             reminders[key] = now
             del pending[key]
         state['notify_last_success'] = now
+        if isinstance(delivered, dict) and isinstance(delivered.get('message_id'), int) and not isinstance(delivered['message_id'], bool) and delivered['message_id'] > 0:
+            state['notify_last_message_id'] = delivered['message_id']
+        else:
+            state.pop('notify_last_message_id', None)
         if state_path is not None:
             save(state_path, state)
     state['notify_failures'] = 0
@@ -855,12 +875,18 @@ def main():
                     config['baseline'] = {'opened_at': asset['earliestSec'],
                         'boros': {str(b['marketId']): b['sizeToken'] * (-1 if b['side'] == 'SHORT' else 1) for b in asset['borosOpen']},
                         'perps': {p['symbol']: p['qty'] * (-1 if p['side'] == 'SHORT' else 1) for p in asset['perpOpen']}}
+                    config['baseline'].update({'scope': producer_scope(config, data), 'observed_at': started,
+                                               'evidence': 'explicit --accept-baseline'})
                     config['interval_seconds'] = interval
                     save(args.config, config)
                     print('Current baseline accepted explicitly; quantities saved locally.')
                     return 0
                 report = evaluate(data, config, state, rules, started, collector.errors)
+                state['producer_scope'] = producer_scope(config, data)
+                state['observed_at'] = started
             except Exception as exc:
+                state['producer_scope'] = None
+                state['observed_at'] = started
                 report = evaluate({}, config, state, rules, started, {'collector': type(exc).__name__})
             if args.notify:
                 env = read_env(config.get('telegram_env', folder / 'telegram.env'))
@@ -877,7 +903,8 @@ def main():
                 delivery['reason'] = 'Telegram failed; queued for retry' if failed else 'delivery result updated after notification'
             save(folder / 'latest.json', report)
             save(folder / 'heartbeat.json', {'observedAt': started, 'complete': not report['errors'],
-                                                 'lastCompleteAt': state.get('last_complete_run_at')})
+                                                 'lastCompleteAt': state.get('last_complete_run_at'),
+                                                 'producer_scope': state.get('producer_scope')})
             save(state_path, state)
             if args.json:
                 print(json.dumps(report, ensure_ascii=False, allow_nan=False), flush=True)

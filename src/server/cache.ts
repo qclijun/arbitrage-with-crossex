@@ -11,6 +11,7 @@ interface Entry {
   /** Only meaningful once a fetch has succeeded (`has` true). */
   expiresAt: number;
   has: boolean;
+  observedAt?: number;
   /** Per-key rate-limit cooldown — a 429 on one key must not stall unrelated keys. */
   cooldownUntil: number;
   inflight?: Promise<unknown>;
@@ -66,25 +67,25 @@ export class TtlCache {
     ttlMs: number,
     fetch: () => Promise<T>,
     opts?: { fresh?: boolean },
-  ): Promise<{ value: T; stale: boolean }> {
+  ): Promise<{ value: T; stale: boolean; observedAt: number }> {
     const now = Date.now();
     let entry = this.entries.get(key);
 
     if (entry?.has && !opts?.fresh && now < entry.expiresAt) {
       this.touch(key, entry);
-      return { value: entry.value as T, stale: false };
+      return { value: entry.value as T, stale: false, observedAt: entry.observedAt! };
     }
     // Rate-limit cooldown (per key): serve whatever we have rather than refetch.
     // A `fresh` request bypasses this and attempts a live read anyway.
     if (entry?.has && !opts?.fresh && now < entry.cooldownUntil) {
-      return { value: entry.value as T, stale: true };
+      return { value: entry.value as T, stale: true, observedAt: entry.observedAt! };
     }
     if (entry?.inflight && !opts?.fresh) {
       try {
-        return { value: (await entry.inflight) as T, stale: false };
+        return { value: (await entry.inflight) as T, stale: false, observedAt: entry.observedAt ?? now };
       } catch (err) {
         if (entry.has && classifyGateError(err).category === 'rate-limited') {
-          return { value: entry.value as T, stale: true };
+          return { value: entry.value as T, stale: true, observedAt: entry.observedAt! };
         }
         throw err;
       }
@@ -101,19 +102,20 @@ export class TtlCache {
       const value = await inflight;
       // Superseded by a fresher fetch (a `fresh` read started after this one):
       // serve this caller its own answer, but leave the cache to the newer one.
-      if (entry.gen !== gen) return { value, stale: false };
+      if (entry.gen !== gen) return { value, stale: false, observedAt: Date.now() };
       entry.value = value;
       entry.has = true;
+      entry.observedAt = Date.now();
       entry.expiresAt = Date.now() + ttlMs;
       if (this.entries.get(key) === entry) {
         this.touch(key, entry);
         this.evictIfNeeded();
       }
-      return { value, stale: false };
+      return { value, stale: false, observedAt: entry.observedAt };
     } catch (err) {
       if (classifyGateError(err).category === 'rate-limited') {
         entry.cooldownUntil = Date.now() + COOLDOWN_MS;
-        if (!opts?.fresh && entry.has) return { value: entry.value as T, stale: true };
+        if (!opts?.fresh && entry.has) return { value: entry.value as T, stale: true, observedAt: entry.observedAt! };
       }
       throw err;
     } finally {
@@ -122,6 +124,12 @@ export class TtlCache {
   }
 
   /** Invalidate every key starting with `prefix` (e.g. after a cancel/leverage write). */
+  peek<T>(key: string): { value: T; observedAt: number; stale: boolean } | null {
+    const entry = this.entries.get(key);
+    if (!entry?.has || entry.observedAt === undefined) return null;
+    return { value: entry.value as T, observedAt: entry.observedAt, stale: Date.now() >= entry.expiresAt };
+  }
+
   bust(prefix: string): void {
     for (const key of [...this.entries.keys()]) {
       if (key.startsWith(prefix)) this.entries.delete(key);
