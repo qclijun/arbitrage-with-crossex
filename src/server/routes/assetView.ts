@@ -230,6 +230,8 @@ export interface AssetViewOut {
     /** Oldest closed-position row read when the page cap was hit; 0 = complete. */
     perpClosedFromSec: number;
     borosTxnsComplete: boolean;
+    /** All current subaccount-0 positions have valid sizes and market metadata. */
+    borosPositionsComplete: boolean;
     backfilling: boolean;
   };
   /** Margin-borrow interest the CrossEx account paid inside the window.
@@ -537,7 +539,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
       marketsP,
       marketsP.then((ms) =>
         deps.cache
-          .get(`boros:collaterals:${address}`, TTL.boros, () => fetchBorosCollaterals(fetchImpl, address, ms), {
+          .get(`boros:collaterals:strict:${address}`, TTL.boros, () => fetchBorosCollaterals(fetchImpl, address, ms, 0, true), {
             fresh,
           })
           .then((r) => r.value),
@@ -892,12 +894,17 @@ export function createAssetViewBuilder(deps: AppDeps) {
 
     // Open Boros legs.
     let unpricedZones = 0;
+    let borosPositionsComplete = zones.every((zone) =>
+      [...(zone.cross ? [zone.cross] : []), ...zone.isolated].every((group) => group.positionsComplete === true));
     for (const zone of zones) {
       const px = tokenPrice(zone.tokenId);
       const zoneGroups = [...(zone.cross ? [zone.cross] : []), ...zone.isolated];
       const hasPositions = zoneGroups.some((mg) => mg.marketPositions.some((p) => norm18(p.notionalSize) !== 0));
       if (px === null) {
-        if (hasPositions) unpricedZones += 1;
+        if (hasPositions) {
+          unpricedZones += 1;
+          borosPositionsComplete = false;
+        }
         continue;
       }
       for (const mg of zoneGroups) {
@@ -905,7 +912,10 @@ export function createAssetViewBuilder(deps: AppDeps) {
           const sizeSigned = norm18(p.notionalSize);
           if (sizeSigned === 0) continue;
           const market = marketById.get(p.marketId);
-          if (!market) continue;
+          if (!market) {
+            borosPositionsComplete = false;
+            continue;
+          }
           const g = groupFor(market.base);
           if (g.priceUsd === 0 && market.assetMarkPriceUsd > 0) g.priceUsd = market.assetMarkPriceUsd;
           g.borosOpen.push({
@@ -1115,6 +1125,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
         settlementsFromSec: settlements.coversFromSec,
         perpClosedFromSec,
         borosTxnsComplete: txnsComplete.every(Boolean),
+        borosPositionsComplete,
         backfilling: backfills.has(address),
       },
       warnings,

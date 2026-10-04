@@ -31,6 +31,62 @@ def number(value):
         return None
 
 
+def rollover_days_to_maturity(data, config, now):
+    farm = data.get('farm') or {}
+    # The asset view reads Boros subaccount 0. History completeness does not
+    # establish that every current position and its market metadata is present.
+    if (farm.get('coverage', {}).get('borosPositionsComplete') is not True
+            or config.get('account_id', 0) != 0):
+        return None
+    assets = farm.get('assets', [])
+    asset = next((a for a in assets if a.get('base') == config.get('base', 'ETH')), None)
+    legs = (asset or {}).get('borosOpen', [])
+    maturities = [number(leg.get('maturity')) if not isinstance(leg.get('maturity'), bool) else None
+                  for leg in legs]
+    if not maturities or any(m is None or m <= 0 for m in maturities):
+        return None
+    return (min(maturities) - now) / 86400
+
+
+def settlement_net_24h(ledger, config, now):
+    """Sum net ETH settlement events in (now - 24h, now] for this cross pool."""
+    root = str(config.get('root', '')).lower()
+    if (not isinstance(ledger, dict) or ledger.get('complete') is not True
+            or str(ledger.get('root', '')).lower() != root
+            or ledger.get('accountId') != config.get('account_id', 0)
+            or config.get('collateral_token_id', 2) != 2
+            or not re.fullmatch(r'0x[0-9a-f]{40}', root)
+            or not isinstance(ledger.get('rows'), list)):
+        return None
+    pool = root[2:] + f"{config.get('account_id', 0):02x}0002ffffff"
+    seen, total = {}, 0
+    for row in ledger['rows']:
+        if not isinstance(row, dict):
+            return None
+        handle = str(row.get('marketAcc', '')).lower().removeprefix('0x')
+        if not re.fullmatch(r'[0-9a-f]{52}', handle):
+            return None
+        if handle != pool:
+            continue
+        stamp = number(row.get('timestamp'))
+        event_id = row.get('id')
+        amount = row.get('settlement')
+        if (stamp is None or stamp <= 0 or isinstance(row.get('timestamp'), bool)
+                or not isinstance(event_id, str) or not event_id
+                or not isinstance(amount, str) or not re.fullmatch(r'-?\d+', amount)):
+            return None
+        event = (handle, stamp, row.get('marketId'), amount)
+        if event_id in seen:
+            if seen[event_id] != event:
+                return None
+            continue
+        seen[event_id] = event
+        if now - 86400 < stamp <= now:
+            total += int(amount)
+    # Settlement is already NET of its fee; never subtract the fee again.
+    return number(total / 1e18)
+
+
 def signed_qty(position):
     qty = number(position.get('positionQty'))
     if qty is None:
@@ -184,16 +240,18 @@ class Collector:
         if root and re.fullmatch(r'0x[0-9a-fA-F]{40}', root):
             paths['farm'] = '/asset-view/' + root + '?fresh=1'
             paths['context'] = '/boros/pair/context?address=' + root + '&fresh=1'
-        if self.config.get('scan_rollover', False):
-            paths['opportunities'] = '/opportunities?borosEntry=market&exitMode=roll&notionalUsd=' + str(self.config.get('notional_usd', 10000))
         data = {'agent': agent}
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             futures = {pool.submit(self.get, name, path): name for name, path in paths.items()}
             if root and re.fullmatch(r'0x[0-9a-fA-F]{40}', root):
                 for name, path in [('boros_raw', 'market-acc-infos-by-root'), ('boros_gas', 'gas-balance')]:
                     futures[pool.submit(self.public_boros, name, path, root)] = name
+                futures[pool.submit(self.public_settlements, root)] = 'boros_settlements'
             for future in concurrent.futures.as_completed(futures):
                 data[futures[future]] = future.result()
+        days = rollover_days_to_maturity(data, self.config, time.time())
+        if self.config.get('scan_rollover', False) and days is not None and days < 14:
+            data['opportunities'] = self.get('opportunities', '/opportunities?borosEntry=market&exitMode=roll&notionalUsd=' + str(self.config.get('notional_usd', 10000)))
         data['account'] = (data.get('interest') or {}).get('account')
         return data
 
@@ -207,11 +265,46 @@ class Collector:
             self.errors[name] = str(exc)
             return None
 
+    def public_settlements(self, root):
+        """Read every page; a cap, bad page or pagination cycle is incomplete."""
+        account_id = self.config.get('account_id', 0)
+        rows, token, tokens = [], None, set()
+        try:
+            for _ in range(50):
+                query = {'root': root, 'accountId': account_id, 'limit': 200}
+                if token:
+                    query['resumeToken'] = token
+                page = request_json('https://api-boros.pendle.finance/apis/v1/accounts/settlement-events?'
+                                    + urllib.parse.urlencode(query),
+                                    {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'},
+                                    timeout=self.config.get('timeout_seconds', 15))
+                if not isinstance(page, dict) or not isinstance(page.get('results'), list):
+                    raise ValueError('invalid settlement page')
+                rows.extend(page['results'])
+                token = page.get('resumeToken')
+                if token is None or token == '':
+                    return {'root': root, 'accountId': account_id, 'complete': True, 'rows': rows}
+                if not isinstance(token, str) or token in tokens or not page['results']:
+                    raise ValueError('invalid settlement pagination')
+                tokens.add(token)
+            raise ValueError('settlement page cap reached')
+        except Exception as exc:
+            self.errors['boros_settlements'] = str(exc)
+            return None
+
 
 def evaluate(data, config, state, rules, now, errors=None):
     """Pure risk computation; no requests and no automatic trading actions."""
     errors = errors or {}
+    days = rollover_days_to_maturity(data, config, now)
+    # Only a verified distant maturity can suppress risk checks. Missing data
+    # must retain UNKNOWN and any previously unverifiable critical state.
+    outside_rollover_window = days is not None and days >= 14
     disabled = {rule['id'] for rule in rules if rule.get('enabled', True) is False}
+    inactive_rollover = {rule['id'] for rule in rules
+                         if outside_rollover_window and rule['id'].startswith('rollover.')
+                         and rule['id'] != 'rollover.days_to_maturity'}
+    disabled.update(inactive_rollover)
     for key in ('pending', 'observed_status', 'notified_status', 'consecutive_status',
                 'notified_at', 'risk_status', 'critical_metrics'):
         for check_id in disabled:
@@ -225,6 +318,7 @@ def evaluate(data, config, state, rules, now, errors=None):
                         'observedAt': now if observed is None else observed,
                         'coverage': coverage}
 
+    put('rollover.days_to_maturity', days, 'farm.maturity', unit='days')
     account = data.get('account')
     liquidation = data.get('liquidation')
     if isinstance(liquidation, dict):
@@ -255,13 +349,15 @@ def evaluate(data, config, state, rules, now, errors=None):
                     and handle[46:52] == 'ffffff'):
                 group = candidate
                 break
+    if group:
+        avail = number(group.get('availableInitialMargin'))
+        available = avail / 1e18 if avail is not None else None
+        put('boros.available_eth', available, 'Boros official availableInitialMargin', unit='ETH')
     if group and price:
-        net, im, avail, avail_mm = [number(group.get(k)) for k in ('netBalance', 'initialMargin', 'availableInitialMargin', 'availableMaintMargin')]
+        net, im, avail_mm = [number(group.get(k)) for k in ('netBalance', 'initialMargin', 'availableMaintMargin')]
         if net is not None and im is not None and im > 0:
             boros_im, boros_equity = im / 1e18 * price, net / 1e18 * price
-            available = avail / 1e18 if avail is not None else None
             put('boros.im_coverage', net / im, 'Boros official cross group netBalance / initialMargin', unit='ratio', coverage='derived')
-            put('boros.available_eth', available, 'Boros official availableInitialMargin', unit='ETH')
             mm = net - avail_mm if avail_mm is not None else None
             put('boros.mm_health_ratio', net / mm if mm is not None and mm > 0 else None,
                 'Boros official netBalance / (netBalance - availableMaintMargin)', unit='ratio', coverage='derived')
@@ -271,8 +367,6 @@ def evaluate(data, config, state, rules, now, errors=None):
         rates = {b.get('venue'): b for b in boros}
         hl, bn = rates.get('HYPERLIQUID'), rates.get('BINANCE')
         if hl and bn:
-            days = (min(hl['maturity'], bn['maturity']) - now) / 86400
-            put('rollover.days_to_maturity', days, 'farm.maturity', unit='days')
             put('hedge.maturity_match', hl['maturity'] == bn['maturity'], 'farm.maturity', unit='bool')
             put('boros.adverse_spread_pp', ((hl['markApr'] - bn['markApr']) - (hl['entryApr'] - bn['entryApr'])) * 100,
                 'farm.markApr / entryApr', unit='percentage points', coverage='derived')
@@ -308,21 +402,14 @@ def evaluate(data, config, state, rules, now, errors=None):
             gap = sum(abs(boros_snapshot.get(k, 0) - v) for k, v in expected.items())
             gap += sum(abs(v) for k, v in boros_snapshot.items() if k not in expected)
             put('positions.unexpected_change_eth', gap, 'confirmed Boros baseline; ADL cause not inferred', unit='ETH', coverage='derived')
-        settlements = sum(b.get('settleUsd', 0) for b in asset.get('borosHistory', [])) / price
-        history = [p for p in state.get('samples', []) if p['time'] >= now - 90000]
-        earlier = next((p for p in history if now - p['time'] >= 86400 and p.get('root') == config.get('root') and p.get('coverage_complete') is True), None)
-        coverage = data['farm'].get('coverage', {})
-        covered_from = number(coverage.get('settlementsFromSec'))
-        settlement_ok = coverage.get('borosTxnsComplete') is True and covered_from is not None and covered_from <= (baseline.get('opened_at') or now - 86400) and not coverage.get('backfilling') and not data['farm'].get('warnings')
-        if earlier and settlement_ok:
-            flow = settlements - earlier['settlement_eth']
-            put('boros.settlement_net_24h_eth', flow, 'difference of complete cumulative settlement samples', unit='ETH/24h', coverage='derived')
-            if available is not None:
-                put('boros.buffer_runway_days', available / -flow if flow < 0 else 999999,
-                    'available / past-day outflow; not a forecast', unit='days', coverage='derived')
-        if settlement_ok:
-            history.append({'time': now, 'root': config.get('root'), 'settlement_eth': settlements, 'coverage_complete': True})
-            state['samples'] = history
+
+    flow = settlement_net_24h(data.get('boros_settlements'), config, now)
+    put('boros.settlement_net_24h_eth', flow,
+        'Boros settlement-events: net ETH events in (now-24h, now], complete pagination, configured cross pool',
+        unit='ETH/24h', coverage='derived' if flow is not None else 'unknown')
+    if flow is not None and available is not None:
+        put('boros.buffer_runway_days', available / -flow if flow < 0 else 999999,
+            'available / past-day net outflow; not a forecast', unit='days', coverage='derived')
 
     if account:
         equity, im, mm = [number(account.get(k)) for k in ('marginBalance', 'initialMargin', 'maintenanceMargin')]
@@ -492,7 +579,7 @@ def evaluate(data, config, state, rules, now, errors=None):
             put(group + '.review_age_h', (now - obs['observedAt']) / 3600, obs['source'], unit='hours', coverage='derived')
 
     opportunities = data.get('opportunities')
-    if opportunities is not None and boros:
+    if days is not None and not outside_rollover_window and opportunities is not None and boros:
         current_maturity = max(b['maturity'] for b in boros)
         candidates = [(p, g) for g in opportunities.get('groups', []) for p in g.get('pairs', [])
                       if p.get('base') == config.get('base', 'ETH')
@@ -507,14 +594,18 @@ def evaluate(data, config, state, rules, now, errors=None):
             put('rollover.depth_coverage_ratio', 1 if all(statuses.get(candidate[l]['marketId']) == 'ok' for l in ('shortLeg', 'longLeg')) else 0,
                 'opportunities book status at configured notional', unit='ratio lower bound')
 
-    if perps and boros:
+    if outside_rollover_window:
+        state.pop('uncovered_since', None)
+    elif days is not None and perps and boros:
         live_venues = {b.get('venue') for b in boros if b['maturity'] > now}
         missing = [p for p in perps if p.get('venue') not in live_venues]
         since = (state.get('uncovered_since') or now) if missing else None
         state['uncovered_since'] = since
         put('rollover.uncovered_funding_seconds', now - since if since else 0, 'perp exists without live corresponding Boros', unit='seconds')
         put('rollover.uncovered_funding_eth', sum(p['qty'] for p in missing), 'uncovered perp quantities', unit='ETH')
-    elif perps and asset is not None:
+    elif (perps and asset is not None and not boros
+          and (data.get('farm') or {}).get('coverage', {}).get('borosPositionsComplete') is True
+          and config.get('account_id', 0) == 0):
         since = state.get('uncovered_since') or now
         state['uncovered_since'] = since
         put('rollover.uncovered_funding_seconds', now - since, 'perps present but no Boros hedge', unit='seconds')
@@ -576,6 +667,7 @@ def evaluate(data, config, state, rules, now, errors=None):
                        'coverageComplete': not missing, 'reason': '; '.join(reasons),
                        'recommendedAction': rule['action']})
     return {'observedAt': now, 'checks': checks, 'errors': errors,
+            'inactiveRolloverChecks': sorted(inactive_rollover),
             'conditionalRollingProfitUsd': profit, 'borosEquityUsd': boros_equity,
             'note': 'Management thresholds, not platform liquidation rules. UNKNOWN is not safe.'}
 

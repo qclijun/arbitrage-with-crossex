@@ -123,7 +123,7 @@
       "boros.settlement_net_24h_eth",
       "boros.buffer_runway_days"
     ],
-    "sourcePlan": "两次以上采样与结算账本窗口",
+    "sourcePlan": "Boros逐笔净结算：最近24小时、完整分页、当前ETH全仓抵押池",
     "action": "预备抵押品；检查资金是否迁移到Gate",
     "conditions": [
       [

@@ -47,8 +47,8 @@ function borosBodies(): Record<string, unknown> {
           netBalance: raw(20_000),
           initialMargin: raw(10_000),
           positions: [
-            { marketId: 155, signedSize: raw(-1_000_000), initialMargin: raw(5_000), orders: [] },
-            { marketId: 158, signedSize: raw(1_000_000), initialMargin: raw(5_000), orders: [] },
+            { marketId: 155, signedSize: '-1000000000000000000000000', initialMargin: raw(5_000), orders: [] },
+            { marketId: 158, signedSize: '1000000000000000000000000', initialMargin: raw(5_000), orders: [] },
           ],
         },
       ],
@@ -310,6 +310,7 @@ describe('GET /api/asset-view/:address', () => {
       settlementsFromSec: 0,
       perpClosedFromSec: 0,
       borosTxnsComplete: true,
+      borosPositionsComplete: true,
       backfilling: false,
     });
     expect(data.warnings).toHaveLength(0);
@@ -448,6 +449,30 @@ describe('GET /api/asset-view/:address', () => {
     expect(eth.perpClosed).toHaveLength(0);
     expect(eth.borosOpen).toHaveLength(2);
     expect(data.warnings).toHaveLength(0);
+  });
+
+  it('rejects incomplete current-account pagination even with a populated legacy cache', async () => {
+    const bodies = borosBodies();
+    bodies['/apis/v1/accounts/market-acc-infos-by-root'] = { results: [], resumeToken: 'next' };
+    const cache = new TtlCache();
+    await cache.get(`boros:collaterals:${ADDR}`, 30_000, async () => []);
+    app = makeTestApp({ borosFetch: borosStub(bodies), cache,
+      getClients: () => { throw new CoreError('no credentials', 'not-configured'); } });
+    expect((await get(`/api/asset-view/${ADDR}`)).statusCode).toBe(502);
+  });
+
+  it.each(['missing market', 'invalid size'])('does not certify current positions with %s', async (failure) => {
+    const bodies = borosBodies();
+    const infos = bodies['/apis/v1/accounts/market-acc-infos-by-root'] as {
+      results: Array<{ positions: Array<{ marketId: number; signedSize: string }> }>;
+    };
+    infos.results[0].positions.push({ marketId: failure === 'missing market' ? 9999 : 155,
+      signedSize: failure === 'invalid size' ? 'invalid' : raw(1) });
+    app = makeTestApp({ borosFetch: borosStub(bodies),
+      getClients: () => { throw new CoreError('no credentials', 'not-configured'); } });
+    const res = await get(`/api/asset-view/${ADDR}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.coverage.borosPositionsComplete).toBe(false);
   });
 
   it('keeps open positions and warns when closed-position history fails', async () => {

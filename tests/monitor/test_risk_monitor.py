@@ -20,7 +20,7 @@ def fixture():
         'positions': {'positions': [
             {'symbol': 'HYPERLIQUID_FUTURE_ETH_USDC', 'positionQty': '-3', 'entryPrice': '3001', 'markPrice': '3001', 'upnl': '0', 'updateTime': NOW * 1000},
             {'symbol': 'BINANCE_FUTURE_ETH_USDT', 'positionQty': '3', 'entryPrice': '3000', 'markPrice': '3000', 'upnl': '0', 'updateTime': NOW * 1000}]},
-        'farm': {'coverage': {'borosTxnsComplete': True, 'settlementsFromSec': 0, 'perpClosedFromSec': 0}, 'warnings': [], 'assets': [{
+        'farm': {'coverage': {'borosPositionsComplete': True, 'borosTxnsComplete': True, 'settlementsFromSec': 0, 'perpClosedFromSec': 0}, 'warnings': [], 'assets': [{
             'base': 'ETH', 'priceUsd': 3000, 'earliestSec': NOW - 3600,
             'borosOpen': [
                 {'marketId': 1, 'venue': 'HYPERLIQUID', 'side': 'SHORT', 'sizeToken': 3, 'entryApr': .08, 'markApr': .08,
@@ -340,12 +340,97 @@ class RiskMonitorTest(unittest.TestCase):
 
     def test_group_maturity_and_market_book_status_for_roll(self):
         data = fixture()
+        for leg in data['farm']['assets'][0]['borosOpen']:
+            leg['maturity'] = NOW + 13 * 86400
         data['opportunities'] = {'groups': [{'maturity': NOW + 86400 * 160,
             'markets': [{'marketId': 3, 'bookStatus': 'ok'}, {'marketId': 4, 'bookStatus': 'ok'}],
             'pairs': [{'base': 'ETH', 'netFixedApr': .03,
                        'shortLeg': {'marketId': 3, 'venue': 'Hyperliquid'},
                        'longLeg': {'marketId': 4, 'venue': 'Binance'}}]}]}
         self.assertEqual(self.check(data, 'rollover.next_net_apr')['status'], 'OK')
+
+    def test_rollover_window_boundary_and_pending_alerts(self):
+        rules = [{**rule, 'enabled': True} for rule in self.rules]
+        other_rollover = {r['id'] for r in rules if r['id'].startswith('rollover.')
+                          and r['id'] != 'rollover.days_to_maturity'}
+        for days, active in ((80, False), (14, False), (14 - 1 / 86400, True), (0, True), (-1, True)):
+            with self.subTest(days=days):
+                data = fixture()
+                for leg in data['farm']['assets'][0]['borosOpen']:
+                    leg['maturity'] = NOW + days * 86400
+                key = 'rollover.next_net_apr'
+                state = {'pending': {key: {'status': 'WARNING'}},
+                         'observed_status': {key: 'WARNING'}, 'uncovered_since': NOW - 1000}
+                report = evaluate(data, self.config, state, rules, NOW)
+                ids = {c['id'] for c in report['checks']}
+                self.assertIn('rollover.days_to_maturity', ids)
+                self.assertEqual(other_rollover & ids, other_rollover if active else set())
+                self.assertEqual(set(report['inactiveRolloverChecks']), set() if active else other_rollover)
+                if not active:
+                    self.assertNotIn(key, state['pending'])
+                    self.assertNotIn(key, state['observed_status'])
+                    self.assertNotIn('uncovered_since', state)
+
+    def test_missing_maturity_does_not_suppress_unverifiable_critical(self):
+        key = 'rollover.uncovered_funding_seconds'
+        state = {'critical_metrics': {key: [key]}, 'risk_status': {key: 'CRITICAL'}}
+        report = evaluate({}, self.config, state, self.rules, NOW)
+        checks = {c['id']: c for c in report['checks']}
+        self.assertEqual(checks['rollover.days_to_maturity']['status'], 'UNKNOWN')
+        self.assertEqual(checks[key]['status'], 'CRITICAL')
+        self.assertEqual(report['inactiveRolloverChecks'], [])
+
+    def test_maturity_does_not_depend_on_price(self):
+        data = fixture()
+        data['farm']['assets'][0]['priceUsd'] = None
+        self.assertEqual(self.check(data, 'rollover.days_to_maturity')['metrics']['rollover.days_to_maturity']['value'], 80)
+
+    def test_partial_positions_do_not_clear_critical_or_pending_alerts(self):
+        for completeness, key in ((coverage, metric) for coverage in (None, False)
+                                  for metric in ('rollover.next_net_apr', 'rollover.uncovered_funding_seconds')):
+            with self.subTest(completeness=completeness, metric=key):
+                data = fixture()
+                data['farm']['assets'][0]['borosOpen'].pop()
+                data['farm']['coverage']['borosPositionsComplete'] = completeness
+                state = {'critical_metrics': {key: [key]}, 'risk_status': {key: 'CRITICAL'},
+                         'pending': {key: {'status': 'CRITICAL'}}}
+                report = evaluate(data, self.config, state, self.rules, NOW)
+                checks = {c['id']: c for c in report['checks']}
+                self.assertEqual(checks['rollover.days_to_maturity']['status'], 'UNKNOWN')
+                self.assertEqual(checks[key]['status'], 'CRITICAL')
+                self.assertEqual(state['pending'][key]['status'], 'CRITICAL')
+                self.assertEqual(report['inactiveRolloverChecks'], [])
+
+    def test_other_subaccount_cannot_suppress_rollover_checks(self):
+        self.config['account_id'] = 1
+        report = evaluate(fixture(), self.config, {}, self.rules, NOW)
+        self.assertEqual(report['inactiveRolloverChecks'], [])
+        maturity = next(c for c in report['checks'] if c['id'] == 'rollover.days_to_maturity')
+        self.assertEqual(maturity['status'], 'UNKNOWN')
+
+    def test_collector_scans_rollover_only_inside_window(self):
+        token = Path(self.temp.name) / 'token'
+        token.write_text('synthetic')
+        for days, enabled, expected in ((80, True, False), (14, True, False),
+                                       (13, True, True), (-1, True, True),
+                                       (13, False, False), (None, True, False)):
+            with self.subTest(days=days, enabled=enabled):
+                data = fixture()
+                for leg in data['farm']['assets'][0]['borosOpen']:
+                    leg['maturity'] = NOW + days * 86400 if days is not None else None
+                collector = Collector({'token_file': str(token), 'root': '0x' + '1' * 40,
+                                       'scan_rollover': enabled})
+                calls = []
+                def get(name, path):
+                    calls.append(path)
+                    return data.get(name, {})
+                with patch.object(collector, 'get', side_effect=get), \
+                        patch.object(collector, 'public_boros', return_value={}), \
+                        patch.object(collector, 'public_settlements', return_value=None), \
+                        patch('risk_monitor.time.time', return_value=NOW):
+                    collected = collector.collect()
+                self.assertEqual(any(path.startswith('/opportunities?') for path in calls), expected)
+                self.assertEqual('opportunities' in collected, expected)
 
     def test_raw_boros_group_margin_and_no_fake_reconstruction(self):
         data = fixture()

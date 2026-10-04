@@ -1574,6 +1574,8 @@ export interface AssetViewResponse {
     /** Oldest closed-position row read when capped; 0 = complete. */
     perpClosedFromSec: number;
     borosTxnsComplete: boolean;
+    /** Absent on older servers; absence does not establish complete positions. */
+    borosPositionsComplete?: boolean;
     backfilling: boolean;
   };
   /** Margin-borrow interest paid by the CrossEx account inside the window —
