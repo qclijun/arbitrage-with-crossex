@@ -26,6 +26,7 @@ const ASSET_VIEW_PATH = `/api/asset-view/${ADDRESS}`;
 const TAB_POLLS: Record<TabId, readonly string[]> = {
   opportunities: ['/api/opportunities'],
   positions: [ASSET_VIEW_PATH],
+  collateral: ['/api/boros/collateral'],
   balances: ['/api/transfer'],
   orders: [],
   trades: ['/api/trades'],
@@ -58,6 +59,8 @@ function mockApp() {
     ),
     http.get('/api/fees', () => HttpResponse.json(env<VenueFees[]>([]))),
     http.get('/api/baskets', () => HttpResponse.json(env([]))),
+    http.get('/api/boros/collateral', () => HttpResponse.json(env({ address: ADDRESS, accountId: 0, observedAt: Date.now(), stale: false, tokens: [] }))),
+    http.get('/api/boros/pair/context', () => HttpResponse.json(env({ markets: [], crossByToken: [], isolatedByMarket: [] }))),
     http.get('/api/asset-view/:address', () => HttpResponse.json(env(assetView))),
   );
 }

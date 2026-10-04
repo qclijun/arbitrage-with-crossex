@@ -1616,3 +1616,27 @@ export interface TelegramLinkStatus {
   url: string | null;
   expiresAt: number | null;
 }
+export interface BorosCollateralPool {
+  marketAcc: string;
+  netBalance: number | null;
+  initialMargin: number | null;
+  maintenanceMargin: number | null;
+  availableInitialMargin: number | null;
+  activePositions: number | null;
+  imCoverage: number | null;
+  mmCoverage: number | null;
+}
+
+export interface BorosCollateralResponse {
+  address: string;
+  accountId: number;
+  observedAt: number;
+  stale: boolean;
+  tokens: Array<{
+    symbol: string;
+    tokenId: number;
+    priceUsd: number | null;
+    cross: BorosCollateralPool | null;
+    isolated: BorosCollateralPool[];
+  }>;
+}

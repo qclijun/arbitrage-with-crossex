@@ -198,6 +198,9 @@ export interface BorosMarginGroup {
   marketAcc: string;
   netBalance: string;
   initialMargin?: string;
+  availableInitialMargin?: string;
+  availableMaintMargin?: string;
+  positionsComplete?: boolean;
   marketPositions: BorosMarketPosition[];
 }
 
@@ -504,6 +507,7 @@ export async function fetchBorosCollaterals(
   address: string,
   markets: BorosMarket[],
   accountId = 0,
+  strict = false,
 ): Promise<BorosCollateralZone[]> {
   const marketById = new Map(markets.map((m) => [m.marketId, m]));
   const nowSec = Date.now() / 1000;
@@ -516,7 +520,7 @@ export async function fetchBorosCollaterals(
       fetchImpl,
       `${BOROS_GATEWAY_BASE_URL}/v1/accounts/active-positions?root=${address}&accountId=${accountId}`,
     ),
-  ])) as Array<{ results?: Array<Record<string, unknown>> }>;
+  ])) as Array<{ results?: Array<Record<string, unknown>>; resumeToken?: string | null }>;
   if (!Array.isArray(infos?.results)) {
     throw new CoreError(
       'Boros /accounts/market-acc-infos-by-root: unexpected response shape (no results[])',
@@ -531,6 +535,13 @@ export async function fetchBorosCollaterals(
   }
 
   const live = new Map<string, Record<string, unknown>>();
+  if (strict && (infos.resumeToken || actives.resumeToken
+      || [...infos.results, ...actives.results].some((r) => {
+        const acc = String(r.marketAcc ?? '').toLowerCase().replace(/^0x/, '');
+        return !/^[0-9a-f]{52}$/.test(acc) || acc.slice(0, 40) !== address.slice(2).toLowerCase();
+      }))) {
+    throw new CoreError('Incomplete or invalid Boros collateral response.', 'network');
+  }
   const byRootAccs = new Set(infos.results.map((r) => String(r.marketAcc ?? '').toLowerCase()));
   const droppedAccs = new Map<string, string>();
   for (const a of actives.results) {
@@ -539,7 +550,7 @@ export async function fetchBorosCollaterals(
     if (decodeMarketAcc(marketAcc)?.accountId !== accountId || byRootAccs.has(marketAcc.toLowerCase())) continue;
     droppedAccs.set(marketAcc.toLowerCase(), marketAcc);
   }
-  const accountRows = infos.results.concat(await fetchMarketAccInfos(fetchImpl, [...droppedAccs.values()]));
+  const accountRows = infos.results.concat(await fetchMarketAccInfos(fetchImpl, [...droppedAccs.values()], strict));
 
   const toPosition = (marketAcc: string, p: Record<string, unknown>): BorosMarketPosition => {
     const side = toBig(p.signedSize) < 0n ? 1 : 0;
@@ -570,8 +581,12 @@ export async function fetchBorosCollaterals(
     const group: BorosMarginGroup = {
       isCross,
       marketAcc,
-      netBalance: String(r.netBalance ?? '0'),
+      netBalance: String(r.netBalance ?? 'NaN'),
       initialMargin: r.initialMargin as string | undefined,
+      availableInitialMargin: r.availableInitialMargin as string | undefined,
+      availableMaintMargin: r.availableMaintMargin as string | undefined,
+      positionsComplete: Array.isArray(r.positions) && r.positions.every((p: Record<string, unknown>) =>
+        typeof p.signedSize === 'string' && /^-?\d+$/.test(p.signedSize)),
       marketPositions: Array.isArray(r.positions)
         ? (r.positions as Array<Record<string, unknown>>).map((p) =>
             toPosition(String(r.marketAcc ?? ''), p),
@@ -589,16 +604,27 @@ export async function fetchBorosCollaterals(
 async function fetchMarketAccInfos(
   fetchImpl: FetchLike,
   marketAccs: string[],
+  strict = false,
 ): Promise<Array<Record<string, unknown>>> {
   const rows: Array<Record<string, unknown>> = [];
   for (let i = 0; i < marketAccs.length; i += 100) {
+    const batch = marketAccs.slice(i, i + 100);
     const body = (await requestJson(fetchImpl, `${BOROS_GATEWAY_BASE_URL}/v1/accounts/market-acc-infos`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ marketAccs: marketAccs.slice(i, i + 100) }),
-    })) as { results?: Array<Record<string, unknown>> };
+      body: JSON.stringify({ marketAccs: batch }),
+    })) as { results?: Array<Record<string, unknown>>; resumeToken?: string | null };
     if (!Array.isArray(body?.results)) {
       throw new CoreError('Boros /accounts/market-acc-infos: unexpected response shape (no results[])', 'network');
+    }
+    if (strict) {
+      const pending = new Set(batch.map((acc) => acc.toLowerCase()));
+      // Every requested active account must be recovered exactly once before
+      // absent pools can be presented as confirmed empty.
+      if (body.resumeToken || body.results.some((r) =>
+        !pending.delete(String(r?.marketAcc ?? '').toLowerCase())) || pending.size > 0) {
+        throw new CoreError('Incomplete or invalid Boros collateral recovery response.', 'network');
+      }
     }
     rows.push(...body.results);
   }

@@ -23,6 +23,7 @@ import type {
   BorosAgentInput,
   BorosAgentStatus,
   BorosPairContext,
+  BorosCollateralResponse,
   BorosPairExecuteResponse,
   BorosPairRequest,
   BorosPairSimulateResponse,
@@ -76,6 +77,7 @@ export const qk = {
   borosAgent: ['boros', 'agent'] as const,
   rebate: ['boros', 'rebate'] as const,
   borosPairContext: (address: string) => ['boros', 'pair', 'context', address] as const,
+  borosCollateral: (address: string) => ['boros', 'collateral', address.toLowerCase()] as const,
   opportunities: (notionalUsd: number, borosEntry: BorosEntryMode, entryMode: EntryMode, exitMode: ExitMode) =>
     ['opportunities', notionalUsd, borosEntry, entryMode, exitMode] as const,
   deal: (id: string) => ['deal', id] as const,
@@ -585,6 +587,17 @@ export function usePutCredentials() {
 
 /** The pairable Boros universe plus this address's per-market state. Keyed by
  * address: two addresses must never share positions or margin buckets. */
+export function useBorosCollateral(address: string | null) {
+  const shown = useTabActive();
+  return useQuery({
+    queryKey: qk.borosCollateral(address ?? ''),
+    queryFn: () => fetchJson<BorosCollateralResponse>(`/boros/collateral?address=${address}&fresh=1`),
+    enabled: (query) => Boolean(address) && canFetch(shown, query),
+    refetchInterval: shown ? 15_000 : false,
+    // Do not carry a previous wallet's balances across an address change.
+  });
+}
+
 export function useBorosPairContext(address: string | null, active = true) {
   const tabShown = useTabActive();
   const shown = tabShown && active;

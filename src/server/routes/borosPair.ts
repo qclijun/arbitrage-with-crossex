@@ -70,6 +70,7 @@ import {
   type PairIntent,
 } from '../../core/boros/pair';
 import { CoreError } from '../../core/errors';
+import { collateralView } from '../../core/boros/collateral';
 import type { AppDeps } from '../app';
 import { TTL } from '../cache';
 import { catchRateLimit, refuse } from '../errorReply';
@@ -637,6 +638,31 @@ export function borosPairRoutes(deps: AppDeps) {
 
 
   return async function plugin(app: FastifyInstance): Promise<void> {
+    app.get('/boros/collateral', async (req, reply) => {
+      const query = req.query as { address?: string; fresh?: string };
+      const address = parseAddress(query.address).toLowerCase();
+      const accountId = Number(process.env.BOROS_ACCOUNT_ID ?? 0);
+      if (!Number.isInteger(accountId) || accountId < 0 || accountId > 255) {
+        throw new CoreError('Invalid Boros account ID.', 'validation');
+      }
+      const fresh = query.fresh === '1';
+      const snapshot = await deps.cache.get(`boros:collateral-view:${address}:${accountId}`, 15_000, async () => {
+        const markets = await loadMarkets(fresh);
+        const zones = await fetchBorosCollaterals(resolveBorosFetch(deps.borosFetch), address, markets, accountId, true);
+        // Reject malformed or foreign groups rather than displaying zero balances.
+        for (const zone of zones) {
+          for (const group of [...(zone.cross ? [zone.cross] : []), ...zone.isolated]) {
+            const acc = group.marketAcc.toLowerCase().replace(/^0x/, '');
+            if (!/^[0-9a-f]{52}$/.test(acc) || acc.slice(0, 40) !== address.slice(2)) {
+              throw new CoreError('Invalid Boros collateral account response.', 'network');
+            }
+          }
+        }
+        return { address, accountId, observedAt: Date.now(),
+          tokens: collateralView(zones, resolveCollateralPricesUsd(markets)) };
+      }, { fresh });
+      return reply.ok({ ...snapshot.value, stale: snapshot.stale });
+    });
     /** The pairable universe for one account, plus its per-market state. */
     app.get('/boros/pair/context', async (req, reply) => {
       const query = req.query as { address?: string; fresh?: string };

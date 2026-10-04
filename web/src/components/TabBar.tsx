@@ -15,7 +15,7 @@ import { createContext, Fragment, useContext, type ReactNode } from 'react';
 
 export const ACTIVE_TAB_KEY = 'crossex:activeTab:v1';
 
-export const TAB_IDS = ['opportunities', 'positions', 'balances', 'orders', 'trades', 'fees'] as const;
+export const TAB_IDS = ['opportunities', 'positions', 'collateral', 'balances', 'orders', 'trades', 'fees'] as const;
 export type TabId = (typeof TAB_IDS)[number];
 
 export const TabActiveContext = createContext(true);
