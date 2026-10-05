@@ -14,6 +14,7 @@ import { copyReadEvidence, del, fetchJson, patchJson, postJson, putJson } from '
 import { useTabActive } from '../components/TabBar';
 import { uuid } from '../lib/uuid';
 import type {
+  AssetBorosMargin,
   AssetViewResponse,
   BorosCancelAndCloseResult,
   DealAlert,
@@ -172,6 +173,20 @@ function assetViewSearch(since: number | undefined, legSince: string): string {
 /** Asset-grouped tracking view: venue-reported lifetime sums per asset since
  * `since` (0 = all time). Same address-switch doctrine as useStrategy:
  * deliberately NO keepPreviousData across keys. */
+/**
+ * Just the Boros accounts' margin, for the header's account status on every
+ * tab — the asset view carries the same rows but is far heavier to poll.
+ */
+export function useBorosMargin(address: string | null) {
+  return useQuery({
+    queryKey: ['borosMargin', address ?? ''] as const,
+    queryFn: () =>
+      fetchJson<{ borosMargin: AssetBorosMargin[] }>(`/boros/margin/${encodeURIComponent(address ?? '')}`),
+    enabled: Boolean(address),
+    refetchInterval: 30_000,
+  });
+}
+
 export function useAssetView(address: string | null, since?: number, legSince = '') {
   const shown = useTabActive();
   return useQuery({
@@ -380,6 +395,7 @@ export function useSymbolDetail(symbol: string | null) {
     queryFn: () => fetchJson<SymbolDetail>(`/symbols/${encodeURIComponent(symbol ?? '')}`),
     enabled: Boolean(symbol),
     staleTime: 300_000,
+    refetchInterval: (q) => (q.state.data && !(q.state.data.leverageMax > 0) ? 10_000 : false),
   });
 }
 
@@ -643,7 +659,10 @@ export function useBorosPairContext(address: string | null, active = true) {
   const shown = tabShown && active;
   return useQuery({
     queryKey: qk.borosPairContext(address ?? ''),
-    queryFn: () => fetchJson<BorosPairContext>(`/boros/pair/context?address=${address}`),
+    queryFn: () =>
+      fetchJson<BorosPairContext>(
+        `/boros/pair/context?address=${encodeURIComponent(address ?? '')}`,
+      ),
     enabled: (query) => Boolean(address) && canFetch(shown, query),
     placeholderData: keepPreviousData,
     refetchInterval: shown ? 15_000 : false,
