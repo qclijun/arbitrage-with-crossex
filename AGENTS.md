@@ -25,3 +25,17 @@ Use Vitest and name tests `*.test.ts` or, for web tests, `*.test.tsx`. Add or up
 ## Commits, Pull Requests, and Sensitive Data
 
 Recent commits use concise `chore: ...` subjects, descriptive feature subjects, and release titles such as `Release 1.7.2: ...`; follow these patterns. PRs should explain the change, list verification commands, include screenshots for visible UI changes, and call out trading or credential implications. Never commit `.env` files, `api-token`, `data/`, SQLite files, or recorded live-account fixtures.
+
+## Agent skills
+
+### Issue tracker
+
+创建、读取或更新工单与规格时，使用本地 Markdown；见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+分诊工单时，使用默认五种标签；见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+探索领域术语或架构决策时，使用 single-context 布局；见 `docs/agents/domain.md`。

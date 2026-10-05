@@ -34,3 +34,17 @@ next bundle a clean diff on top of `main`.
 There is no changeset tool, and the repo does not need one. The bundle is
 what `dev` has on top of `main` (`git diff main dev`, since `dev` is reset to
 `main` after every release). `version.json` highlights stay hand-written.
+
+## Agent skills
+
+### Issue tracker
+
+创建、读取或更新工单与规格时，使用本地 Markdown；见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+分诊工单时，使用默认五种标签；见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+探索领域术语或架构决策时，使用 single-context 布局；见 `docs/agents/domain.md`。
