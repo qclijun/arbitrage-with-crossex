@@ -23,6 +23,7 @@ web/dist/
 # local tooling state
 .claude/
 .codebuddy/
+.workbuddy/
 # tgrep search index — rebuilt on demand, never commit
 .tgrep/
 
