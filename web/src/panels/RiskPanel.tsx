@@ -48,8 +48,10 @@ export function RiskPanel() {
   const settings = !supplement.isError && supplement.data && scopeKey(supplement.data.scope) === key ? supplement.data.settings : undefined;
   const report = evaluateRisk(scope, adapted.metrics, now, local.current.state, adapted.pauseRollover, settings);
   local.current.state = report.state;
+  // Category 8 is temporarily omitted from the Risk page; its contracts remain documented.
+  const checks = report.checks.filter(check => check.risk !== 8);
   const counts = (['CRITICAL', 'WARNING', 'UNKNOWN', 'OK', 'PAUSED'] as const).map(status => ({ status,
-    count: report.checks.filter(c => c.status === status).length }));
+    count: checks.filter(c => c.status === status).length }));
   const failed = Object.values(inputs).some(q => q.isError);
   const loading = account.isPending || (Boolean(address) && collateral.isPending);
   return <section aria-label="Risk inspection" className="space-y-5">
@@ -65,12 +67,12 @@ export function RiskPanel() {
     </div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Key risk values">
       {featured.map(id => {
-        const metric = report.checks.flatMap(c => Object.entries(c.metrics)).find(([k]) => k === id)?.[1];
+        const metric = checks.flatMap(c => Object.entries(c.metrics)).find(([k]) => k === id)?.[1];
         return <div key={id} className="rounded-lg border border-ink-700 bg-ink-900 p-4"><p className="text-xs text-ink-400">{id}</p><p className="num mt-2 break-words text-lg text-ink-50">{formatRiskValue(metric?.value, contracts[id].unit)} <span className="text-xs text-ink-500">{contracts[id].unit}</span></p></div>;
       })}
     </div>
     <div className="space-y-3" aria-label="All enabled risk checks">
-      {report.checks.map(check => <details key={check.id} className="rounded-lg border border-ink-700 bg-ink-900 p-4" open={check.status === 'CRITICAL'}>
+      {checks.map(check => <details key={check.id} className="rounded-lg border border-ink-700 bg-ink-900 p-4" open={check.status === 'CRITICAL'}>
         <summary className="cursor-pointer text-sm text-ink-200"><span className={`mr-3 font-semibold ${tones[check.status]}`}>{check.status}</span>{check.label}<span className="ml-3 text-xs text-ink-500">{check.id} · {check.coverageComplete ? 'Complete applicable evidence' : 'Incomplete / unknown evidence'}</span></summary>
         <div className="mt-4 space-y-4">
           {Object.entries(check.metrics).map(([id, e]) => <div key={id} className="border-t border-ink-700 pt-3 text-xs text-ink-400">

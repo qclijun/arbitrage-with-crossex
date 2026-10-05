@@ -74,7 +74,7 @@ describe('rendered Risk / shared API evidence', () => {
       await waitFor(() => expect(requests.map(url => new URL(url).searchParams.get('legSince'))).toContain('128:1800000000'));
     } finally { server.events.removeListener('request:start', listener); }
   });
-  it('renders approved valid evidence for all 61 metrics, excludes disabled checks, and issues only reads', async () => {
+  it('renders visible evidence, excludes disabled and category 8 checks from details and counts, and issues only reads', async () => {
     const now = Date.now() / 1000;
     baseline = { boros: { '128': -3, '129': 3 }, perps: { HYPERLIQUID_FUTURE_ETH_USDC: -3, BINANCE_FUTURE_ETH_USDT: 3 },
       opened_at: now - 1000, observed_at: now - 100, evidence: 'explicit scoped fixture baseline' };
@@ -90,17 +90,24 @@ describe('rendered Risk / shared API evidence', () => {
     try {
       mount();
       await waitFor(() => expect(Array.from(document.querySelectorAll('details')).every(d => d.querySelector('summary')?.textContent?.includes('Complete applicable evidence'))).toBe(true));
-      expect(document.querySelectorAll('details')).toHaveLength(rules.filter(r => r.enabled !== false).length);
-      for (const id of ids) expect(screen.getAllByText(id, { exact: false }).length).toBeGreaterThan(0);
-      for (const rule of rules.filter(r => r.enabled === false)) expect(document.body).not.toHaveTextContent(rule.id);
+      const visibleRules = rules.filter(r => r.enabled !== false && r.risk !== 8);
+      expect(document.querySelectorAll('details')).toHaveLength(visibleRules.length);
+      for (const id of new Set(visibleRules.flatMap(r => r.metrics))) expect(screen.getAllByText(id, { exact: false }).length).toBeGreaterThan(0);
+      for (const rule of rules.filter(r => r.enabled === false || r.risk === 8)) {
+        expect(document.body).not.toHaveTextContent(rule.id);
+        for (const id of rule.metrics) expect(document.body).not.toHaveTextContent(id);
+      }
+      const total = Array.from(screen.getByLabelText('Risk severity counts').querySelectorAll('p'))
+        .reduce((sum, count) => sum + Number(count.textContent), 0);
+      expect(total).toBe(visibleRules.length);
       expect(methods.length).toBeGreaterThan(0);
       expect(new Set(methods)).toEqual(new Set(['GET']));
     } finally { server.events.removeListener('request:start', listener); }
   });
-  it('shows the full catalog, same-pool runway, borrowing cost and paused rollover separately', async () => {
+  it('shows the visible catalog, same-pool runway, borrowing cost and paused rollover separately', async () => {
     mount();
     await waitFor(() => expect(check('gate.im_coverage').querySelector('summary')).toHaveTextContent('CRITICAL'));
-    expect(document.querySelectorAll('details')).toHaveLength(rules.filter(r => r.enabled !== false).length);
+    expect(document.querySelectorAll('details')).toHaveLength(rules.filter(r => r.enabled !== false && r.risk !== 8).length);
     await waitFor(() => expect(check('boros.settlement_net_24h_eth')).toHaveTextContent('2.00 days'));
     expect(check('gate.liability_usdt')).toHaveTextContent('4.80e-3 USD/day');
     expect(check('rollover.next_net_apr').querySelector('summary')).toHaveTextContent('PAUSED');
@@ -130,16 +137,17 @@ describe('rendered Risk / shared API evidence', () => {
     await waitFor(() => expect(check('gate.im_coverage').querySelector('summary')).toHaveTextContent('UNKNOWN'));
     expect(check('gate.im_coverage')).not.toHaveTextContent('Historical last success');
   });
-  it('shows expired independent quotes and a known incident alongside missing evidence', async () => {
+  it('omits category 8 even with depegged quotes and a known custody incident', async () => {
     for (const [id, value, age] of [['stablecoin.usdt_usd', .97, 0], ['stablecoin.usdc_usd', 1, 121], ['custody.incident_status', 'active', 0]] as const) external[id] = {
       value, unit: contracts[id].unit, source: 'independent synthetic evidence', evidence: 'fixture review', observedAt: Date.now() / 1000 - age,
       ttlSeconds: contracts[id].max_age_seconds, scope: { ...scope }, complete: true,
     };
     mount();
-    await waitFor(() => expect(check('custody.incident_status').querySelector('summary')).toHaveTextContent('CRITICAL'));
-    expect(check('stablecoin.usdt_usd').querySelector('summary')).toHaveTextContent('CRITICAL');
-    expect(check('stablecoin.usdt_usd')).toHaveTextContent('Expired evidence');
-    expect(check('custody.incident_status')).toHaveTextContent('Incomplete / unknown evidence');
+    await waitFor(() => expect(check('gate.im_coverage').querySelector('summary')).toHaveTextContent('CRITICAL'));
+    for (const rule of rules.filter(r => r.risk === 8)) {
+      expect(document.body).not.toHaveTextContent(rule.label);
+      for (const id of rule.metrics) expect(document.body).not.toHaveTextContent(id);
+    }
   });
   it('separates a fresh heartbeat from expired collection and a failed confirmed-delivery queue', async () => {
     const now = Date.now() / 1000;
