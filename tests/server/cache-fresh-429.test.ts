@@ -31,7 +31,7 @@ describe('a fresh cache read never serves stale on a 429', () => {
     const cache = new TtlCache();
     await cache.get('k', 0, async () => 'cached');
     const stale = await cache.get('k', 1000, async () => Promise.reject(rateLimited()));
-    expect(stale).toEqual({ value: 'cached', stale: true });
+    expect(stale).toEqual({ value: 'cached', stale: true, observedAt: expect.any(Number) });
   });
 });
 

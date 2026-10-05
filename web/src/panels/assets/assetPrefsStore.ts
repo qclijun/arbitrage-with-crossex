@@ -94,4 +94,12 @@ export function savePrefs(bookId: string | null, prefs: AssetViewPrefs): void {
   const all = readJson<AllBooks>(KEY, {}, validate);
   all[bookKey(bookId)] = prefs;
   writeJson(KEY, all);
+  window.dispatchEvent(new Event('asset-view-prefs'));
+}
+
+export function subscribePrefs(onChange: () => void): () => void {
+  const storage = (event: StorageEvent) => { if (event.key === KEY || event.key === null) onChange(); };
+  window.addEventListener('asset-view-prefs', onChange);
+  window.addEventListener('storage', storage);
+  return () => { window.removeEventListener('asset-view-prefs', onChange); window.removeEventListener('storage', storage); };
 }

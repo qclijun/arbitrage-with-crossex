@@ -25,4 +25,18 @@ describe('Risk catalog evaluation', () => {
     for (const value of ['2', true, NaN, Infinity]) expect(run(value).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('UNKNOWN');
     expect(contracts['gate.im_coverage'].unit).toBe('ratio');
   });
+  it('rejects malformed enums/counts/timestamps and lets only fresh proven lower bounds establish danger', () => {
+    for (const [id, value] of [['agent.approval', 'connected'], ['execution.halted_count', -1], ['execution.halted_count', 1.5],
+      ['monitor.last_complete_run_at', now + 1]] as const) {
+      const metrics = { [id]: evidence(value, { unit: contracts[id].unit }) };
+      const check = evaluateRisk(scope, metrics, now).checks.find(c => Object.keys(c.metrics).includes(id))!;
+      expect(check.status).toBe('UNKNOWN');
+    }
+    const bound = evidence(1, { unit: 'ETH', lowerBound: true, complete: false, reason: 'Incomplete coverage' });
+    const run = (extra = {}) => evaluateRisk(scope, { 'execution.unhedged_eth': { ...bound, ...extra } }, now).checks.find(c => c.id === 'execution.unhedged_eth')!;
+    expect(run()).toMatchObject({ status: 'CRITICAL', coverageComplete: false });
+    for (const extra of [{ value: 0 }, { observedAt: now + 1 }, { observedAt: now - 3601 }, { unit: 'USD' }, { scope: { ...scope, credentialId: 'other' } }]) expect(run(extra).status).toBe('UNKNOWN');
+    const unsafeMinimum = evidence(.1, { unit: 'ratio', lowerBound: true, complete: false });
+    expect(evaluateRisk(scope, { 'gate.im_coverage': unsafeMinimum }, now).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('UNKNOWN');
+  });
 });

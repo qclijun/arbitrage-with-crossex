@@ -3,7 +3,7 @@ import type { AssetViewResponse, BorosCollateralResponse, CrossexAccount, DealAl
 import { readEvidence } from '../api/client';
 import { gateNumber, liquidationLines } from './liquidation';
 import { deriveAsset } from '../panels/assets/assetModel';
-import { contracts, scopeKey, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
+import { contracts, fundingGapFingerprint, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
 
 export interface RiskRead<T> { data?: T; isError?: boolean; isPending?: boolean; isPlaceholderData?: boolean }
 export interface RiskInputs {
@@ -18,7 +18,7 @@ const sum = (values: unknown[]): number | null => values.every(finite) ? (values
 const signed = (b: { side: string; sizeToken: number }): number => b.sizeToken * (b.side === 'SHORT' ? -1 : 1);
 
 /** Adapts shared snapshots. Domain owners keep all money/position calculations. */
-export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: number) {
+export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: number, historicalOnly = false) {
   const metrics: Record<string, MetricEvidence> = {};
   const put = (id: string, value: unknown, source: string, observedAt: number | null, complete = true, reason?: string) => {
     metrics[id] = { value, source, observedAt, complete, reason: value === null || !complete ? reason : undefined, scope, evidence: source,
@@ -28,7 +28,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     const meta = readEvidence(q.data);
     const sameAccount = meta?.credentialId === scope.credentialId && Boolean(scope.credentialId);
     const time = observed === undefined ? (meta?.observedAt === undefined ? null : meta.observedAt / 1000) : observed;
-    const failed = q.isError || meta?.stale || q.isPlaceholderData;
+    const failed = (!historicalOnly && (q.isError || meta?.stale)) || q.isPlaceholderData;
     if (!sameAccount || failed || !q.data || time === null || !finite(time) || time > now) {
       for (const id of ids) put(id, null, source, time, false,
         !sameAccount ? 'Account identity not verified' : failed ? 'Read failed / stale; last success is historical' : q.isPending ? 'Loading verified evidence' : 'Missing producer observation time / source');
@@ -59,7 +59,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   if (interest && account) {
     const buckets = interest.data.buckets;
     const assets = account.data.assets;
-    let complete = Array.isArray(buckets) && Array.isArray(assets) && assets.length > 0 && buckets.length === assets.length;
+    let complete = Array.isArray(buckets) && Array.isArray(assets) && assets.length > 0 && buckets.length === assets.length
+      && ['gate.liability_usdt', 'gate.liability_usdc'].every(id => metrics[id]?.complete && finite(metrics[id].value));
     const seen = new Set<string>();
     const costs: number[] = [];
     for (const a of assets ?? []) {
@@ -102,7 +103,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   const collateral = read(input.collateral, ['boros.im_coverage', 'boros.mm_health_ratio', 'boros.available_eth'],
     '/boros/collateral: selected ETH cross-pool', collateralData?.observedAt === undefined ? null : collateralData.observedAt / 1000);
   const validCollateral = collateral && collateral.data.address.toLowerCase() === scope.address?.toLowerCase()
-    && collateral.data.accountId === scope.accountId && !collateral.data.stale;
+    && collateral.data.accountId === scope.accountId && (historicalOnly || !collateral.data.stale);
   const token = validCollateral ? collateral.data.tokens.find(t => t.tokenId === 2) : undefined;
   const pool = token?.cross;
   const expectedPool = scope.address ? `${scope.address.toLowerCase()}${(scope.accountId ?? 0).toString(16).padStart(2, '0')}0002ffffff` : '';
@@ -120,7 +121,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   const asset = read(input.asset, ['rollover.days_to_maturity', 'boros.settlement_net_24h_eth'], '/asset-view: existing incremental ledger / current positions',
     input.asset.data?.risk?.observedAt === undefined || input.asset.data.risk.observedAt === null ? null : input.asset.data.risk.observedAt / 1000);
   const risk = asset?.data.risk;
-  const assetScopeValid = Boolean(risk && risk.address.toLowerCase() === scope.address?.toLowerCase() && risk.accountId === scope.accountId && scope.accountId === 0 && !risk.stale);
+  const assetScopeValid = Boolean(risk && risk.address.toLowerCase() === scope.address?.toLowerCase() && risk.accountId === scope.accountId && scope.accountId === 0 && (historicalOnly || !risk.stale));
   const boros = assetScopeValid ? risk!.positions : [];
   const borosComplete = Boolean(assetScopeValid && risk?.positionsComplete && boros.every(b => b.marketAcc.toLowerCase() === expectedPool && finite(b.sizeToken) && b.sizeToken > 0 && finite(b.marketId) && finite(b.maturity) && b.venue));
   const observed = asset?.observedAt ?? null;
@@ -140,7 +141,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     } else put('boros.buffer_runway_days', null, 'Same-pool historical outflow runway', t, false,
       settlement.complete && finite(settlement.netEth) && settlement.netEth >= 0 ? 'Verified non-outflow window: no finite outflow runway; no guaranteed survival days' : 'Missing complete net settlement or available ETH');
   }
-  const supplemental = input.supplement.data && !input.supplement.isError && scopeKey(input.supplement.data.scope) === scopeKey(scope) ? input.supplement.data : null;
+  const supplemental = input.supplement.data && (historicalOnly || !input.supplement.isError) && scopeKey(input.supplement.data.scope) === scopeKey(scope) ? input.supplement.data : null;
   const baseline = supplemental?.baseline;
   const hl = boros.filter(b => b.venue === 'HYPERLIQUID');
   const bn = boros.filter(b => b.venue === 'BINANCE');
@@ -150,13 +151,17 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   if (pair) {
     const [h, b] = pair;
     put('hedge.maturity_match', h.maturity === b.maturity, 'Exact live Boros market maturities', observed);
-    put('hedge.direction_match', baseline ? h.side === 'SHORT' && b.side === 'LONG' : null, 'Actual signed ETH cross-pool Boros quantities / verified membership', observed,
+    put('hedge.direction_match', baseline && (h.side !== 'SHORT' || b.side !== 'LONG') ? false : null, 'Actual signed ETH cross-pool Boros quantities / verified membership', observed,
       true, 'Missing explicit scoped strategy baseline');
-    if ([h.entryApr, h.markApr, b.entryApr, b.markApr].every(finite)) put('boros.adverse_spread_pp', ((h.markApr! - b.markApr!) - (h.entryApr! - b.entryApr!)) * 100, 'Existing asset-view fixed/mark APR (percentage points)', observed);
+    if (baseline && h.side === 'SHORT' && b.side === 'LONG' && [h, b].every(p => baseline.boros[String(p.marketId)] === signed(p))
+      && [h.entryApr, h.markApr, b.entryApr, b.markApr].every(finite)) put('boros.adverse_spread_pp', ((h.markApr! - b.markApr!) - (h.entryApr! - b.entryApr!)) * 100, 'Existing asset-view fixed/mark APR (percentage points)', observed);
     const mtm = sum(pair.map(p => p.mtmUsd));
     put('boros.rate_mtm_usd', mtm, 'Existing official asset-view rate MTM', observed);
     if (poolValid && pool && finite(pool.netBalance) && pool.netBalance > 0 && token && finite(token.priceUsd) && token.priceUsd > 0 && mtm !== null && collateral) put('boros.mtm_loss_equity_ratio', Math.max(0, -mtm) / (pool.netBalance * token.priceUsd), 'Negative rate MTM / same-pool equity', Math.min(observed!, collateral.observedAt));
     if (baseline && perpsComplete && uniquePerps) {
+      const matched = perpLegs.length === 2 && perpLegs.every(p => pair.some(leg => leg.venue === p.exchange && leg.side === p.side))
+        && Object.keys(baseline.perps).every(symbol => actualPerps.has(symbol));
+      put('hedge.direction_match', h.side === 'SHORT' && b.side === 'LONG' && matched, 'Complete four-leg directions and baseline contracts', Math.min(observed!, positions!.observedAt));
       for (const [venue, id, leg] of [['HYPERLIQUID', 'hl', h], ['BINANCE', 'binance', b]] as const) {
         const ps = perpLegs.filter(p => p.exchange === venue && /^\w+_FUTURE_ETH_(USDT|USDC|USD)$/.test(p.symbol));
         if (ps.length === 1) {
@@ -169,7 +174,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   if (baseline && borosComplete && perpsComplete && uniquePerps) {
     const borosMap = new Map(boros.map(b => [String(b.marketId), signed(b)]));
     const expectedIds = Object.keys(baseline.boros).sort();
-    put('hedge.market_identity_match', JSON.stringify([...borosMap.keys()].sort()) === JSON.stringify(expectedIds), 'Explicit verified scoped baseline vs actual market IDs', observed);
+    put('hedge.market_identity_match', JSON.stringify([...borosMap.keys()].sort()) === JSON.stringify(expectedIds)
+      && JSON.stringify([...actualPerps.keys()].sort()) === JSON.stringify(Object.keys(baseline.perps).sort()), 'Explicit verified scoped baseline vs actual market IDs and contracts', Math.min(observed!, positions!.observedAt));
     const expectedSymbols = Object.keys(baseline.perps);
     const contractsExact = expectedSymbols.every(s => /^(HYPERLIQUID|BINANCE)_FUTURE_ETH_(USDT|USDC|USD)$/.test(s));
     if (contractsExact) {
@@ -195,6 +201,9 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
         && coverage.settlementsFromSec <= baseline.opened_at && coverage.perpClosedFromSec <= baseline.opened_at
         && h[0].side === 'SHORT' && b[0].side === 'LONG' && pair[0].side === 'SHORT' && pair[1].side === 'LONG'
         && pair[0].sizeToken === pair[1].sizeToken && pair[0].maturity === pair[1].maturity
+        && perpLegs.length === 2 && [h[0], b[0]].every(p => pair.some(leg => leg.venue === p.exchange && leg.side === p.side && leg.sizeToken === p.qty))
+        && pair.every(p => baseline.boros[String(p.marketId)] === signed(p))
+        && [h[0], b[0]].every(p => baseline.perps[p.symbol] === (p.side === 'SHORT' ? -p.qty : p.qty))
         && group.perpOpen.every(p => finite(p.feesUsd)) && group.borosHistory.every(p => finite(p.tradeFeeUsd))
         && group.borosOpen.every(p => finite(p.settleFeeApr) && finite(p.entryApr))) {
         const model = deriveAsset(group, {}, baseline.opened_at, baseline.opened_at);
@@ -211,7 +220,12 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     });
     const gap = gaps.reduce((a, b) => a + b, 0);
     put('rollover.uncovered_funding_eth', gap, 'Actual perpetual funding quantity without matching live Boros direction/venue/size', Math.min(observed!, positions!.observedAt));
-    put('rollover.uncovered_funding_seconds', gap === 0 ? 0 : supplemental?.fundingGapStartedAt !== null && supplemental?.fundingGapStartedAt !== undefined ? now - supplemental.fundingGapStartedAt : null,
+    const trustedStart = supplemental?.fundingGapFingerprint === fundingGapFingerprint(perpLegs, boros, scope)
+      && supplemental.fundingGapEth === gap
+      && finite(supplemental.fundingGapObservedAt) && now >= supplemental.fundingGapObservedAt
+      && now - supplemental.fundingGapObservedAt <= contracts['rollover.uncovered_funding_seconds'].max_age_seconds
+      && finite(supplemental.fundingGapStartedAt) && supplemental.fundingGapStartedAt <= supplemental.fundingGapObservedAt ? supplemental.fundingGapStartedAt : null;
+    put('rollover.uncovered_funding_seconds', gap === 0 ? 0 : trustedStart !== null ? now - trustedStart : null,
       'Verified existing collector funding-gap start (page visit never resets it)', Math.min(observed!, positions!.observedAt), true, 'Missing verified continuous funding-gap history');
   }
   if (!baseline) for (const id of ['hedge.perp_net_eth', 'hedge.hl_size_gap_eth', 'hedge.binance_size_gap_eth', 'hedge.market_identity_match', 'positions.unexpected_change_eth']) {
@@ -225,8 +239,10 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     if (!complete) { metrics['execution.halted_count'].lowerBound = true; metrics['execution.halted_count'].reason = 'Incomplete coverage'; }
     const ethDeals = deals.data.filter(d => /^\w+_FUTURE_ETH_(USDT|USDC|USD)$/.test(d.pair.a.contract) || /^\w+_FUTURE_ETH_(USDT|USDC|USD)$/.test(d.pair.b?.contract ?? ''));
     const quantities = ethDeals.map(d => numeric(d.projection?.unhedged));
-    put('execution.unhedged_eth', sum(quantities.map(q => q === null ? null : Math.abs(q))), 'Explicit ETH execution unhedged projections', deals.observedAt, complete && quantities.every(finite), 'Incomplete or missing execution projection');
-    if (!complete && quantities.every(finite)) { metrics['execution.unhedged_eth'].lowerBound = true; metrics['execution.unhedged_eth'].reason = 'Incomplete coverage'; }
+    const quantityComplete = complete && quantities.every(finite);
+    put('execution.unhedged_eth', quantityComplete ? sum(quantities.map(q => Math.abs(q!))) : quantities.some(finite) ? sum(quantities.filter(finite).map(Math.abs)) : null,
+      'Explicit ETH execution unhedged projections', deals.observedAt, quantityComplete, 'Incomplete or missing execution projection');
+    if (!quantityComplete && finite(metrics['execution.unhedged_eth'].value)) { metrics['execution.unhedged_eth'].lowerBound = true; metrics['execution.unhedged_eth'].reason = 'Incomplete coverage'; }
     const pending = deals.data.flatMap(d => d.orders.filter(o => o.state === 'PENDING' || o.quarantinedStatus !== null));
     const reportsComplete = deals.data.every(d => d.projection && typeof d.projection.anyPending === 'boolean' && typeof d.projection.anyQuarantined === 'boolean');
     const realPending = deals.data.some(d => d.projection?.anyPending || d.projection?.anyQuarantined);
@@ -234,8 +250,11 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     const openTimes = orders?.data.map(o => numeric(o.createTime)) ?? [];
     const ordersComplete = Boolean(orders && openTimes.every(t => t !== null && t / 1000 <= now));
     const ages = [...times.map(t => now - t), ...openTimes.map(t => now - t! / 1000)];
-    put('execution.pending_age_s', complete && reportsComplete && ordersComplete && (!realPending || pending.length > 0) && ages.every(a => finite(a) && a >= 0)
-      ? ages.length ? Math.max(...ages) : 0 : null, 'Actual pending/quarantined/open order creation time (not page time)', Math.min(deals.observedAt, orders?.observedAt ?? deals.observedAt));
+    const agesComplete = complete && reportsComplete && ordersComplete && (!realPending || pending.length > 0) && ages.every(a => finite(a) && a >= 0);
+    const knownAges = ages.filter(a => finite(a) && a >= 0);
+    put('execution.pending_age_s', agesComplete ? ages.length ? Math.max(...ages) : 0 : knownAges.length ? Math.max(...knownAges) : null,
+      'Actual pending/quarantined/open order creation time (not page time)', Math.min(deals.observedAt, orders?.observedAt ?? deals.observedAt), agesComplete);
+    if (!agesComplete && knownAges.length) { metrics['execution.pending_age_s'].lowerBound = true; metrics['execution.pending_age_s'].reason = 'Incomplete coverage'; }
   }
   const health = read(input.health, ['service.http_ok'], '/health: terminal HTTP only');
   if (health) put('service.http_ok', health.data.status === 'ok', 'Terminal HTTP availability; independent collector status shown separately', health.observedAt);
@@ -253,6 +272,9 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     const quoteRead = readEvidence(q);
     const scopeMatches = quoteRead?.credentialId === scope.credentialId && !quoteRead.stale && finite(quoteRead.observedAt);
     if (scopeMatches && baseline && perpsComplete && uniquePerps && perpLegs.length === 2
+      && pair[0].side === 'SHORT' && pair[1].side === 'LONG' && pair[0].sizeToken === pair[1].sizeToken
+      && pair.every(b => baseline.boros[String(b.marketId)] === signed(b))
+      && perpLegs.every(p => baseline.perps[p.symbol] === (p.side === 'SHORT' ? -p.qty : p.qty))
       && perpLegs.every(p => pair.some(b => b.venue === p.exchange && b.side === p.side && b.sizeToken === p.qty))
       && Math.abs(q.meta.notionalUsd - size) < .01 && q.meta.exitMode === 'roll' && q.meta.borosEntry === 'market') {
       const candidates = q.groups.filter(g => g.tokenId === 2 && g.underlying === 'ETH' && g.maturity > Math.max(...pair.map(b => b.maturity!)))
@@ -273,8 +295,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     for (const [id, e] of Object.entries(supplemental.metrics)) {
       const current = metrics[id];
       if (!contracts[id]) continue;
-      if (!current || validateEvidence(id, current, scope, now)
-        || (!validateEvidence(id, e, scope, now) && e.observedAt! > current.observedAt!)) metrics[id] = e;
+      const measuredBound = current?.lowerBound && !validateEvidence(id, { ...current, complete: true }, scope, now);
+      if (!measuredBound && (!current || validateEvidence(id, current, scope, now))) metrics[id] = e;
     }
   }
   for (const coin of ['usdt', 'usdc']) {
@@ -286,6 +308,17 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   for (const group of ['custody', 'protocol']) {
     const e = metrics[`${group}.incident_status`];
     if (e && !validateEvidence(`${group}.incident_status`, e, scope, now)) put(`${group}.review_age_h`, (now - e.observedAt!) / 3600, e.source, e.observedAt);
+  }
+  if (!historicalOnly && (sourcesFailed || markedStale)) {
+    const historical = riskMeasurements(scope, input, now, true).metrics;
+    for (const [id, entry] of Object.entries(historical)) {
+      const current = metrics[id];
+      const measuredBound = current?.lowerBound && !validateEvidence(id, { ...current, complete: true }, scope, now);
+      if (validMetric(entry.value, contracts[id]) && !measuredBound && (!current || validateEvidence(id, current, scope, now))) {
+        metrics[id] = { ...entry, ...current, value: null, complete: false, historicalValue: entry.value,
+          reason: current?.reason ?? 'Read failed / stale; cached shared snapshot is historical only' };
+      }
+    }
   }
   return { metrics, pauseRollover: borosComplete && days !== null && days >= 14, boros, days };
 }

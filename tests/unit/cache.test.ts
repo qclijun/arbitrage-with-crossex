@@ -10,6 +10,25 @@ describe('TTL.borosBook', () => {
 });
 
 describe('TtlCache', () => {
+  it('binds producer time to each coalesced snapshot even when a fresh read supersedes it', async () => {
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      clock.mockReturnValue(1000);
+      const cache = new TtlCache();
+      let resolve!: (value: string) => void;
+      const old = new Promise<string>(done => { resolve = done; });
+      const first = cache.get('k', 10000, () => old);
+      const waiter = cache.get('k', 10000, () => old);
+      clock.mockReturnValue(2000);
+      await cache.get('k', 10000, async () => 'fresh', { fresh: true });
+      clock.mockReturnValue(3000);
+      resolve('old');
+      const [a, b] = await Promise.all([first, waiter]);
+      expect(a).toEqual({ value: 'old', stale: false, observedAt: 3000 });
+      expect(b).toEqual(a);
+      expect(cache.peek('k')).toMatchObject({ value: 'fresh', observedAt: 2000 });
+    } finally { clock.mockRestore(); }
+  });
   it('coalesces concurrent callers onto one fetch', async () => {
     const cache = new TtlCache();
     const fetch = vi.fn(async () => 'v');
@@ -68,8 +87,8 @@ describe('TtlCache', () => {
     const waiter = cache.get('k', 1000, fetch); // rides the same inflight
     reject(rateLimited());
     const [p, w] = await Promise.all([primary, waiter]);
-    expect(p).toEqual({ value: 'cached', stale: true });
-    expect(w).toEqual({ value: 'cached', stale: true }); // NOT a thrown 429
+    expect(p).toEqual({ value: 'cached', stale: true, observedAt: expect.any(Number) });
+    expect(w).toEqual({ value: 'cached', stale: true, observedAt: expect.any(Number) }); // NOT a thrown 429
   });
 
   it('cooldown is per-key: a 429 on one key does not stall another', async () => {
@@ -78,7 +97,7 @@ describe('TtlCache', () => {
     await cache.get('a', 0, async () => Promise.reject(rateLimited())).catch(() => {}); // 429 → cooldown on 'a'
     // 'b' is unaffected — it fetches live.
     const b = await cache.get('b', 1000, async () => 'b0');
-    expect(b).toEqual({ value: 'b0', stale: false });
+    expect(b).toEqual({ value: 'b0', stale: false, observedAt: expect.any(Number) });
     // 'a' within cooldown serves stale without calling fetch.
     const aFetch = vi.fn(async () => 'a-new');
     const a = await cache.get('a', 0, aFetch);
@@ -93,7 +112,7 @@ describe('TtlCache', () => {
     const freshFetch = vi.fn(async () => 'a-fresh');
     const a = await cache.get('a', 1000, freshFetch, { fresh: true });
     expect(freshFetch).toHaveBeenCalledTimes(1); // did NOT serve stale
-    expect(a).toEqual({ value: 'a-fresh', stale: false });
+    expect(a).toEqual({ value: 'a-fresh', stale: false, observedAt: expect.any(Number) });
   });
 
   it('bust(prefix) invalidates matching keys', async () => {
@@ -116,7 +135,7 @@ describe('TtlCache', () => {
     expect((await first).value).toBe('v1');
     const second = await cache.get('account', 10_000, fetch);
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(second).toEqual({ value: 'v2', stale: false });
+    expect(second).toEqual({ value: 'v2', stale: false, observedAt: expect.any(Number) });
   });
 
   it('caps entry count (no unbounded growth)', async () => {

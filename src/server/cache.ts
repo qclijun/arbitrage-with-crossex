@@ -14,7 +14,7 @@ interface Entry {
   observedAt?: number;
   /** Per-key rate-limit cooldown — a 429 on one key must not stall unrelated keys. */
   cooldownUntil: number;
-  inflight?: Promise<unknown>;
+  inflight?: Promise<{ value: unknown; observedAt: number }>;
   /** Bumped per fetch start; a fetch only writes back if it is still the
    * latest, so a slow stale fetch cannot overwrite a fresher value. */
   gen?: number;
@@ -82,7 +82,8 @@ export class TtlCache {
     }
     if (entry?.inflight && !opts?.fresh) {
       try {
-        return { value: (await entry.inflight) as T, stale: false, observedAt: entry.observedAt ?? now };
+        const snapshot = await entry.inflight;
+        return { value: snapshot.value as T, stale: false, observedAt: snapshot.observedAt };
       } catch (err) {
         if (entry.has && classifyGateError(err).category === 'rate-limited') {
           return { value: entry.value as T, stale: true, observedAt: entry.observedAt! };
@@ -95,17 +96,17 @@ export class TtlCache {
       entry = { expiresAt: 0, has: false, cooldownUntil: 0 };
       this.entries.set(key, entry);
     }
-    const inflight = fetch();
+    const inflight = fetch().then(value => ({ value, observedAt: Date.now() }));
     entry.inflight = inflight;
     const gen = (entry.gen = (entry.gen ?? 0) + 1);
     try {
-      const value = await inflight;
+      const { value, observedAt } = await inflight;
       // Superseded by a fresher fetch (a `fresh` read started after this one):
       // serve this caller its own answer, but leave the cache to the newer one.
-      if (entry.gen !== gen) return { value, stale: false, observedAt: Date.now() };
+      if (entry.gen !== gen) return { value, stale: false, observedAt };
       entry.value = value;
       entry.has = true;
-      entry.observedAt = Date.now();
+      entry.observedAt = observedAt;
       entry.expiresAt = Date.now() + ttlMs;
       if (this.entries.get(key) === entry) {
         this.touch(key, entry);

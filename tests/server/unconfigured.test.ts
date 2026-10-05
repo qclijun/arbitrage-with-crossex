@@ -59,7 +59,7 @@ describe('unconfigured server', () => {
   it('GET /api/credentials reports configured:false', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/credentials', headers: HOST });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toEqual({ configured: false, keyMasked: null });
+    expect(res.json().data).toEqual({ configured: false, keyMasked: null, identity: expect.any(String) });
   });
 
   it('clients-requiring reads fail 503 with category not-configured', async () => {

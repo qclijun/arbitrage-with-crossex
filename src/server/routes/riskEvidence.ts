@@ -7,7 +7,7 @@ import { CoreError } from '../../core/errors';
 import { resolveBorosFetch } from '../../core/boros/client';
 import { readAgentApproval } from '../borosAgentApproval';
 import { credentialIdentity } from '../readScope';
-import { contracts, rules, type Condition, type MetricEvidence, type RiskScope, type RiskBaseline, type RiskSupplement } from '../../../web/src/lib/risk';
+import { canonicalRiskIdentity, contracts, rules, validMetric, type Condition, type MetricEvidence, type RiskScope, type RiskBaseline, type RiskSupplement } from '../../core/risk';
 
 export interface ProducerScope {
   terminal_url: string; gate_user_id: string; root: string; account_id: number; base: string;
@@ -21,9 +21,7 @@ export function producerConfigId(config: RecordValue, root: string | null): stri
     collateral_token_id: config.collateral_token_id ?? 2, root: (typeof config.root === 'string' ? config.root : root)?.toLowerCase() ?? null,
     terminal_url: String(config.terminal_url ?? 'http://localhost:6688').replace(/\/$/, ''),
     recovery_margin_fraction: config.recovery_margin_fraction ?? .03, thresholds: config.thresholds ?? {} };
-  const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical)
-    : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, canonical(value)])) : v;
-  return createHash('sha256').update(JSON.stringify(canonical(identity))).digest('hex');
+  return createHash('sha256').update(canonicalRiskIdentity(identity)).digest('hex');
 }
 async function localJson(file: string): Promise<RecordValue> {
   try {
@@ -44,7 +42,7 @@ export function riskEvidenceRoutes(deps: AppDeps) {
       const metrics: Record<string, MetricEvidence> = {};
       const put = (id: string, value: unknown, observedAt: number | null, source: string, evidence: string,
         complete = true, ttlSeconds = contracts[id].max_age_seconds) => {
-        metrics[id] = { value, observedAt, source, evidence, scope, complete, ttlSeconds, unit: contracts[id].unit };
+        metrics[id] = { value: validMetric(value, contracts[id]) ? value : null, observedAt, source, evidence, scope, complete, ttlSeconds, unit: contracts[id].unit };
       };
       const root = process.env.BOROS_ROOT_ADDRESS?.toLowerCase();
       const key = process.env.BOROS_AGENT_PRIVATE_KEY;
@@ -88,35 +86,56 @@ export function riskEvidenceRoutes(deps: AppDeps) {
         if (typeof obs.source !== 'string' || typeof obs.evidence !== 'string') continue;
         put(id, obs.value, finite(obs.observed_at) ? obs.observed_at : null, obs.source, obs.evidence,
           obs.coverage_complete === true, finite(obs.ttl_seconds) ? obs.ttl_seconds : 0);
-        if (obs.unit !== contracts[id].unit) metrics[id].unit = String(obs.unit ?? '');
+        if (obs.unit !== undefined && obs.unit !== contracts[id].unit) metrics[id].unit = String(obs.unit);
       }
       let baseline: RiskBaseline | null = null;
       const b = record(config.baseline);
-      const quantitiesValid = (v: unknown): boolean => Object.keys(record(v)).length > 0 && Object.values(record(v)).every(finite);
-      if (matches(b.scope) && quantitiesValid(b.boros) && quantitiesValid(b.perps) && finite(b.opened_at)
+      const borosEntries = Object.entries(record(b.boros));
+      const perpEntries = Object.entries(record(b.perps));
+      const quantitiesValid = borosEntries.length === 2 && borosEntries.every(([id, qty]) => /^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id)) && finite(qty) && qty !== 0)
+        && borosEntries.filter(([, qty]) => (qty as number) < 0).length === 1
+        && perpEntries.length === 2 && ['HYPERLIQUID', 'BINANCE'].every(venue => {
+          const entries = perpEntries.filter(([symbol]) => new RegExp(`^${venue}_FUTURE_ETH_(USDT|USDC|USD)$`).test(symbol));
+          return entries.length === 1 && finite(entries[0][1]) && (venue === 'HYPERLIQUID' ? entries[0][1] < 0 : entries[0][1] > 0);
+        });
+      if (matches(b.scope) && quantitiesValid && finite(b.opened_at) && b.opened_at > 0
         && finite(b.observed_at) && b.observed_at <= Date.now() / 1000 && b.opened_at <= b.observed_at
-        && typeof b.evidence === 'string' && b.evidence.trim()) baseline = b as unknown as RiskBaseline;
+        && typeof b.evidence === 'string' && b.evidence.trim()) baseline = {
+          boros: record(b.boros) as Record<string, number>, perps: record(b.perps) as Record<string, number>,
+          opened_at: b.opened_at, observed_at: b.observed_at, evidence: b.evidence,
+        };
       const now = Date.now() / 1000;
       let fundingGapStartedAt: number | null = null;
+      let fundingGapIdentity: string | null = null;
+      let fundingGapObservedAt: number | null = null;
+      let fundingGapEth: number | null = null;
       if (matches(state.producer_scope) && finite(state.observed_at) && state.observed_at <= now) {
         const observed = state.observed_at;
         put('service.consecutive_failures', state.service_failures, observed, 'Independent collector', 'scoped persistent collector state');
         const complete = state.last_complete_run_at;
-        put('monitor.last_complete_run_at', complete, observed, 'Independent collector', 'last complete mandatory collection');
+        put('monitor.last_complete_run_at', complete, finite(complete) ? complete : null, 'Independent collector', 'last complete mandatory collection');
         put('service.last_success_age_s', finite(complete) && complete <= now ? now - complete : null,
           observed, 'Independent collector', 'producer last complete time');
         put('notify.pending_count', state.pending && typeof state.pending === 'object' && !Array.isArray(state.pending)
           ? Object.keys(state.pending as object).length : null, observed, 'Independent notification queue', 'scoped persistent queue count');
         put('notify.failure_streak', state.notify_failures, observed, 'Confirmed notification results', 'persistent failure counter');
-        const confirmed = finite(state.notify_last_message_id) && state.notify_last_message_id > 0;
-        put('notify.last_success_at', confirmed ? state.notify_last_success : null, observed,
+        const confirmed = finite(state.notify_last_message_id) && Number.isInteger(state.notify_last_message_id) && state.notify_last_message_id > 0;
+        put('notify.last_success_at', confirmed ? state.notify_last_success : null, confirmed && finite(state.notify_last_success) ? state.notify_last_success : null,
           'Telegram confirmed message_id', 'producer confirmed delivery');
-        if (now - observed <= 3600 && finite(state.uncovered_since) && state.uncovered_since <= observed) fundingGapStartedAt = state.uncovered_since;
+        const gap = record(state.funding_gap);
+        if (now - observed <= 3600 && finite(gap.observed_at) && gap.observed_at === observed
+          && finite(gap.started_at) && gap.started_at > 0 && gap.started_at <= observed && typeof gap.fingerprint === 'string'
+          && finite(gap.uncovered_eth) && gap.uncovered_eth > 0) {
+          fundingGapStartedAt = gap.started_at;
+          fundingGapIdentity = gap.fingerprint;
+          fundingGapObservedAt = gap.observed_at;
+          fundingGapEth = gap.uncovered_eth;
+        }
       }
       if (matches(heartbeat.producer_scope) && finite(heartbeat.observedAt) && heartbeat.observedAt <= now) {
         put('monitor.heartbeat_age_s', now - heartbeat.observedAt, heartbeat.observedAt, 'Independent monitor producer', 'scoped producer heartbeat');
       }
-      const result: RiskSupplement = { scope, metrics, baseline, fundingGapStartedAt,
+      const result: RiskSupplement = { scope, metrics, baseline, fundingGapStartedAt, fundingGapFingerprint: fundingGapIdentity, fundingGapObservedAt, fundingGapEth,
         reason: 'Legacy/unscoped evidence is UNKNOWN. Collector completion and confirmed delivery are separate from terminal HTTP.' };
       if (matches(state.producer_scope) && finite(state.observed_at) && state.observed_at <= now && now - state.observed_at <= 3600) {
         const thresholds: Record<string, Condition[]> = {};

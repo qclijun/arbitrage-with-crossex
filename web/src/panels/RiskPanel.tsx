@@ -1,11 +1,11 @@
-import { useRef } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
 import { useAccount, useAccountInterest, useActiveDeals, useAlerts, useAssetView, useBorosCollateral, useCredentials, useOpenOrders, useOpportunities, usePositions, useRiskEvidence, useTerminalHealth } from '../api/queries';
 import { useTabActive } from '../components/TabBar';
 import { contracts, evaluateRisk, formatRiskTime, formatRiskValue, scopeKey, validateEvidence, type MetricEvidence, type RiskScope, type RiskState, type RiskStatus } from '../lib/risk';
 import { riskMeasurements } from '../lib/riskSources';
 import { useTrackedAddress } from './trackedAddress';
 import { useBookId } from './bookId';
-import { legSinceParam, loadPrefs } from './assets/assetPrefsStore';
+import { legSinceParam, loadPrefs, subscribePrefs } from './assets/assetPrefsStore';
 
 const tones: Record<RiskStatus, string> = { CRITICAL: 'text-negative', WARNING: 'text-warning', UNKNOWN: 'text-ink-400', OK: 'text-positive', PAUSED: 'text-ink-500' };
 const featured = ['gate.im_coverage', 'gate.mm_health_ratio', 'gate.liquidation_distance_pct', 'boros.available_eth', 'boros.settlement_net_24h_eth', 'rollover.days_to_maturity'];
@@ -18,7 +18,8 @@ export function RiskPanel() {
   const interest = useAccountInterest();
   const collateral = useBorosCollateral(address);
   const book = useBookId(address);
-  const asset = useAssetView(address, undefined, legSinceParam(loadPrefs(book).legSince));
+  const legSince = useSyncExternalStore(subscribePrefs, () => legSinceParam(loadPrefs(book).legSince));
+  const asset = useAssetView(address, undefined, legSince);
   const scope: RiskScope = { credentialId: credentials.data?.identity ?? '', address: address?.toLowerCase() ?? null,
     accountId: collateral.data && collateral.data.address.toLowerCase() === address?.toLowerCase() ? collateral.data.accountId : 0,
     pool: 'ETH-cross' };

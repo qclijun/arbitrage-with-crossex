@@ -53,7 +53,7 @@ import { currentRebateClient, loggedInRoot } from '../borosRebate';
 import { GATE_HISTORY_FLOOR_MS, INTEREST_MAX_PAGES, INTEREST_PAGE_SIZE } from '../interestLedger';
 import { LedgerStore } from '../ledgerStore';
 import { netSettlementWindow } from '../../core/boros/riskSettlement';
-import type { RiskAssetEvidence, RiskBorosPosition } from '../../../web/src/lib/risk';
+import type { RiskAssetEvidence, RiskBorosPosition } from '../../core/risk';
 import { earliestSupportedOpenMs, TrackingStartFile } from '../trackingStart';
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;

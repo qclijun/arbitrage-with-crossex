@@ -146,13 +146,14 @@ async function loadLeverageMax(
   symbols: string[],
   fresh: boolean,
   out: Map<string, number>,
+  observe: (result: { observedAt: number; stale: boolean }) => void,
 ): Promise<string | null> {
   let batch: Promise<Map<string, number>> | undefined;
   let failure: unknown;
   await Promise.all(
     symbols.map(async (symbol) => {
       try {
-        const { value } = await deps.cache.get(
+        const snapshot = await deps.cache.get(
           `risk:${symbol}`,
           TTL.static,
           async () => {
@@ -161,7 +162,8 @@ async function loadLeverageMax(
           },
           { fresh },
         );
-        if (value > 0) out.set(symbol, value);
+        observe(snapshot);
+        if (snapshot.value > 0) out.set(symbol, snapshot.value);
       } catch (err) {
         // Omit the symbol; the math turns that into a reason naming the venue.
         failure ??= err;
@@ -345,7 +347,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
           observe(snapshot);
           venueBooks.set(key, snapshot.value);
         }),
-        loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol).then((warning) => {
+        loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol, observe).then((warning) => {
           if (warning !== null) warnings.push(warning);
         }),
       ]);

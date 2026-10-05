@@ -20,10 +20,10 @@ describe('a fresh read starts after the caller asks', () => {
     const fresh = cache.get('boros:collaterals:0xabc', 30_000, fetch, { fresh: true });
     before.resolve('before cancel');
 
-    expect(await fresh).toEqual({ value: 'after cancel', stale: false });
-    expect(await older).toEqual({ value: 'before cancel', stale: false });
+    expect(await fresh).toEqual({ value: 'after cancel', stale: false, observedAt: expect.any(Number) });
+    expect(await older).toEqual({ value: 'before cancel', stale: false, observedAt: expect.any(Number) });
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(await cache.get('boros:collaterals:0xabc', 30_000, fetch)).toEqual({ value: 'after cancel', stale: false });
+    expect(await cache.get('boros:collaterals:0xabc', 30_000, fetch)).toEqual({ value: 'after cancel', stale: false, observedAt: expect.any(Number) });
   });
 
   it('a plain read still joins the read in flight', async () => {

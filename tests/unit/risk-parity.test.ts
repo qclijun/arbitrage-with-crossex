@@ -25,6 +25,19 @@ function fixture(id: string): Scenario {
     source: 'synthetic reference source', evidence: 'parity fixture', observed_at: now, ttl_seconds: contracts[k].max_age_seconds }])) };
 }
 describe('shared synthetic evidence against current Python monitor', () => {
+  it('matches collector and notification runtime states without trusting manually recorded runtime metrics', () => {
+    const script = `import json,sys\nfrom pathlib import Path\nsys.path.insert(0,'scripts')\nfrom risk_monitor import evaluate\nrules=json.loads(Path('scripts/risk-monitor-rules.json').read_text())\nout=[]\nfor failures in [0,1,2,3,5]:\n for age in [0,300,660,1000]:\n  for notify in [0,1,3]:\n   state={'service_failures':max(0,failures-1),'last_complete_run_at':${now}-age,'pending':{str(i):{} for i in range(notify)},'notify_failures':notify,'notify_last_success':${now}-30}\n   report=evaluate({'health':{'status':'ok' if failures==0 else 'down'}},{'observations_file':'/nonexistent-risk-parity'},state,[r for r in rules if r['id'] in ['service.http_ok','notify.last_success_at']],${now},{'fixture':'failure'} if failures else {})\n   out.extend(report['checks'])\nprint(json.dumps(out))`;
+    const python = spawnSync('python3', ['-c', script], { encoding: 'utf8' });
+    expect(python.status, python.stderr).toBe(0);
+    for (const reference of JSON.parse(python.stdout)) {
+      const metrics = Object.fromEntries(Object.entries(reference.metrics).map(([id, value]) => {
+        const e = value as { value: unknown; observedAt: number };
+        return [id, { value: e.value, unit: contracts[id].unit, source: 'independent runtime fixture', evidence: 'confirmed producer state',
+          observedAt: e.observedAt, ttlSeconds: contracts[id].max_age_seconds, scope, complete: true }];
+      }));
+      expect(evaluateRisk(scope, metrics, now).checks.find(c => c.id === reference.id)?.status).toBe(reference.status);
+    }
+  });
   it('matches numeric boundaries, bool/enum predicates, units, missing evidence and unresolved critical triggers across the enabled catalog', () => {
     const scenarios: Scenario[] = [];
     for (const rule of rules.filter(r => r.enabled !== false && !r.id.startsWith('service.') && !r.id.startsWith('notify.'))) {

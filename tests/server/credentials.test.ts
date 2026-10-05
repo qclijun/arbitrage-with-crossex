@@ -84,10 +84,13 @@ describe('PUT /api/credentials with a transfer', () => {
     const { envPath, transfers, moving, keyCheck, put } = await setup();
     moving('1234567');
     keyCheck();
+    const before = (await app.inject({ method: 'GET', url: '/api/credentials', headers: HOST })).json().data.identity;
 
     const res = await put();
 
     expect(res.statusCode).toBe(200);
+    expect(res.json().data.identity).toEqual(expect.any(String));
+    expect(res.json().data.identity).not.toBe(before);
     expect(readFileSync(envPath, 'utf8')).toContain('GATE_API_KEY=newkey876543210');
     expect(transfers.read()?.status).toBe('moving');
   });
