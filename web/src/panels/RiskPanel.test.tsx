@@ -62,6 +62,24 @@ beforeEach(() => {
 });
 afterEach(() => { for (const c of clients.splice(0)) c.clear(); });
 describe('rendered Risk / shared API evidence', () => {
+  it('shows current hedge checks as OK while historical identity remains UNKNOWN without a baseline', async () => {
+    server.use(http.get('/api/positions', () => response({
+      positions: [{ symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', positionQty: '-3' },
+        { symbol: 'BINANCE_FUTURE_ETH_USDT', positionQty: '3' }],
+      exposure: [{ base: 'ETH', legs: [
+        { symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', exchange: 'HYPERLIQUID', side: 'SHORT', qty: 3 },
+        { symbol: 'BINANCE_FUTURE_ETH_USDT', exchange: 'BINANCE', side: 'LONG', qty: 3 },
+      ] }],
+    })));
+    mount();
+    for (const id of ['hedge.perp_net_eth', 'hedge.hl_size_gap_eth', 'hedge.maturity_match']) {
+      await waitFor(() => expect(check(id).querySelector('summary')).toHaveTextContent('OK'));
+      expect(check(id)).not.toHaveTextContent('Missing explicit scope-matching baseline');
+    }
+    expect(check('hedge.maturity_match')).not.toHaveTextContent('hedge.market_identity_match');
+    expect(check('hedge.market_identity_match').querySelector('summary')).toHaveTextContent('UNKNOWN');
+    expect(check('positions.unexpected_change_eth').querySelector('summary')).toHaveTextContent('UNKNOWN');
+  });
   it('uses the asset owner’s exact query window after same-tab preference changes', async () => {
     const requests: string[] = [];
     const listener = ({ request }: { request: Request }) => { if (request.url.includes('/asset-view/')) requests.push(request.url); };

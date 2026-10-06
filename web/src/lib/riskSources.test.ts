@@ -56,6 +56,73 @@ async function basisFixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Risk shared-snapshot acceptance', () => {
+  it('measures actual ETH perp neutrality without a baseline or Boros read', async () => {
+    const input = await fixture();
+    input.supplement.data!.baseline = null;
+    input.asset.isError = true;
+    input.positions.data!.exposure[0].legs[1].qty = 3.02;
+    input.positions.data!.positions[1].positionQty = '3.02';
+    const c = check(input, 'hedge.perp_net_eth');
+    expect(c.metrics['hedge.perp_net_eth'].value).toBeCloseTo(.02);
+    expect(c.status).toBe('CRITICAL');
+    expect(check(input, 'positions.unexpected_change_eth').status).toBe('UNKNOWN');
+  });
+  it('matches actual funding legs without accepting a historical baseline', async () => {
+    const input = await basisFixture();
+    const c = check(input, 'hedge.hl_size_gap_eth');
+    expect(c.status).toBe('OK');
+    expect(c.metrics['hedge.hl_size_gap_eth'].value).toBeCloseTo(.0001309, 7);
+    expect(c.metrics['hedge.binance_size_gap_eth'].value).toBeCloseTo(.0001309, 7);
+    expect(c.metrics['hedge.direction_match'].value).toBe(true);
+    input.asset.data!.risk!.positions[0].side = 'LONG';
+    expect(check(input, 'hedge.hl_size_gap_eth').status).toBe('CRITICAL');
+  });
+  it('reports actual maturity separately from unverified historical market identity', async () => {
+    const input = await fixture();
+    input.supplement.data!.baseline = null;
+    expect(check(input, 'hedge.maturity_match').status).toBe('OK');
+    expect(check(input, 'hedge.market_identity_match').status).toBe('UNKNOWN');
+    input.asset.data!.risk!.positions[0].maturity! += 86400;
+    expect(check(input, 'hedge.maturity_match').status).toBe('CRITICAL');
+    expect(check(input, 'hedge.market_identity_match').status).toBe('UNKNOWN');
+  });
+  it('keeps matching expired funding maturities UNKNOWN', async () => {
+    const input = await fixture();
+    input.supplement.data!.baseline = null;
+    input.asset.data!.risk!.positions.forEach(p => { p.maturity = now - 1; });
+    expect(check(input, 'hedge.maturity_match').status).toBe('UNKNOWN');
+  });
+  it('keeps current direction matching independent of a different historical contract', async () => {
+    const input = await fixture();
+    input.supplement.data!.baseline!.perps = { HYPERLIQUID_FUTURE_ETH_USDT: -3, BINANCE_FUTURE_ETH_USDT: 3 };
+    expect(check(input, 'hedge.hl_size_gap_eth').status).toBe('OK');
+    expect(check(input, 'hedge.market_identity_match').status).toBe('CRITICAL');
+    expect(check(input, 'positions.unexpected_change_eth').status).toBe('CRITICAL');
+  });
+  it('accepts normalized hedge-mode shorts whose upstream quantity is positive', async () => {
+    const input = await fixture();
+    input.supplement.data!.baseline = null;
+    input.positions.data!.positions[0].positionQty = '3';
+    input.positions.data!.positions[0].positionSide = 'SHORT';
+    expect(check(input, 'hedge.perp_net_eth').status).toBe('OK');
+    expect(check(input, 'hedge.hl_size_gap_eth').status).toBe('OK');
+  });
+  it.each(['failed', 'foreign', 'partial', 'wallet', 'expired', 'duplicate-market', 'duplicate-contract', 'wrong-venue', 'wrong-quantity'] as const)(
+    'keeps current funding checks UNKNOWN for %s evidence without a baseline', async kind => {
+      const input = await fixture();
+      input.supplement.data!.baseline = null;
+      if (kind === 'failed') input.positions.isError = true;
+      if (kind === 'partial') input.asset.data!.risk!.positionsComplete = false;
+      if (kind === 'wallet') input.asset.data!.risk!.address = '0x' + '2'.repeat(40);
+      if (kind === 'expired') input.asset.data!.risk!.positions[0].maturity = now - 1;
+      if (kind === 'duplicate-market') input.asset.data!.risk!.positions[1].marketId = 128;
+      if (kind === 'duplicate-contract') input.positions.data!.exposure[0].legs.push(input.positions.data!.exposure[0].legs[0]);
+      if (kind === 'wrong-venue') input.positions.data!.exposure[0].legs[0].exchange = 'BINANCE';
+      if (kind === 'wrong-quantity') input.positions.data!.exposure[0].legs[0].qty = 2;
+      const selectedScope = kind === 'foreign' ? { ...scope, credentialId: 'different-account' } : scope;
+      expect(check(input, 'hedge.hl_size_gap_eth', selectedScope).status).toBe('UNKNOWN');
+      if (kind === 'duplicate-market') expect(check(input, 'hedge.maturity_match').status).toBe('UNKNOWN');
+    });
   it('uses pair Profit at maturity without baseline for a small actual quantity difference', async () => {
     const input = await basisFixture();
     const group = input.asset.data!.assets[0];
@@ -176,7 +243,8 @@ describe('Risk shared-snapshot acceptance', () => {
       input.positions.data!.exposure[0].legs[0].symbol = 'HYPERLIQUID_FUTURE_ETH_USDT';
       input.positions.data!.positions[0].symbol = 'HYPERLIQUID_FUTURE_ETH_USDT';
     }
-    const id = kind === 'direction' || kind === 'quantity' ? 'hedge.hl_size_gap_eth' : 'hedge.maturity_match';
+    const id = kind === 'direction' || kind === 'quantity' ? 'hedge.hl_size_gap_eth'
+      : kind === 'maturity' ? 'hedge.maturity_match' : 'hedge.market_identity_match';
     expect(check(input, id).status).toBe('CRITICAL');
     if (kind !== 'maturity') expect(check(input, 'positions.unexpected_change_eth').status).toBe('CRITICAL');
   });
@@ -185,7 +253,8 @@ describe('Risk shared-snapshot acceptance', () => {
     if (kind === 'baseline') input.supplement.data!.baseline = null;
     if (kind === 'partial') input.asset.data!.risk!.positionsComplete = false;
     const s = kind === 'subaccount' ? { ...scope, accountId: 1 } : scope;
-    expect(check(input, 'hedge.perp_net_eth', s).status).toBe('UNKNOWN');
+    expect(check(input, 'positions.unexpected_change_eth', s).status).toBe('UNKNOWN');
+    expect(check(input, 'hedge.perp_net_eth', s).status).toBe('OK');
     if (kind !== 'baseline') expect(check(input, 'rollover.days_to_maturity', s).status).toBe('UNKNOWN');
     expect(riskMeasurements(s, input, now).pauseRollover).toBe(false);
   });

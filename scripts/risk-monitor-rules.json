@@ -405,8 +405,7 @@
     "risk": 5,
     "label": "5. 期限匹配",
     "metrics": [
-      "hedge.maturity_match",
-      "hedge.market_identity_match"
+      "hedge.maturity_match"
     ],
     "sourcePlan": "Boros市场描述/持仓maturity",
     "action": "暂停扩大规模，核对原始成交",
@@ -416,7 +415,19 @@
         "eq",
         false,
         "CRITICAL"
-      ],
+      ]
+    ]
+  },
+  {
+    "id": "hedge.market_identity_match",
+    "risk": 5,
+    "label": "5. 策略市场身份（历史基线）",
+    "metrics": [
+      "hedge.market_identity_match"
+    ],
+    "sourcePlan": "已验证账户与策略历史基线，对照当前市场ID及永续合约",
+    "action": "核对可信历史成交与策略基线；不得自动接纳当前仓位",
+    "conditions": [
       [
         "hedge.market_identity_match",
         "eq",

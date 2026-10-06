@@ -1,6 +1,6 @@
 # 日常风险检查与 Telegram 预警
 
-本清单覆盖四腿资金费套利的八类风险，共32个检查项，其中ETH抵押品价格风险的2项及实际退出成本的1项暂不监控，当前启用29项。监控只读，默认每300秒运行一次，频率和全部阈值可配置。阈值是资金管理线，不是平台清算规则。
+本清单覆盖四腿资金费套利的八类风险，共33个检查项，其中ETH抵押品价格风险的2项及实际退出成本的1项暂不监控，当前启用30项。监控只读，默认每300秒运行一次，频率和全部阈值可配置。阈值是资金管理线，不是平台清算规则。
 
 ## 八类风险简要说明
 
@@ -28,6 +28,14 @@
 风险3的“ETH抵押品价格暴露”和“美元压力损失”暂不监控，相关四个指标不输出、不触发告警。规则中的`enabled:false`保留其定义，恢复时改为`true`并提供完整敞口证据；暂停不代表该风险消失。
 
 风险4的“实际退出成本”也暂不监控，相关三个指标不输出、不触发告警；“永续标记价差”及其三个指标继续监控。恢复退出成本检查时需启用规则并提供有效盘口与成本证据。
+
+### 终端 Risk 的当前对冲与历史基线（2026-10-06）
+
+终端的“永续数量中性”直接汇总账户匹配、完整且新鲜的实际 ETH 永续数量（多头为正、空头为负），不依赖 Boros 读取、钱包选择或历史基线。完整空仓为 0；缺失、重复、合约不明确或未能核实的读取仍为 UNKNOWN。
+
+“每条资金费腿匹配”复用当前 ETH cross-pool 的 Boros 持仓与永续持仓，要求同一钱包/子账户、两个不同市场、唯一 Hyperliquid/Binance 两腿及有效到期日。逐 venue 比较 ETH 数量绝对差，并核对 Hyperliquid SHORT、Binance LONG 和对应永续方向；不依赖历史基线。额外市场、重复合约、缺腿、过期或不完整读数为 UNKNOWN，已确认方向错误为 CRITICAL。
+
+“期限匹配”只比较两条当前 Boros 腿的到期时间。“策略市场身份（历史基线）”独立核对历史预期市场 ID 和永续合约；“非预期仓位变化”独立核对历史数量。后两项仍要求明确的账户范围、观察时间和证据，缺少有效基线为 UNKNOWN。不得把当前仓位自动写成历史基线来消除 UNKNOWN；到期一致也不证明历史市场身份正确。以上当前持仓计算适用于终端页面，独立 Python 采集器的计算与基线机制保持原有行为；两者共用拆分后的检查目录和阈值。
 
 ### 永续标记价差：定义与计算决策（2026-10-06）
 
@@ -64,7 +72,8 @@
 | 4 | 4. 实际退出成本：`basis.executable_exit_cost_usd`、`basis.depth_coverage_ratio`、`basis.exit_cost_profit_ratio` | basis.exit_cost_profit_ratio gt 0.25 → WARNING；basis.depth_coverage_ratio lt 1 → WARNING | 不用标记价替代成交价；控制双腿执行间隔 |
 | 5 | 5. 永续数量中性：`hedge.perp_net_eth` | hedge.perp_net_eth abs_gt 0.001 → WARNING；hedge.perp_net_eth abs_gt 0.01 → CRITICAL | 核对订单与成交后处理残量，禁止盲目重复下单 |
 | 5 | 5. 每条资金费腿匹配：`hedge.hl_size_gap_eth`、`hedge.binance_size_gap_eth`、`hedge.direction_match` | hedge.hl_size_gap_eth gt 0.001 → WARNING；hedge.binance_size_gap_eth gt 0.001 → WARNING；hedge.hl_size_gap_eth gt 0.01 → CRITICAL；hedge.binance_size_gap_eth gt 0.01 → CRITICAL；hedge.direction_match eq False → CRITICAL | 协调修复对应腿，避免只看总净delta |
-| 5 | 5. 期限匹配：`hedge.maturity_match`、`hedge.market_identity_match` | hedge.maturity_match eq False → CRITICAL；hedge.market_identity_match eq False → CRITICAL | 暂停扩大规模，核对原始成交 |
+| 5 | 5. 期限匹配：`hedge.maturity_match` | hedge.maturity_match eq False → CRITICAL | 暂停扩大规模，核对原始成交 |
+| 5 | 5. 策略市场身份（历史基线）：`hedge.market_identity_match` | hedge.market_identity_match eq False → CRITICAL | 核对可信历史成交与策略基线；不得自动接纳当前仓位 |
 | 5 | 5. 执行残留：`execution.unhedged_eth`、`execution.halted_count`、`execution.pending_age_s` | execution.unhedged_eth abs_gt 0.001 → CRITICAL；execution.halted_count gt 0 → CRITICAL；execution.pending_age_s gt 120 → WARNING | 查真实订单状态，不把超时当作未成交 |
 | 5 | 5. 非预期仓位变化：`positions.unexpected_change_eth` | positions.unexpected_change_eth gt 0.001 → CRITICAL | 核对是否清算/ADL，重建四腿对冲 |
 | 6 | 6. 到期提醒：`rollover.days_to_maturity` | rollover.days_to_maturity lt 14 → WARNING；rollover.days_to_maturity lt 1 → CRITICAL | 临近到期时制定展期或退出方案 |

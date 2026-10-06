@@ -54,7 +54,7 @@ class RiskMonitorTest(unittest.TestCase):
 
     def test_every_risk_and_check_emitted_with_no_data(self):
         report = evaluate({}, self.config, {}, self.rules, NOW, {'collector': 'offline'})
-        self.assertEqual(len(report['checks']), 29)
+        self.assertEqual(len(report['checks']), 30)
         self.assertEqual({c['risk'] for c in report['checks']}, set(range(1, 9)) - {3})
         self.assertTrue(all(c['metrics'] for c in report['checks']))
         self.assertTrue(all(c['status'] != 'OK' for c in report['checks']))

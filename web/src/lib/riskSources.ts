@@ -146,23 +146,38 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   const baseline = supplemental?.baseline;
   const hl = boros.filter(b => b.venue === 'HYPERLIQUID');
   const bn = boros.filter(b => b.venue === 'BINANCE');
-  const pair = borosComplete && boros.length === 2 && hl.length === 1 && bn.length === 1 ? [hl[0], bn[0]] : null;
+  const pair = borosComplete && boros.length === 2 && hl.length === 1 && bn.length === 1
+    && hl[0].marketId !== bn[0].marketId ? [hl[0], bn[0]] : null;
   const actualPerps = new Map(perpLegs.map(p => [p.symbol, (p.side === 'SHORT' ? -1 : 1) * p.qty]));
   const uniquePerps = new Set(perpLegs.map(p => p.symbol)).size === perpLegs.length;
+  const exactEthPerps = perpsComplete && uniquePerps && perpLegs.every(p =>
+    /^(HYPERLIQUID|BINANCE)_FUTURE_ETH_(USDT|USDC|USD)$/.test(p.symbol)
+    && p.symbol.startsWith(p.exchange + '_') && rows!.filter(r => r.symbol === p.symbol).length === 1
+    && Math.abs(numeric(rows!.find(r => r.symbol === p.symbol)!.positionQty)!) === p.qty)
+    && rows!.filter(r => numeric(r.positionQty) !== 0 && /_FUTURE_ETH_/.test(r.symbol)).every(r => actualPerps.has(r.symbol));
+  put('hedge.perp_net_eth', exactEthPerps ? sum([...actualPerps.values()]) : null,
+    'Complete normalized actual ETH perpetual quantities; independent of Boros and historical baseline', positions?.observedAt ?? null,
+    Boolean(exactEthPerps), 'Missing complete account-matched ETH perpetual quantities or ambiguous contracts');
+  for (const id of ['hedge.hl_size_gap_eth', 'hedge.binance_size_gap_eth', 'hedge.direction_match']) {
+    put(id, null, 'Current ETH perpetual and Boros funding positions, matched per venue',
+      positions && observed !== null ? Math.min(observed, positions.observedAt) : null, false,
+      'Missing complete unique live funding pair / ETH perpetual contracts, or wallet/subaccount mismatch');
+  }
   if (pair) {
     const [h, b] = pair;
-    put('hedge.maturity_match', h.maturity === b.maturity, 'Exact live Boros market maturities', observed);
-    put('hedge.direction_match', baseline && (h.side !== 'SHORT' || b.side !== 'LONG') ? false : null, 'Actual signed ETH cross-pool Boros quantities / verified membership', observed,
-      true, 'Missing explicit scoped strategy baseline');
+    const liveMaturities = pair.every(leg => leg.maturity! > now);
+    put('hedge.maturity_match', liveMaturities ? h.maturity === b.maturity : null,
+      'Exact live Boros market maturities', observed, liveMaturities, 'Expired funding legs; no verified live maturity match');
     if (h.side === 'SHORT' && b.side === 'LONG' && h.maturity === b.maturity
       && [h.entryApr, h.markApr, b.entryApr, b.markApr].every(finite)) put('boros.adverse_spread_pp', ((h.markApr! - b.markApr!) - (h.entryApr! - b.entryApr!)) * 100, 'Existing asset-view mark APR spread relative to entry APR spread (percentage points)', observed);
     const mtm = sum(pair.map(p => p.mtmUsd));
     put('boros.rate_mtm_usd', mtm, 'Existing official asset-view rate MTM', observed);
     if (poolValid && pool && finite(pool.netBalance) && pool.netBalance > 0 && token && finite(token.priceUsd) && token.priceUsd > 0 && mtm !== null && collateral) put('boros.mtm_loss_equity_ratio', Math.max(0, -mtm) / (pool.netBalance * token.priceUsd), 'Negative rate MTM / same-pool equity', Math.min(observed!, collateral.observedAt));
-    if (baseline && perpsComplete && uniquePerps) {
-      const matched = perpLegs.length === 2 && perpLegs.every(p => pair.some(leg => leg.venue === p.exchange && leg.side === p.side))
-        && Object.keys(baseline.perps).every(symbol => actualPerps.has(symbol));
-      put('hedge.direction_match', h.side === 'SHORT' && b.side === 'LONG' && matched, 'Complete four-leg directions and baseline contracts', Math.min(observed!, positions!.observedAt));
+    if (exactEthPerps && perpLegs.length === 2 && h.marketId !== b.marketId
+      && pair.every(leg => leg.maturity! > now && ['LONG', 'SHORT'].includes(leg.side))
+      && pair.every(leg => perpLegs.filter(p => p.exchange === leg.venue).length === 1)) {
+      const matched = perpLegs.every(p => pair.some(leg => leg.venue === p.exchange && leg.side === p.side));
+      put('hedge.direction_match', h.side === 'SHORT' && b.side === 'LONG' && matched, 'Complete current four-leg directions by exact venue and ETH contract', Math.min(observed!, positions!.observedAt));
       for (const [venue, id, leg] of [['HYPERLIQUID', 'hl', h], ['BINANCE', 'binance', b]] as const) {
         const ps = perpLegs.filter(p => p.exchange === venue && /^\w+_FUTURE_ETH_(USDT|USDC|USD)$/.test(p.symbol));
         if (ps.length === 1) {
@@ -180,10 +195,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     const expectedSymbols = Object.keys(baseline.perps);
     const contractsExact = expectedSymbols.every(s => /^(HYPERLIQUID|BINANCE)_FUTURE_ETH_(USDT|USDC|USD)$/.test(s));
     if (contractsExact) {
-      put('hedge.perp_net_eth', sum([...actualPerps.values()]), 'Complete exact ETH perp exposure; verified strategy membership', positions!.observedAt);
       const gap = (actual: Map<string, number>, expected: Record<string, number>) => [...new Set([...actual.keys(), ...Object.keys(expected)])].reduce((n, k) => n + Math.abs((actual.get(k) ?? 0) - (expected[k] ?? 0)), 0);
       put('positions.unexpected_change_eth', gap(borosMap, baseline.boros) + gap(actualPerps, baseline.perps), 'Complete four-leg positions vs explicit scoped baseline (no inferred ADL cause)', Math.min(observed!, positions!.observedAt));
-      if (expectedSymbols.some(s => (actualPerps.get(s) ?? 0) * baseline.perps[s] <= 0)) put('hedge.direction_match', false, 'Perp direction differs from verified baseline', positions!.observedAt);
     }
   }
   put('basis.loss_profit_ratio', null, 'Four-leg pair Profit at maturity estimate (default fees)', observed, false,
@@ -249,7 +262,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     put('rollover.uncovered_funding_seconds', gap === 0 ? 0 : trustedStart !== null ? now - trustedStart : null,
       'Verified existing collector funding-gap start (page visit never resets it)', Math.min(observed!, positions!.observedAt), true, 'Missing verified continuous funding-gap history');
   }
-  if (!baseline) for (const id of ['hedge.perp_net_eth', 'hedge.hl_size_gap_eth', 'hedge.binance_size_gap_eth', 'hedge.market_identity_match', 'positions.unexpected_change_eth']) {
+  if (!baseline) for (const id of ['hedge.market_identity_match', 'positions.unexpected_change_eth']) {
     put(id, null, 'Existing verified four-leg strategy baseline', observed, false, 'Missing explicit scope-matching baseline; page visit does not create one');
   }
   const deals = read(input.deals, ['execution.halted_count', 'execution.unhedged_eth', 'execution.pending_age_s'], '/deals execution projections');
