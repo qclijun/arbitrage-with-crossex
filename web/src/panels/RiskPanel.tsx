@@ -49,7 +49,10 @@ export function RiskPanel() {
   const report = evaluateRisk(scope, adapted.metrics, now, local.current.state, adapted.pauseRollover, settings);
   local.current.state = report.state;
   // Category 8 is temporarily omitted from the Risk page; its contracts remain documented.
-  const checks = report.checks.filter(check => check.risk !== 8);
+  // Historical identity and quantity-change checks are temporarily hidden, including summary counts.
+  // Keep their calculations and rules for later restoration; do not auto-accept a baseline.
+  const checks = report.checks.filter(check => check.risk !== 8
+    && check.id !== 'hedge.market_identity_match' && check.id !== 'positions.unexpected_change_eth');
   const counts = (['CRITICAL', 'WARNING', 'UNKNOWN', 'OK', 'PAUSED'] as const).map(status => ({ status,
     count: checks.filter(c => c.status === status).length }));
   const failed = Object.values(inputs).some(q => q.isError);

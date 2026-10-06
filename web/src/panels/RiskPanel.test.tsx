@@ -12,6 +12,7 @@ import { savePrefs } from './assets/assetPrefsStore';
 const address = '0x' + '1'.repeat(40), second = '0x' + '2'.repeat(40);
 const scope: RiskScope = { address, credentialId: 'account-a', accountId: 0, pool: 'ETH-cross' };
 const pool = address + '000002ffffff';
+const hiddenHistory = ['hedge.market_identity_match', 'positions.unexpected_change_eth'];
 let accountFails = false, margin = '100';
 let external: Record<string, MetricEvidence> = {};
 let baseline: RiskBaseline | null = null;
@@ -62,7 +63,7 @@ beforeEach(() => {
 });
 afterEach(() => { for (const c of clients.splice(0)) c.clear(); });
 describe('rendered Risk / shared API evidence', () => {
-  it('shows current hedge checks as OK while historical identity remains UNKNOWN without a baseline', async () => {
+  it('shows current hedge checks as OK and omits historical checks without a baseline', async () => {
     server.use(http.get('/api/positions', () => response({
       positions: [{ symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', positionQty: '-3' },
         { symbol: 'BINANCE_FUTURE_ETH_USDT', positionQty: '3' }],
@@ -77,8 +78,7 @@ describe('rendered Risk / shared API evidence', () => {
       expect(check(id)).not.toHaveTextContent('Missing explicit scope-matching baseline');
     }
     expect(check('hedge.maturity_match')).not.toHaveTextContent('hedge.market_identity_match');
-    expect(check('hedge.market_identity_match').querySelector('summary')).toHaveTextContent('UNKNOWN');
-    expect(check('positions.unexpected_change_eth').querySelector('summary')).toHaveTextContent('UNKNOWN');
+    for (const id of hiddenHistory) expect(document.body).not.toHaveTextContent(id);
   });
   it('uses the asset owner’s exact query window after same-tab preference changes', async () => {
     const requests: string[] = [];
@@ -110,10 +110,10 @@ describe('rendered Risk / shared API evidence', () => {
       await waitFor(() => expect(Array.from(document.querySelectorAll('details')).filter(d => d !== check('basis.mark_spread_usd_per_eth'))
         .every(d => d.querySelector('summary')?.textContent?.includes('Complete applicable evidence'))).toBe(true));
       expect(check('basis.mark_spread_usd_per_eth')).toHaveTextContent('Missing fresh scope-matched ETH positions or four-leg pair');
-      const visibleRules = rules.filter(r => r.enabled !== false && r.risk !== 8);
+      const visibleRules = rules.filter(r => r.enabled !== false && r.risk !== 8 && !hiddenHistory.includes(r.id));
       expect(document.querySelectorAll('details')).toHaveLength(visibleRules.length);
       for (const id of new Set(visibleRules.flatMap(r => r.metrics))) expect(screen.getAllByText(id, { exact: false }).length).toBeGreaterThan(0);
-      for (const rule of rules.filter(r => r.enabled === false || r.risk === 8)) {
+      for (const rule of rules.filter(r => r.enabled === false || r.risk === 8 || hiddenHistory.includes(r.id))) {
         expect(document.body).not.toHaveTextContent(rule.id);
         for (const id of rule.metrics) expect(document.body).not.toHaveTextContent(id);
       }
@@ -127,7 +127,7 @@ describe('rendered Risk / shared API evidence', () => {
   it('shows the visible catalog, same-pool runway, borrowing cost and paused rollover separately', async () => {
     mount();
     await waitFor(() => expect(check('gate.im_coverage').querySelector('summary')).toHaveTextContent('CRITICAL'));
-    expect(document.querySelectorAll('details')).toHaveLength(rules.filter(r => r.enabled !== false && r.risk !== 8).length);
+    expect(document.querySelectorAll('details')).toHaveLength(rules.filter(r => r.enabled !== false && r.risk !== 8 && !hiddenHistory.includes(r.id)).length);
     await waitFor(() => expect(check('boros.settlement_net_24h_eth')).toHaveTextContent('2.00 days'));
     expect(check('gate.liability_usdt')).toHaveTextContent('4.80e-3 USD/day');
     expect(check('rollover.next_net_apr').querySelector('summary')).toHaveTextContent('PAUSED');
