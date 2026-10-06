@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchJson } from '../api/client';
 import { contracts, evaluateRisk, fundingGapFingerprint, type RiskScope } from './risk';
 import { riskMeasurements, type RiskInputs } from './riskSources';
+import { deriveAsset, pairMaturityProfit } from '../panels/assets/assetModel';
 
 const now = 1800000000;
 const address = '0x' + '1'.repeat(40);
@@ -37,9 +38,101 @@ async function fixture() {
   return input as unknown as RiskInputs;
 }
 const check = (input: RiskInputs, id: string, selectedScope = scope) => evaluateRisk(selectedScope, riskMeasurements(selectedScope, input, now).metrics, now).checks.find(c => c.id === id)!;
+async function basisFixture() {
+  const input = await fixture();
+  input.supplement.data!.baseline = null;
+  const risk = input.asset.data!.risk!;
+  for (const leg of risk.positions) leg.sizeToken = 3.0001309;
+  input.asset.data!.assets = [{ base: 'ETH', supported: true, priceUsd: 3000, earliestSec: now - 86400,
+    perpOpen: input.positions.data!.exposure[0].legs.map(p => ({ symbol: p.symbol, venue: p.exchange,
+      side: p.side, qty: p.qty, notionalUsd: 9000, entryPrice: 3000, markPrice: 3000, leverage: 20,
+      upnlUsd: -1, fundingUsd: 0, feesUsd: 1, imUsd: 100, openedAt: now - 86400 })),
+    perpClosed: [], borosOpen: risk.positions.map(p => ({ ...p, collateral: 'ETH', imUsd: 50, settleUsd: 0 })),
+    borosHistory: risk.positions.map(p => ({ marketId: p.marketId, venue: p.venue, maturity: p.maturity,
+      firstEventSec: now - 86400, settleUsd: 0, settleFeeUsd: 0, tradePnlUsd: 0, tradeFeeUsd: 1 })),
+  }] as unknown as NonNullable<RiskInputs['asset']['data']>['assets'];
+  return input;
+}
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Risk shared-snapshot acceptance', () => {
+  it('uses pair Profit at maturity without baseline for a small actual quantity difference', async () => {
+    const input = await basisFixture();
+    const group = input.asset.data!.assets[0];
+    const pair = deriveAsset(group, {}, 0, now).pairs[0];
+    const profit = pairMaturityProfit(pair, now).netUsd!;
+    expect(profit).toBeGreaterThan(0);
+    const c = check(input, 'basis.mark_spread_usd_per_eth');
+    expect(c.metrics['basis.loss_profit_ratio'].value).toBeCloseTo(2 / profit);
+    expect(c.status).not.toBe('UNKNOWN');
+    input.positions.data!.positions[0].upnl = '5';
+    expect(check(input, 'basis.mark_spread_usd_per_eth').metrics['basis.loss_profit_ratio'].value).toBe(0);
+  });
+  it.each(['quantity', 'direction', 'maturity', 'partial', 'stale', 'scope', 'fee', 'rate', 'non-positive', 'missing-pnl'] as const)(
+    'keeps unusable maturity-profit estimates UNKNOWN: %s', async kind => {
+      const input = await basisFixture();
+      const risk = input.asset.data!.risk!;
+      const group = input.asset.data!.assets[0];
+      if (kind === 'quantity') risk.positions[0].sizeToken += .002;
+      if (kind === 'direction') risk.positions[0].side = 'LONG';
+      if (kind === 'maturity') risk.positions[0].maturity! += 86400;
+      if (kind === 'partial') risk.positionsComplete = false;
+      if (kind === 'stale') risk.stale = true;
+      if (kind === 'scope') risk.address = '0x' + '2'.repeat(40);
+      if (kind === 'fee') group.perpOpen[0].feesUsd = NaN;
+      if (kind === 'rate') group.borosOpen[0].entryApr = null;
+      if (kind === 'non-positive') group.perpOpen[0].feesUsd = 10000;
+      if (kind === 'missing-pnl') input.positions.data!.positions[0].upnl = '';
+      const metric = check(input, 'basis.mark_spread_usd_per_eth').metrics['basis.loss_profit_ratio'];
+      expect(metric.value).toBeNull();
+      expect(metric.reason).toBeTruthy();
+    });
+  it('falls back to a remaining-term estimate when opening times are unknown', async () => {
+    const input = await basisFixture();
+    const group = input.asset.data!.assets[0];
+    for (const p of group.perpOpen) p.openedAt = null;
+    for (const p of group.borosHistory) p.firstEventSec = undefined;
+    const metric = check(input, 'basis.mark_spread_usd_per_eth').metrics['basis.loss_profit_ratio'];
+    expect(metric.value).not.toBeNull();
+    expect(metric.evidence).toContain('remaining term');
+  });
+  it.each([.001, .001001])('enforces the inclusive fixed quantity boundary: %s ETH', async gap => {
+    const input = await basisFixture();
+    const group = input.asset.data!.assets[0];
+    for (const p of input.asset.data!.risk!.positions) p.sizeToken = 3 + gap;
+    for (const p of group.borosOpen) { p.sizeToken = 3 + gap; p.notionalUsd = p.sizeToken * 3000; }
+    const metric = check(input, 'basis.mark_spread_usd_per_eth').metrics['basis.loss_profit_ratio'];
+    expect(metric.value === null).toBe(gap > .001);
+  });
+  it('does not replace a failed current estimate with a legacy collector ratio', async () => {
+    const input = await fixture();
+    input.supplement.data!.metrics['basis.loss_profit_ratio'] = { value: 0, unit: 'ratio', scope,
+      observedAt: now, ttlSeconds: 120, complete: true, source: 'legacy collector', evidence: 'old baseline model' };
+    expect(check(input, 'basis.mark_spread_usd_per_eth').metrics['basis.loss_profit_ratio'].value).toBeNull();
+  });
+  it.each(['missing', 'different-quantity'] as const)('uses entry APR as the spread baseline with %s strategy configuration', async kind => {
+    const input = await fixture();
+    if (kind === 'missing') input.supplement.data!.baseline = null;
+    else input.supplement.data!.baseline!.boros['128'] = -4;
+    const c = check(input, 'boros.adverse_spread_pp');
+    expect(c.metrics['boros.adverse_spread_pp'].value).toBeCloseTo(3);
+    expect(c.status).not.toBe('UNKNOWN');
+  });
+  it.each(['entry-apr', 'mark-apr', 'direction', 'maturity', 'partial', 'stale', 'account', 'wallet', 'expired'] as const)('keeps unverified spread inputs UNKNOWN: %s', async kind => {
+    const input = await fixture();
+    input.supplement.data!.baseline = null;
+    const risk = input.asset.data!.risk!;
+    if (kind === 'entry-apr') risk.positions[0].entryApr = null;
+    if (kind === 'mark-apr') risk.positions[1].markApr = null;
+    if (kind === 'direction') risk.positions[0].side = 'LONG';
+    if (kind === 'maturity') risk.positions[1].maturity! += 86400;
+    if (kind === 'partial') risk.positionsComplete = false;
+    if (kind === 'stale') risk.stale = true;
+    if (kind === 'account') risk.accountId = 1;
+    if (kind === 'wallet') risk.address = '0x' + '2'.repeat(40);
+    if (kind === 'expired') risk.observedAt = (now - contracts['boros.adverse_spread_pp'].max_age_seconds - 1) * 1000;
+    expect(check(input, 'boros.adverse_spread_pp').status).toBe('UNKNOWN');
+  });
   it('retains normalized quantities without prices, and distinguishes funding gaps from price-neutral exposure', async () => {
     const input = await fixture();
     input.positions.data!.positions[0].markPrice = '';
@@ -196,7 +289,7 @@ describe('Risk shared-snapshot acceptance', () => {
     expect(check(input, 'rollover.incremental_margin_usd').status).toBe('UNKNOWN');
   });
   it('accepts valid reviewed evidence for every enabled metric and retains every missing check', async () => {
-    const input = await fixture();
+    const input = await basisFixture();
     const ids = new Set(evaluateRisk(scope, {}, now).checks.flatMap(c => Object.keys(c.metrics)));
     for (const id of ids) {
       const contract = contracts[id];

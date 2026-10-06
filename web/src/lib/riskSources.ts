@@ -2,7 +2,7 @@ import type { AccountInterest } from '../api/queries';
 import type { AssetViewResponse, BorosCollateralResponse, CrossexAccount, DealAlert, DealView, OpenOrder, OpportunitiesResult, PositionsResponse } from '../api/types';
 import { readEvidence } from '../api/client';
 import { gateNumber, liquidationLines } from './liquidation';
-import { deriveAsset } from '../panels/assets/assetModel';
+import { deriveAsset, pairMaturityProfit } from '../panels/assets/assetModel';
 import { contracts, fundingGapFingerprint, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
 
 export interface RiskRead<T> { data?: T; isError?: boolean; isPending?: boolean; isPlaceholderData?: boolean }
@@ -16,6 +16,7 @@ const numeric = (v: unknown): number | null => (typeof v === 'string' || typeof 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const sum = (values: unknown[]): number | null => values.every(finite) ? (values as number[]).reduce((a, b) => a + b, 0) : null;
 const signed = (b: { side: string; sizeToken: number }): number => b.sizeToken * (b.side === 'SHORT' ? -1 : 1);
+export const BASIS_QUANTITY_TOLERANCE_ETH = 0.001;
 
 /** Adapts shared snapshots. Domain owners keep all money/position calculations. */
 export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: number, historicalOnly = false) {
@@ -153,8 +154,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     put('hedge.maturity_match', h.maturity === b.maturity, 'Exact live Boros market maturities', observed);
     put('hedge.direction_match', baseline && (h.side !== 'SHORT' || b.side !== 'LONG') ? false : null, 'Actual signed ETH cross-pool Boros quantities / verified membership', observed,
       true, 'Missing explicit scoped strategy baseline');
-    if (baseline && h.side === 'SHORT' && b.side === 'LONG' && [h, b].every(p => baseline.boros[String(p.marketId)] === signed(p))
-      && [h.entryApr, h.markApr, b.entryApr, b.markApr].every(finite)) put('boros.adverse_spread_pp', ((h.markApr! - b.markApr!) - (h.entryApr! - b.entryApr!)) * 100, 'Existing asset-view fixed/mark APR (percentage points)', observed);
+    if (h.side === 'SHORT' && b.side === 'LONG' && h.maturity === b.maturity
+      && [h.entryApr, h.markApr, b.entryApr, b.markApr].every(finite)) put('boros.adverse_spread_pp', ((h.markApr! - b.markApr!) - (h.entryApr! - b.entryApr!)) * 100, 'Existing asset-view mark APR spread relative to entry APR spread (percentage points)', observed);
     const mtm = sum(pair.map(p => p.mtmUsd));
     put('boros.rate_mtm_usd', mtm, 'Existing official asset-view rate MTM', observed);
     if (poolValid && pool && finite(pool.netBalance) && pool.netBalance > 0 && token && finite(token.priceUsd) && token.priceUsd > 0 && mtm !== null && collateral) put('boros.mtm_loss_equity_ratio', Math.max(0, -mtm) / (pool.netBalance * token.priceUsd), 'Negative rate MTM / same-pool equity', Math.min(observed!, collateral.observedAt));
@@ -185,6 +186,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
       if (expectedSymbols.some(s => (actualPerps.get(s) ?? 0) * baseline.perps[s] <= 0)) put('hedge.direction_match', false, 'Perp direction differs from verified baseline', positions!.observedAt);
     }
   }
+  put('basis.loss_profit_ratio', null, 'Four-leg pair Profit at maturity estimate (default fees)', observed, false,
+    'Missing fresh scope-matched ETH positions or four-leg pair');
   if (perpsComplete && uniquePerps) {
     const h = perpLegs.filter(p => p.exchange === 'HYPERLIQUID' && /^HYPERLIQUID_FUTURE_ETH_(USDC|USDT|USD)$/.test(p.symbol));
     const b = perpLegs.filter(p => p.exchange === 'BINANCE' && /^BINANCE_FUTURE_ETH_(USDC|USDT|USD)$/.test(p.symbol));
@@ -197,20 +200,38 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
       put('basis.pnl_usd', pnl, 'Existing per-leg upstream unrealized price PnL', positions!.observedAt);
       const group = asset?.data.assets.find(g => g.base === 'ETH');
       const coverage = asset?.data.coverage;
-      if (baseline && pair && group && coverage && coverage.borosTxnsComplete && !coverage.backfilling && asset!.data.warnings.length === 0
-        && coverage.settlementsFromSec <= baseline.opened_at && coverage.perpClosedFromSec <= baseline.opened_at
-        && h[0].side === 'SHORT' && b[0].side === 'LONG' && pair[0].side === 'SHORT' && pair[1].side === 'LONG'
-        && pair[0].sizeToken === pair[1].sizeToken && pair[0].maturity === pair[1].maturity
-        && perpLegs.length === 2 && [h[0], b[0]].every(p => pair.some(leg => leg.venue === p.exchange && leg.side === p.side && leg.sizeToken === p.qty))
-        && pair.every(p => baseline.boros[String(p.marketId)] === signed(p))
-        && [h[0], b[0]].every(p => baseline.perps[p.symbol] === (p.side === 'SHORT' ? -p.qty : p.qty))
-        && group.perpOpen.every(p => finite(p.feesUsd)) && group.borosHistory.every(p => finite(p.tradeFeeUsd))
-        && group.borosOpen.every(p => finite(p.settleFeeApr) && finite(p.entryApr))) {
-        const model = deriveAsset(group, {}, baseline.opened_at, baseline.opened_at);
-        const fees = group.perpOpen.reduce((n, p) => n + p.feesUsd, 0) + group.borosHistory.filter(p => pair.some(b => b.marketId === p.marketId)).reduce((n, p) => n + p.tradeFeeUsd, 0);
-        const profit = model.lockedToMaturityUsd === null ? null : model.lockedToMaturityUsd - fees;
-        if (profit !== null && profit > 0 && pnl !== null) put('basis.loss_profit_ratio', Math.max(0, -pnl) / profit, 'Price loss / conditional return from existing financial model and verified opening/fees/history', Math.min(observed!, positions!.observedAt));
+      const close = (a: number, b: number) => Math.abs(a - b) <= BASIS_QUANTITY_TOLERANCE_ETH + 1e-12;
+      let reason: string | undefined;
+      if (!pair || !group || !coverage || !coverage.borosTxnsComplete || coverage.backfilling || asset!.data.warnings.length)
+        reason = 'Missing complete scope-matched asset pair / fee history, or read warnings';
+      else if (h[0].side !== 'SHORT' || b[0].side !== 'LONG' || pair[0].side !== 'SHORT' || pair[1].side !== 'LONG'
+        || pair[0].maturity !== pair[1].maturity || pair[0].maturity! <= now)
+        reason = 'Four-leg direction or live maturity mismatch';
+      else if (perpLegs.length !== 2 || !close(h[0].qty, b[0].qty) || !close(pair[0].sizeToken, pair[1].sizeToken)
+        || ![h[0], b[0]].every(p => pair.some(leg => leg.venue === p.exchange && close(leg.sizeToken, p.qty))))
+        reason = 'Four-leg quantity difference exceeds fixed 0.001 ETH tolerance';
+      else if (group.perpOpen.length !== 2 || group.borosOpen.length !== 2
+        || !group.perpOpen.every(p => finite(p.feesUsd) && finite(p.imUsd) && finite(p.notionalUsd)
+          && perpLegs.some(l => l.symbol === p.symbol && l.exchange === p.venue && l.side === p.side && close(l.qty, p.qty)))
+        || !group.borosOpen.every(p => finite(p.settleFeeApr) && finite(p.entryApr) && finite(p.imUsd) && finite(p.notionalUsd)
+          && pair.some(l => l.marketId === p.marketId && l.venue === p.venue && l.side === p.side && l.maturity === p.maturity && close(l.sizeToken, p.sizeToken)))
+        || !group.borosHistory.every(p => finite(p.tradeFeeUsd)))
+        reason = 'Asset-model legs differ from current positions or have missing rate / fee inputs';
+      let profit: number | null = null;
+      let start: number | null = null;
+      if (!reason && group) {
+        const model = deriveAsset(group, {}, 0, now);
+        if (model.pairs.length !== 1) reason = 'Expected one unambiguous current four-leg pair';
+        else {
+          profit = pairMaturityProfit(model.pairs[0], now).netUsd;
+          start = model.pairs[0].hedgedSinceSec;
+          if (!finite(profit) || profit <= 0) reason = 'Profit at maturity estimate is unavailable or non-positive';
+        }
       }
+      if (pnl === null) reason = 'Missing upstream perpetual price PnL';
+      const source = `Price loss / pair Profit at maturity estimate; F=${profit ?? 'UNKNOWN'} USD; ${start === null ? 'remaining term (unknown start)' : 'hedged since ' + start}; default entry fees, no exit fees; quantity tolerance 0.001 ETH`;
+      put('basis.loss_profit_ratio', !reason && profit !== null && pnl !== null ? Math.max(0, -pnl) / profit : null,
+        source, Math.min(observed ?? positions!.observedAt, positions!.observedAt), !reason, reason);
     }
   }
   if (borosComplete && perpsComplete && uniquePerps && (baseline || (!perpLegs.length && !boros.length))) {
@@ -295,6 +316,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     for (const [id, e] of Object.entries(supplemental.metrics)) {
       const current = metrics[id];
       if (!contracts[id]) continue;
+      // This estimate belongs to the current shared pair model, not legacy collector baselines.
+      if (id === 'basis.loss_profit_ratio') continue;
       const measuredBound = current?.lowerBound && !validateEvidence(id, { ...current, complete: true }, scope, now);
       if (!measuredBound && (!current || validateEvidence(id, current, scope, now))) metrics[id] = e;
     }

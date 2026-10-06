@@ -250,6 +250,19 @@ export function defaultChargePerpFees(pair: {
   return pair.perpOpenedSec >= pair.borosOpenedSec - PERP_PREDATES_HEDGE_SEC;
 }
 
+/** Shared Profit at maturity estimate. Defaults mirror the four-leg pair row. */
+export function pairMaturityProfit(pair: PairEstimate, nowSec: number,
+  includePerpFees = defaultChargePerpFees(pair), includeExitFee = false) {
+  const termYears = pair.soonestMaturitySec > 0
+    ? (pair.soonestMaturitySec - (pair.hedgedSinceSec ?? nowSec)) / SECONDS_IN_YEAR : 0;
+  const perYearUsd = pair.lockedAprFwd !== null ? pair.lockedAprFwd * pair.capitalUsd : null;
+  const carryUsd = perYearUsd !== null && termYears > 0 ? perYearUsd * termYears : null;
+  const chargedUsd = pair.borosFeesPaidUsd + (includePerpFees ? pair.perpFeesPaidUsd : 0)
+    + (includeExitFee ? pair.exitFeeUsd : 0);
+  const netUsd = carryUsd === null ? null : carryUsd - chargedUsd;
+  return { termYears, perYearUsd, carryUsd, chargedUsd, netUsd };
+}
+
 export const perpKey = (symbol: string): string => `perp:${symbol}`;
 export const borosKey = (marketId: number): string => `boros:${marketId}`;
 

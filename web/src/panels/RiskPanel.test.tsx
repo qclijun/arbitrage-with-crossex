@@ -89,7 +89,9 @@ describe('rendered Risk / shared API evidence', () => {
     server.events.on('request:start', listener);
     try {
       mount();
-      await waitFor(() => expect(Array.from(document.querySelectorAll('details')).every(d => d.querySelector('summary')?.textContent?.includes('Complete applicable evidence'))).toBe(true));
+      await waitFor(() => expect(Array.from(document.querySelectorAll('details')).filter(d => d !== check('basis.mark_spread_usd_per_eth'))
+        .every(d => d.querySelector('summary')?.textContent?.includes('Complete applicable evidence'))).toBe(true));
+      expect(check('basis.mark_spread_usd_per_eth')).toHaveTextContent('Missing fresh scope-matched ETH positions or four-leg pair');
       const visibleRules = rules.filter(r => r.enabled !== false && r.risk !== 8);
       expect(document.querySelectorAll('details')).toHaveLength(visibleRules.length);
       for (const id of new Set(visibleRules.flatMap(r => r.metrics))) expect(screen.getAllByText(id, { exact: false }).length).toBeGreaterThan(0);

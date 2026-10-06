@@ -86,6 +86,7 @@ import {
   SECONDS_IN_YEAR,
   borosKey,
   defaultChargePerpFees,
+  pairMaturityProfit,
   borosHistoryKeep,
   excludedFraction,
   exclusionAt,
@@ -476,22 +477,15 @@ function PairCard({
   // Fee → APR: one-off fees spread over the pair's FULL hedged life
   // (first-fully-hedged → soonest maturity), on the same capital base as the
   // locked APR. Falls back to the remaining term when no leg start is known.
-  const termYears =
-    soonest > 0 ? (soonest - (pair.hedgedSinceSec ?? nowSec)) / SECONDS_IN_YEAR : 0;
+  const { termYears, perYearUsd, carryUsd, chargedUsd, netUsd } =
+    pairMaturityProfit(pair, nowSec, inclPerpFees, inclExitFee);
   const dragOf = (feeUsd: number): number | null =>
     termYears > 0 && pair.capitalUsd > 0 ? feeUsd / pair.capitalUsd / termYears : null;
-  const perYearUsd = pair.lockedAprFwd !== null ? pair.lockedAprFwd * pair.capitalUsd : null;
-  const carryUsd = perYearUsd !== null && termYears > 0 ? perYearUsd * termYears : null;
   const elapsedYears =
     pair.hedgedSinceSec !== null && soonest > 0
       ? Math.max(0, Math.min(nowSec, soonest) - pair.hedgedSinceSec) / SECONDS_IN_YEAR
       : 0;
   const earnedSoFarUsd = perYearUsd !== null ? perYearUsd * elapsedYears : null;
-  const chargedUsd =
-    pair.borosFeesPaidUsd +
-    (inclPerpFees ? pair.perpFeesPaidUsd : 0) +
-    (inclExitFee ? pair.exitFeeUsd : 0);
-  const netUsd = carryUsd === null ? null : carryUsd - chargedUsd;
   // THE headline: the locked rate with every charged fee taken out of it.
   const netApr =
     netUsd !== null && termYears > 0 && pair.capitalUsd > 0
