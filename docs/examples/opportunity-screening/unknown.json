@@ -1,0 +1,111 @@
+{
+  "runId": "synthetic-unknown",
+  "timeTaipei": "2026-10-07T20:00:00+08:00",
+  "status": "UNKNOWN",
+  "assumptions": {
+    "notionalUsd": 10000,
+    "top": 5,
+    "entryMode": "maker-hedge",
+    "borosEntry": "market",
+    "primaryExitMode": "close",
+    "maxAgeSeconds": 180,
+    "maxSkewSeconds": 120,
+    "clientRebatesAdded": false,
+    "feeEvidence": "API without assumption warning"
+  },
+  "evidence": {
+    "closeObservedAtMs": 1791374400000,
+    "rollObservedAtMs": 1791374279000
+  },
+  "candidates": [
+    {
+      "identity": [
+        "ETH",
+        "USDT",
+        1,
+        1794528000,
+        1,
+        2,
+        "okx",
+        "OKX_ETH_USDT",
+        "binance",
+        "BINANCE_ETH_USDT"
+      ],
+      "underlying": "ETH",
+      "collateral": "USDT",
+      "maturity": 1794528000,
+      "shortLeg": {
+        "marketId": 1,
+        "venue": "OKX",
+        "crossexVenue": "okx",
+        "crossexSymbol": "OKX_ETH_USDT",
+        "base": "ETH",
+        "execApr": 0.1
+      },
+      "longLeg": {
+        "marketId": 2,
+        "venue": "BINANCE",
+        "crossexVenue": "binance",
+        "crossexSymbol": "BINANCE_ETH_USDT",
+        "base": "ETH",
+        "execApr": 0.1
+      },
+      "makerLeg": "short",
+      "costs": {
+        "borosTakerFeeUsd": 2,
+        "borosSettleFeeUsd": 2,
+        "perpEntryFeesUsd": 2,
+        "perpEntrySlippageUsd": 2,
+        "perpExitFeesUsd": 2,
+        "perpExitSlippageUsd": 2,
+        "totalUsd": 12,
+        "annualizedApr": 0.01
+      },
+      "capital": {
+        "borosShortImUsd": 100,
+        "borosLongImUsd": 100,
+        "perpShortImUsd": 100,
+        "perpLongImUsd": 100,
+        "shortLeverageMax": 100,
+        "longLeverageMax": 100
+      },
+      "grossSpreadApr": 0.08,
+      "execSpreadApr": 0.06,
+      "borosImpactApr": 0.02,
+      "capitalUsd": 400,
+      "netFixedApr": 0.05,
+      "netFixedAprOnCapital": 1.25,
+      "effectiveLeverage": 25,
+      "estProfitUsd": 50,
+      "secondsToMaturity": 3153600,
+      "holdingPeriodReturn": 0.125,
+      "extraCostToZeroUsd": 50,
+      "oiUsd": [
+        100000,
+        100000
+      ],
+      "reasons": [
+        "Ranked by model capital efficiency, then notional return and executable spread.",
+        "Absolute net profit and total API costs are shown over the remaining term."
+      ],
+      "roll": {
+        "status": "UNKNOWN",
+        "reasons": [
+          "observation skew or missing comparison"
+        ]
+      }
+    }
+  ],
+  "excluded": [],
+  "dataReasons": [
+    "observation skew or missing comparison"
+  ],
+  "limitations": [
+    "Maker entry and modeled maker exit assume a fill at mid; resting orders are not guaranteed to fill.",
+    "Model capital is the return denominator, not account funds or a safe budget.",
+    "Book ok does not prove four-leg fills; OI is only market-size context.",
+    "No client rebates added. Gas, borrowing interest and other unmodelled costs are excluded.",
+    "Boros price impact is already in execution APR and is not deducted again.",
+    "Roll avoids this period's perpetual exit costs; final exit can still cost money and future opportunities are not guaranteed."
+  ]
+}

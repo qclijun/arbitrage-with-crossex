@@ -3,9 +3,9 @@
 Parent: ../map.md
 Label: ready-for-agent
 Type: task
-Status: ready-for-agent
-Progress: unclaimed
-Assignee: none
+Status: resolved
+Progress: resolved
+Assignee: implement_04
 Blocked by: none
 
 ## Spec
@@ -26,3 +26,11 @@ Blocked by: none
 - 2026-10-07：按用户显式调用 to-spec 从现有对话综合并发布，直接标记 ready-for-agent，不重新进行需求访谈。之前的决策票保留历史，未被冒称已访谈解决或原型验收完成；它们不作为本实施票的阻塞依赖。
 - 2026-10-07 用户确认测试高层边界符合预期：合成 API 响应至 Markdown/JSON 报告，验证筛选、账户范围、UNKNOWN 和只读约束；不执行实盘交易。详见规格 Testing Decisions。
 - 2026-10-07 用户收窄范围：仅筛选 Opportunity，删除已有持仓关系与账户保证金/四腿持仓读取。保留合成响应到报告的测试边界，账户与持仓分析不再纳入验收。
+
+## Answer
+
+- 2026-10-07：交付 `scripts/opportunity_screening.py`，仅双次 Opportunity GET；本机传输、完整证据准入、close/roll 匹配、稳定 Top 排序与 UNKNOWN 降级均由单次公开运行边界验证。没有实盘、凭据查询、服务启动或 API 修改。
+- 使用说明：`docs/OPPORTUNITY-SCREENING.zh-CN.md`；合成有效/降级双格式示例：`docs/examples/opportunity-screening/`。
+- TDD 先验证缺脚本失败，再实现有效报告；随后以假设费率参考、畸形嵌套证据、错误类型规模与凭据嵌入标签逐次 red/green。`python3 -m unittest discover -s tests/screening -v`：16 测试通过，含多组参数化场景。`python3 -m py_compile scripts/opportunity_screening.py` 通过。
+- 集成前父代理基线检查：`yarn verify`、`yarn typecheck`、`yarn --cwd web build` 全通过；首次沙箱内 verify 的子进程 EPERM 在沙箱外重跑解决，日志 `/tmp/opportunity-screening-verify.log`。本票未修改 TypeScript/UI。
+- 证据限制：使用既有 API 聚合 observedAt/stale 与文字 warning，未独立验证逐项上游费用来源；warning 保守降级。盘口与模型资金不代表四腿执行准备，未计 Gas/借款利息等成本，未叠加客户端返费。

@@ -42,3 +42,7 @@ Updated: 2026-10-07 Asia/Taipei
 - 重写服务端已有收益计算、直接连接交易所另建采集系统。
 - 首版修改终端 API 或新增证据字段；缺口仅记录并降级。
 - 原子展期完整执行准备评估；已有独立 [原子展期风险监控地图](../rollover-risk-monitoring/map.md)，筛选只引用能够核验的证据，不替代该工作。
+
+## Delivered
+
+- 2026-10-07：[实施票 04](issues/04-readonly-opportunity-screening.md) resolved；交付单次只读 CLI、16 个公开运行边界离线测试及合成双格式示例。用法见 [说明](../../docs/OPPORTUNITY-SCREENING.zh-CN.md)。历史决策票 01/03 保留历史，不代表已完成访谈或原型；02 维持范围外。集成分支审查仍由 implement-spec 工作流完成。
