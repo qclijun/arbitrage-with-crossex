@@ -11,7 +11,7 @@ Updated: 2026-10-07 Asia/Taipei
 | 02 | 一 | [Boros market 流动性数据源与单位核验](issues/02-boros-liquidity-sources.md) | — | resolved |
 | 03 | 一 | [Boros market 流动性快照只读获取](issues/03-boros-liquidity-snapshot.md) | 02 | resolved |
 | 04 | 一 | [Boros Spread 与双边订单簿深度计算](issues/04-boros-liquidity-metrics.md) | 03 | resolved |
-| 05 | 一 | [Boros market 流动性指标展示与第一阶段验收](issues/05-boros-liquidity-view.md) | 04 | unclaimed / open |
+| 05 | 一 | [Boros market 流动性指标展示与第一阶段验收](issues/05-boros-liquidity-view.md) | 04 | resolved |
 | 06 | 二 | [原子展期计划身份、候选市场与四腿权限](issues/06-atomic-rollover-plan-permissions.md) | 05 | unclaimed / open |
 | 07 | 二 | [四腿有效深度、执行 APR 与价格边界](issues/07-atomic-rollover-effective-depth.md) | 06 | unclaimed / open |
 | 08 | 二 | [完整展期模拟、批次保证金与执行准备证据](issues/08-atomic-rollover-batch-readiness.md) | 07 | unclaimed / open |
@@ -47,3 +47,5 @@ Updated: 2026-10-07 Asia/Taipei
 2026-10-07：[#03](issues/03-boros-liquidity-snapshot.md) resolved。交付 `GET /api/boros/liquidity`：固定公开 UI whitelist/live scope、分页覆盖、逐字段/逐侧来源与独立时钟、native rolling 24h YU/单边 OI、精确 18-decimal book raw 与 best-50 限制、UNKNOWN/partial/stale/失败证据。复用公开 client seam 与原 TTL/429 冷却，缓存按部署/chain/market/query scope 隔离，无账户或交易调用、无后台采样。18 项新 API 用例、144 项定向回归、完整 verify（根 2572 通过/8 跳过、web 1451 通过及两端 typecheck）、web build 与格式检查通过；规范建议整理后复审 0 项，规格轴 0 项。未提前实现 #04–05；#04 依赖已满足，仍未认领，第一阶段/父票尚未完成。
 
 2026-10-07：[#04](issues/04-boros-liquidity-metrics.md) resolved。逐 market 快照增加聚合 APR/带符号 Spread（fraction/pp/bp）、逐侧精确可见深度/档数/最远 APR，以及包含端点的 10/25/50 bp 窗口深度与 cap/tail 覆盖证据；输出 YU 与已核验 collateral 名义敞口，缺价源时间的 USD 继续 UNKNOWN。完整空侧与缺失/全部无效侧区分，不跨 market 合计、不生成展期 ready。12 项新边界测试、156 项定向回归、完整 verify（根 2584 通过/8 跳过、web 1451 通过及两端 typecheck）、web build 与格式/链接检查通过；规范轴 0 项、规格轴 0 项。#05 依赖已满足但仍未认领，页面与真实浏览器验收未实现，第一阶段/父票未完成。
+
+2026-10-07：[#05](issues/05-boros-liquidity-view.md) resolved，第一阶段 02–05 交付闭环。[验收证据](evidence/05/acceptance.md) 包含现有终端 Liquidity 入口、逐 venue/market 比较、独立时钟/UNKNOWN/STALE、聚合 APR/Spread 与双边可见/10/25/50 bp 深度、真实 1280px/375px 无溢出截图及官方公开 API 对照。官网 UI 451 限制如实标 UNKNOWN；不要求或推断原子就绪。根完整离线 2584 通过/8 跳过，web 完整 1456 通过（默认并发既有初始化等待超时，2 workers 重跑通过），两端 typecheck、web build、定向 API/页面/隐藏页验证通过；规范/规格复审各 0 项。临时只读验收服务已清理，现有服务未重启。第一阶段完成即停，06–10 未认领，父票 01 未关闭。

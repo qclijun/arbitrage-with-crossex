@@ -27,6 +27,7 @@ const TAB_POLLS: Record<TabId, readonly string[]> = {
   opportunities: ['/api/opportunities'],
   positions: [ASSET_VIEW_PATH],
   collateral: ['/api/boros/collateral'],
+  liquidity: ['/api/boros/liquidity'],
   risk: ['/api/account/interest', '/api/risk/evidence', '/api/health'],
   balances: ['/api/transfer'],
   orders: [],
@@ -55,6 +56,7 @@ function mockApp() {
     http.get('/api/account/interest', () => HttpResponse.json(env({ buckets: null, account: { assets: [] } }))),
     http.get('/api/health', () => HttpResponse.json(env({ status: 'ok' }))),
     http.get('/api/risk/evidence', () => HttpResponse.json(env({ scope: { credentialId: 'fixture-account', address: ADDRESS, accountId: 0, pool: 'ETH-cross' }, metrics: {}, baseline: null }))),
+    http.get('/api/boros/liquidity', () => HttpResponse.json(env({ scope: { chainId: 42161, deployment: 'public' }, coverage: { value: { returnedMarkets: 0, pages: 1 }, source: 'markets', sourceObservedAt: null, collectedAt: Date.now(), freshness: 'unknown', completeness: 'complete', reason: [] }, markets: [] }))),
     ...baseHandlers(),
     opportunitiesHandler(makeOpportunitiesResult()),
     http.get('/api/orders/open', () => HttpResponse.json(env<OpenOrder[]>([]))),
@@ -100,7 +102,7 @@ describe('hidden tabs do not poll', () => {
       recordRequests();
       renderWithClient(<App />);
       await screen.findByRole('tablist', { name: 'Sections' });
-      const everyTabPoll = TAB_IDS.filter(id => id !== 'risk' || shown === 'risk').flatMap((id) => TAB_POLLS[id]);
+      const everyTabPoll = TAB_IDS.filter(id => (id !== 'risk' || shown === 'risk') && (id !== 'liquidity' || shown === 'liquidity')).flatMap((id) => TAB_POLLS[id]);
       await waitFor(() => everyTabPoll.forEach((path) => expect(count(path)).toBeGreaterThan(0)));
 
       hits = [];

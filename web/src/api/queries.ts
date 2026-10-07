@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { copyReadEvidence, del, fetchJson, patchJson, postJson, putJson } from './client';
+import type { BorosLiquidityResponse } from './borosLiquidity';
 import { useTabActive } from '../components/TabBar';
 import { uuid } from '../lib/uuid';
 import type {
@@ -949,5 +950,17 @@ export function useCancelTelegramLink() {
       qc.invalidateQueries({ queryKey: qk.telegram });
       qc.invalidateQueries({ queryKey: qk.telegramLink });
     },
+  });
+}
+
+/** Public market diagnostics, using the existing server TTLs without force refresh. */
+export function useBorosLiquidity() {
+  const shown = useTabActive();
+  return useQuery({
+    queryKey: ['boros', 'liquidity'],
+    queryFn: () => fetchJson<BorosLiquidityResponse>('/boros/liquidity'),
+    enabled: shown,
+    refetchInterval: shown ? 30_000 : false,
+    structuralSharing: false,
   });
 }

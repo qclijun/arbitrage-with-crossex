@@ -15,6 +15,7 @@ import { TableSkeleton } from './components/Skeleton';
 import { ACTIVE_TAB_KEY, isTabId, TabBar, TabPanel, type TabId } from './components/TabBar';
 import { readJson, writeJson } from './lib/storage';
 import { BalancesPanel } from './panels/BalancesPanel';
+import { BorosLiquidityPanel } from './panels/BorosLiquidityPanel';
 import { CollateralPanel } from './panels/CollateralPanel';
 import { RiskPanel } from './panels/RiskPanel';
 import { FeesPanel } from './panels/FeesPanel';
@@ -222,6 +223,7 @@ export default function App() {
                     // Forward-looking: what to put on next, then what is on.
                     { id: 'opportunities', label: 'Opportunities', primary: true },
                     { id: 'positions', label: 'Positions', primary: true },
+                    { id: 'liquidity', label: 'Liquidity' },
                     { id: 'collateral', label: 'Collateral' },
                     { id: 'risk', label: 'Risk' },
                     { id: 'balances', label: 'Accounts' },
@@ -260,6 +262,9 @@ export default function App() {
                   </TabPanel>
                   <TabPanel id="balances" active={activeTab === 'balances'}>
                     <BalancesPanel />
+                  </TabPanel>
+                  <TabPanel id="liquidity" active={activeTab === 'liquidity'}>
+                    <BorosLiquidityPanel />
                   </TabPanel>
                   <TabPanel id="collateral" active={activeTab === 'collateral'}>
                     <CollateralPanel />
