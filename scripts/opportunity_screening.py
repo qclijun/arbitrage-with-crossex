@@ -34,6 +34,28 @@ def label(value):
     return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_.:+-]{1,48}', value) else None
 
 
+def book_failures(envelope):
+    # Only bounded identifiers and numeric evidence; never persist upstream prose.
+    data = envelope.get('data') if isinstance(envelope, dict) else None
+    meta = data.get('meta') if isinstance(data, dict) else None
+    rows = meta.get('venueBookFailures') if isinstance(meta, dict) else None
+    if not isinstance(rows, list):
+        return []
+    result = []
+    for row in rows[:500]:
+        if not isinstance(row, dict) or not label(row.get('symbol')):
+            continue
+        category = row.get('category')
+        stage = row.get('stage')
+        if category not in ('timeout', 'http', 'network', 'tls', 'invalid-response', 'unsupported', 'unexpected') or stage not in ('setup', 'metadata', 'discovery', 'book'):
+            continue
+        status, elapsed, observed = row.get('httpStatus'), row.get('elapsedMs'), row.get('observedAt')
+        code = row.get('errorCode')
+        safe_codes = ('ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'ERR_BAD_REQUEST', 'ERR_BAD_RESPONSE', 'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'ERR_CANCELED')
+        result.append(dict(symbol=label(row['symbol']), category=category, stage=stage, httpStatus=status if type(status) is int and 100 <= status <= 599 else None, errorCode=code if code in safe_codes else None, elapsedMs=elapsed if number(elapsed) and elapsed >= 0 else None, observedAtMs=observed if number(observed) and observed >= 0 else None, stale=row.get('stale') if type(row.get('stale')) is bool else None))
+    return result
+
+
 def local_base(value):
     url = parse.urlsplit(value)
     if url.scheme not in ('http', 'https') or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
@@ -299,6 +321,13 @@ def markdown(report):
             for section, values in item['reference'].items():
                 lines.append('  Reference only ' + section + ': ' + '; '.join(f"{k}: {fmt(v, 'Apr' in k or k == 'annualizedApr')}" for k, v in values.items()))
     lines.extend('- UNKNOWN: ' + reason for reason in report['dataReasons'])
+    diagnostics = []
+    for mode in ('close', 'roll'):
+        for item in report.get('evidence', {}).get(mode, {}).get('venueBookFailures', []):
+            status = item['httpStatus'] if item['httpStatus'] is not None else 'unavailable (no HTTP status recorded)'
+            diagnostics.append(f"- [{mode}] {item['symbol']}: category={item['category']}; stage={item['stage']}; HTTP={status}; errorCode={item['errorCode'] or 'unavailable'}; elapsed={fmt(item['elapsedMs'])} ms; observed={taipei_time(item['observedAtMs'] / 1000 if item['observedAtMs'] is not None else None)}; stale={item['stale']}")
+    if diagnostics:
+        lines += ['', '## Perpetual book failure diagnostics', '', 'Elapsed time covers the complete collection attempt, including metadata and connection waits.', ''] + diagnostics
     lines += ['', '## Limits', ''] + ['- ' + item for item in LIMITATIONS]
     return '\n'.join(lines) + '\n'
 
@@ -381,6 +410,8 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
     report = dict(runId=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).strftime('%Y%m%dT%H%M%S') + '-' + uuid4().hex[:12], timeTaipei=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).isoformat(), status='UNKNOWN' if unknown else 'VALID', assumptions=dict(notionalUsd=args.notional, top=args.top, entryMode='maker-hedge', borosEntry='market', primaryExitMode='close', maxAgeSeconds=args.max_age, maxSkewSeconds=args.max_skew, clientRebatesAdded=False, feeEvidence='UNKNOWN' if issues or roll_issues else 'API without assumption warning'), evidence=dict(closeObservedAtMs=close_time if number(close_time) else None, rollObservedAtMs=roll_time if number(roll_time) else None), candidates=close[:args.top], excluded=excluded + [dict(item, comparison='roll') for item in roll_excluded], dataReasons=sorted(set(data_issues)), limitations=LIMITATIONS)
     report['assumptions'].update(maxMarketAgeSeconds=args.max_age, maxStaticAgeSeconds=args.max_static_age, skewBasis='marketData')
     report['evidence'].update(close=freshness_evidence(envelopes.get('close'), args, stamp), roll=freshness_evidence(envelopes.get('roll'), args, stamp))
+    for mode in ('close', 'roll'):
+        report['evidence'][mode]['venueBookFailures'] = book_failures(envelopes.get(mode))
     for mode in ('close', 'roll'):
         envelope = envelopes.get(mode)
         meta = envelope.get('meta') if isinstance(envelope, dict) else None

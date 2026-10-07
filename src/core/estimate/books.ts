@@ -35,7 +35,9 @@ function bookRequestOptions(): AxiosRequestConfig {
   if (proxyPool?.url !== url) {
     proxyPool?.agent.destroy();
     proxyPool = { url, agent: new HttpsProxyAgent(url, {
-      keepAlive: true, maxSockets: 8, maxFreeSockets: 2, scheduling: 'lifo', timeout: 30_000,
+      // Retain the whole bounded pool: scans request ETH/BTC/HYPE concurrently.
+      // Keeping only two idle sockets made the third symbol reconnect every scan.
+      keepAlive: true, maxSockets: 8, maxFreeSockets: 8, scheduling: 'lifo', timeout: 30_000,
     }) };
   }
   // The explicit agent owns CONNECT; disable Axios's second proxy layer.
@@ -258,13 +260,42 @@ export const BOOK_VENUES: ReadonlySet<string> = new Set(Object.keys(BOOK_SOURCES
 const sizeMultCache = new Map<string, number>();
 const marketIdCache = new Map<string, string>();
 
-/**
- * Fetch + normalize a venue's public book. Unknown venue (e.g. DERIBIT), HTTP error,
- * missing instrument, or an unparseable/empty book all return null — NEVER throws.
- */
+export interface VenueBookFailure {
+  category: 'timeout' | 'http' | 'network' | 'tls' | 'invalid-response' | 'unsupported' | 'unexpected';
+  stage: 'setup' | 'metadata' | 'discovery' | 'book';
+  httpStatus: number | null;
+  errorCode: string | null;
+  elapsedMs: number;
+}
+
+export interface VenueBookResult {
+  book: NormalizedBook | null;
+  failure: VenueBookFailure | null;
+}
+
+// Never expose upstream messages, response bodies, request headers or proxy URLs.
+const SAFE_ERROR_CODES = new Set([
+  'ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN',
+  'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'ERR_BAD_REQUEST', 'ERR_BAD_RESPONSE',
+  'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'ERR_CANCELED',
+]);
+
+/** Preserve the trading callers' book-or-null contract; do not retry failed reads. */
 export async function fetchVenueBook(exchange: string, base: string, quote: string): Promise<NormalizedBook | null> {
+  return (await fetchVenueBookWithDiagnostics(exchange, base, quote)).book;
+}
+
+/** Same transport and normalization as fetchVenueBook, with safe failure evidence. */
+export async function fetchVenueBookWithDiagnostics(exchange: string, base: string, quote: string): Promise<VenueBookResult> {
+  const started = performance.now();
+  let stage: VenueBookFailure['stage'] = 'setup';
+  let httpStatus: number | null = null;
+  const fail = (category: VenueBookFailure['category'], errorCode: string | null = null): VenueBookResult => ({
+    book: null, failure: { category, stage, httpStatus, errorCode, elapsedMs: Math.round(performance.now() - started) },
+  });
   const src = BOOK_SOURCES[exchange.toUpperCase()];
-  if (!src) return null;
+  if (!src) return fail('unsupported');
   try {
     // Metadata and books share the same per-origin connection pool.
     const requestOptions = bookRequestOptions();
@@ -275,10 +306,12 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
       if (cached != null) {
         sizeMult = cached;
       } else {
-        const { data } = await axios.get(src.meta.url(base, quote), requestOptions);
+        stage = 'metadata';
+        const { data, status } = await axios.get(src.meta.url(base, quote), requestOptions);
+        httpStatus = status;
         const m = src.meta.extract(data);
         // Without the multiplier the sizes would be off by orders of magnitude — bail.
-        if (m == null) return null;
+        if (m == null) return fail('invalid-response');
         sizeMultCache.set(key, m);
         sizeMult = m;
       }
@@ -288,19 +321,32 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
       const key = `${exchange.toUpperCase()}:${base}`;
       marketId = marketIdCache.get(key) ?? null;
       if (marketId === null) {
-        const { data } = await axios.get(src.market.url, requestOptions);
+        stage = 'discovery';
+        const { data, status } = await axios.get(src.market.url, requestOptions);
+        httpStatus = status;
         marketId = src.market.extract(data, base);
-        if (marketId === null) return null;
+        if (marketId === null) return fail('invalid-response');
         marketIdCache.set(key, marketId);
       }
     }
     const url = src.url(base, quote, marketId);
-    const { data } =
+    stage = 'book';
+    httpStatus = null;
+    const { data, status } =
       src.method === 'POST'
         ? await axios.post(url, src.body?.(base, quote), requestOptions)
         : await axios.get(url, requestOptions);
-    return src.parse(data, sizeMult);
-  } catch {
-    return null;
+    httpStatus = status;
+    const book = src.parse(data, sizeMult);
+    return book ? { book, failure: null } : fail('invalid-response');
+  } catch (error) {
+    if (!axios.isAxiosError(error)) return fail('unexpected');
+    const status = error.response?.status;
+    httpStatus = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+    const code = error.code && SAFE_ERROR_CODES.has(error.code) ? error.code : null;
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return fail('timeout', code);
+    if (httpStatus !== null) return fail('http', code);
+    if (code && /CERT|SIGNATURE/.test(code)) return fail('tls', code);
+    return fail('network', code);
   }
 }

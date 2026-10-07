@@ -48,6 +48,8 @@ API 提供聚合及分类观察时间，费用来源仍通过文字 warning 表�
 
 公开行情通过支持 keepAlive 的代理连接池按目标站复用 HTTPS 隧道，元数据与盘口共享连接；切换代理配置会关闭旧连接池。单次请求仍为 2.5 秒超时，没有新增重试或后台采集，也不改变签名交易客户端。首次连接、连接被上游关闭或网络中断后仍需重新握手，可能超时并产生 UNKNOWN；连接复用只减少重复建连开销，不保证每次请求成功。
 
+盘口失败的 HTTP 状态码、采集耗时、错误类别、阶段及观察时间由 `data.meta.venueBookFailures` 提供，脚本保存到两种报告。未取得 HTTP 状态时明确显示未记录，不把它猜作 HTTP 错误；详见[盘口失败诊断](venue-book-diagnostics.md)。新字段需要终端服务加载更新后的代码，历史报告无法补回这些信息。
+
 合成示例：[有效报告](examples/opportunity-screening/valid.md)、[JSON](examples/opportunity-screening/valid.json)；[降级报告](examples/opportunity-screening/unknown.md)、[JSON](examples/opportunity-screening/unknown.json)。示例全部来自固定时钟和虚构 API 响应，金额仅用于演示，不代表当前市场。
 
 离线检查：

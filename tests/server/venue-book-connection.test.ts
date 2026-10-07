@@ -13,14 +13,18 @@ it('reuses real TLS tunnels per origin for public books and metadata', async () 
   const fixture = path.resolve('tests/fixtures/venue-book-proxy');
   const sockets = new Set<net.Socket>();
   const tunnels: string[] = [];
+  let delayResponse = false;
   const levels = { bids: [['100', '2']], asks: [['101', '3']] };
   const origin = https.createServer({
     key: readFileSync(path.join(fixture, 'key.pem')),
     cert: readFileSync(path.join(fixture, 'cert.pem')),
   }, (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ...levels, result: { b: levels.bids, a: levels.asks },
-      data: [{ ctVal: '0.1', ...levels }] }));
+    const body = JSON.stringify({ ...levels, result: { b: levels.bids, a: levels.asks },
+      data: [{ ctVal: '0.1', ...levels }] });
+    // Keep parallel reads overlapping so each needs its own TLS tunnel.
+    if (delayResponse) setTimeout(() => res.end(body), 50);
+    else res.end(body);
   });
   const proxy = http.createServer();
   const track = (socket: net.Socket) => {
@@ -80,6 +84,29 @@ it('reuses real TLS tunnels per origin for public books and metadata', async () 
         env: { ...process.env, GATE_PROXY: `http://127.0.0.1:${proxyPort}`, NODE_EXTRA_CA_CERTS: '' },
       });
     expect(JSON.parse(untrusted.stdout)).toBeNull();
+    tunnels.length = 0;
+    delayResponse = true;
+    const parallel = await run(process.execPath,
+      ['--import', 'tsx', '--input-type=module', '-e', `
+        import { fetchVenueBook } from './src/core/estimate/books.ts';
+        const rounds = [];
+        for (let round = 0; round < 3; round++) {
+          rounds.push(await Promise.all(['ETH', 'BTC', 'HYPE'].map(async base =>
+            (await fetchVenueBook('BINANCE', base, 'USDT'))?.bids)));
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        console.log(JSON.stringify(rounds));
+        process.exit(0);
+      `], {
+        cwd: process.cwd(), timeout: 15_000,
+        env: { ...process.env, GATE_PROXY: `http://127.0.0.1:${proxyPort}`,
+          NODE_EXTRA_CA_CERTS: path.join(fixture, 'cert.pem') },
+      });
+    expect(JSON.parse(parallel.stdout)).toEqual(Array.from({ length: 3 }, () => [
+      [[100, 2]], [[100, 2]], [[100, 2]],
+    ]));
+    // Nine requests need only the first three tunnels, including the third symbol.
+    expect(tunnels).toEqual(Array(3).fill('fapi.binance.com:443'));
   } finally {
     for (const socket of sockets) socket.destroy();
     await Promise.all([new Promise<void>((resolve) => proxy.close(() => resolve())),

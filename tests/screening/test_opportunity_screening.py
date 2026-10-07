@@ -315,6 +315,20 @@ class ScreeningTest(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertEqual(report['candidates'], [])
 
+    def test_book_failure_diagnostics_are_saved_rendered_and_sanitized(self):
+        close, roll = response(), response('roll')
+        close['data']['meta']['venueBookFailures'] = [dict(symbol='HYPERLIQUID_FUTURE_HYPE_USDC', category='timeout', stage='book', httpStatus=None, errorCode='ECONNABORTED', elapsedMs=2501, observedAt=NOW * 1000, stale=False, message='private-body'), dict(symbol='BINANCE_FUTURE_ETH_USDT', category='http', stage='book', httpStatus=429, errorCode='private-code', elapsedMs=100, observedAt=NOW * 1000, stale=False)]
+        _, report = self.run_scan(close, roll)
+        failures = report['evidence']['close']['venueBookFailures']
+        self.assertEqual(failures[0]['elapsedMs'], 2501)
+        self.assertIsNone(failures[1]['errorCode'])
+        self.assertNotIn('private-', json.dumps(report) + self.md)
+        self.assertIn('HTTP=429', self.md)
+        self.assertIn('elapsed=2,501.00 ms', self.md)
+        self.assertIn('category=timeout', self.md)
+        self.assertIn('no HTTP status recorded', self.md)
+        self.assertEqual(report['evidence']['roll']['venueBookFailures'], [])
+
     def test_market_and_static_freshness_use_independent_age_limits(self):
         close, roll = response(), response('roll')
         for envelope in (close, roll):

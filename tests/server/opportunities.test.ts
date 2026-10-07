@@ -133,6 +133,29 @@ afterEach(async () => {
 });
 
 describe('GET /api/opportunities', () => {
+  it('caches book failure evidence with its original observation and recovers on refresh', async () => {
+    app = makeTestApp({ borosFetch: borosStub(borosBodies()) });
+    mockGate();
+    nock('https://api.hyperliquid.xyz').post('/info').reply(503, { message: 'private-upstream-body' });
+    nock('https://fapi.binance.com').get('/fapi/v1/depth').query(true)
+      .reply(200, { bids: [['1899', '5000']], asks: [['1901', '5000']] });
+    const query = { method: 'GET' as const, url: '/api/opportunities?entryMode=maker-hedge', headers: HOST };
+    const first = (await app.inject(query)).json().data;
+    expect(first.meta.venueBookFailures).toEqual([expect.objectContaining({
+      symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', category: 'http', stage: 'book',
+      httpStatus: 503, errorCode: 'ERR_BAD_RESPONSE', elapsedMs: expect.any(Number),
+      observedAt: expect.any(Number), stale: false,
+    })]);
+    expect(JSON.stringify(first)).not.toContain('private-upstream-body');
+    expect(first.groups[0].pairs[0].makerLeg).toBeNull();
+    const cached = (await app.inject(query)).json().data;
+    expect(cached.meta.venueBookFailures).toEqual(first.meta.venueBookFailures);
+    mockGate();
+    mockVenueBooks();
+    const recovered = (await app.inject({ ...query, url: '/api/opportunities?entryMode=maker-hedge&fresh=1' })).json().data;
+    expect(recovered.meta.venueBookFailures).toEqual([]);
+    expect(recovered.groups[0].pairs[0].makerLeg).not.toBeNull();
+  });
   it.each(['fees', `boros:book:${HL_MARKET}`])('keeps freshness stale flags independent when %s is stale', async (staleKey) => {
     const cache = new TtlCache();
     const cacheGet = cache.get.bind(cache);

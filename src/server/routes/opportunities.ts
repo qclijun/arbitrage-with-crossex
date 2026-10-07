@@ -31,7 +31,7 @@ import {
 } from '../../core/boros/opportunities';
 import { normalizeVenue } from '../../core/boros/venue';
 import { isSupportedCoin } from '../../core/coins';
-import { BOOK_VENUES, fetchVenueBook, type NormalizedBook } from '../../core/estimate/books';
+import { BOOK_VENUES, fetchVenueBookWithDiagnostics, type NormalizedBook, type VenueBookFailure } from '../../core/estimate/books';
 import {
   feeRowsForTier,
   feeTierLabel,
@@ -315,6 +315,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
 
       const borosBooks = new Map<number, BorosOrderBook | null>();
       const venueBooks = new Map<string, NormalizedBook | null>();
+      const venueBookFailures: Array<VenueBookFailure & { symbol: string; observedAt: number; stale: boolean }> = [];
       const leverageMaxBySymbol = new Map<string, number>();
       await Promise.all([
         ...(borosEntry === 'market' ? bookMarketIds : []).map(async (marketId) => {
@@ -334,31 +335,33 @@ export function opportunitiesRoutes(deps: AppDeps) {
         // NOT the `books:` key — that one caches a BookTouch for /api/books/:symbol.
         ...[...perpSymbols].map(async (symbol) => {
           const snapshot = await deps.cache.get(
-            `fullbook:${symbol}`,
+            `fullbook-diagnostics:${symbol}`,
             TTL.book,
             () => {
               const { exchange, base, quote } = parseSymbol(symbol);
-              return fetchVenueBook(exchange, base, quote);
+              return fetchVenueBookWithDiagnostics(exchange, base, quote);
             },
             { fresh },
           );
           observe(snapshot);
-          venueBooks.set(symbol, snapshot.value);
+          venueBooks.set(symbol, snapshot.value.book);
+          if (snapshot.value.failure) venueBookFailures.push({ ...snapshot.value.failure, symbol, observedAt: snapshot.observedAt, stale: snapshot.stale });
         }),
         // Fallback keys carry a colon, symbols carry underscores — the cache
         // namespace can't collide with the symbol-keyed entries above.
         ...[...fallbackBooks].map(async (key) => {
           const snapshot = await deps.cache.get(
-            `fullbook:${key}`,
+            `fullbook-diagnostics:${key}`,
             TTL.book,
             () => {
               const [venue, base] = key.split(':');
-              return fetchVenueBook(venue, base, fallbackQuote(venue));
+              return fetchVenueBookWithDiagnostics(venue, base, fallbackQuote(venue));
             },
             { fresh },
           );
           observe(snapshot);
-          venueBooks.set(key, snapshot.value);
+          venueBooks.set(key, snapshot.value.book);
+          if (snapshot.value.failure) venueBookFailures.push({ ...snapshot.value.failure, symbol: key, observedAt: snapshot.observedAt, stale: snapshot.stale });
         }),
         loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol, (snapshot) => observe(snapshot, 'staticData')).then((warning) => {
           if (warning !== null) warnings.push(warning);
@@ -380,7 +383,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
         { notionalUsd, borosEntry, entryMode, exitMode, takerFeeOverride },
       );
       return reply.ok(
-        { ...result, meta: { ...result.meta, freshness }, warnings: [...new Set([...warnings, ...result.warnings])] },
+        { ...result, meta: { ...result.meta, freshness, venueBookFailures: venueBookFailures.sort((a, b) => a.symbol.localeCompare(b.symbol)) }, warnings: [...new Set([...warnings, ...result.warnings])] },
         { stale: inputsStale, observedAt },
       );
     });
