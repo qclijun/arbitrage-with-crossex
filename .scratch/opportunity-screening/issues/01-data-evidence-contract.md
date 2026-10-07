@@ -4,10 +4,10 @@ Parent: ../map.md
 Label: wayfinder:grilling
 Type: grilling
 Mode: HITL
-Status: open
-Triage: needs-info
-Progress: unclaimed
-Assignee: none
+Status: resolved
+Triage: ready-for-agent
+Progress: resolved
+Assignee: root
 Blocked by: none
 
 ## Question
@@ -29,3 +29,11 @@ Blocked by: none
 - 2026-10-07 用户确认：首版仅脚本，缺证据标 UNKNOWN；终端 API 补充另列后续工单。
 - 图核查：`buildOpportunities` 位于 `src/core/boros/opportunities.ts:839`，由 `src/server/routes/opportunities.ts` 调用。机会接口返回收益模型结果，脚本无需重新实现交易所报价。
 - 本地 explorer 已完成只读核查，报告为 [现有终端数据与脚本复用边界](../evidence/source-review.md)。此票尚未认领、解决或实现。
+
+- 2026-10-08：按用户要求更新状态。原始问题与初始 needs-info 分诊保留为历史；完成判定以最终确认的“仅筛选 Opportunity”范围为准。
+
+## Answer
+
+- 当前范围的数据契约已由[最终规格](../spec.md)、[实施票 04](04-readonly-opportunity-screening.md)和[使用说明](../../../docs/OPPORTUNITY-SCREENING.zh-CN.md)覆盖：仅本机 Opportunity GET，限制代理/跳转并保护认证信息，核查 close/roll 范围与报价口径，分别检查行情和静态新鲜度，缺费用或盘口证据保留 UNKNOWN。
+- 账户、钱包、完整持仓及账户适用性已由用户移出范围，不宣称这些原始分支已实现或验证。后续用户明确批准分类新鲜度及盘口失败诊断 API 扩展，取代初始“不修改 API”的相关限制。
+- 27 项合成脚本测试通过，覆盖传输安全、脱敏、费用证据、新鲜度、范围匹配及降级语义。本票无当前范围内的待决事项，关闭为 resolved，不表示重新进行了初始访谈。

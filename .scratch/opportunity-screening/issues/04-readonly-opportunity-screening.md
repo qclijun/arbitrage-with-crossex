@@ -29,6 +29,8 @@ Blocked by: none
 
 ## Answer
 
+- 2026-10-08 状态复核：维持 resolved。盘口失败诊断及三路并发连接保留修复已提交为 `575ae58`；榜外 roll 异常完整报告修复为 `227c755`，均已进入 `codex/opportunity-screening`。当前脚本 27 项离线测试通过；最新只读扫描 `20261008T005518-f47dbc261379` 为 VALID，Top 5，无对照异常。该扫描仅验证当次证据，不证明实盘执行准备，也不保证未来没有 UNKNOWN。01/03 同步关闭，02 维持 wontfix。
+
 - 2026-10-07 用户要求解决代理超时根因：确认 Axios 隐式代理使用 v5 Agent，请求结束销毁 socket；公开行情改用独立的 `https-proxy-agent 7` keepAlive 连接池，同站点元数据与盘口复用隧道，保留 2.5 秒超时、TLS 校验与失败返回 null，没有重试或更改签名 Gate 客户端。真实本机 HTTPS/CONNECT 回归修复前 7 条隧道、修复后按三个目标站仅 3 条，额外验证未信任证书拒绝。只读实测 Gate 复用后 130～149ms、Binance 127ms、Hyperliquid 133～174ms；首次建连仍可能超时。完整 `yarn verify` 与生产构建通过；未重启用户服务。
 
 - 2026-10-07 用户要求统一代理：修复公开永续盘口采集仅 Gate 使用 `GATE_PROXY` 的问题，所有交易所盘口 GET/POST 及合约元数据、市场发现查询复用该配置。7 项网络边界回归场景修复前 6 失败、修复后全部通过；相关 113 项测试和 25 项脚本测试通过。只读实测 Binance ETH/BTC 各买卖 100 档，Gate ETH、Lighter ETH/BTC、Bybit HYPE 也取得盘口。代理失败仍返回缺失证据，不直连回退；本机筛选请求不经代理。没有重启用户服务，需重新加载代码后生效。
