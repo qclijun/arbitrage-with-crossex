@@ -1,6 +1,6 @@
 # 单次只读 Opportunity 筛选脚本规格
 
-Status: ready-for-agent
+Status: resolved
 Updated: 2026-10-07 Asia/Taipei
 
 ## Problem Statement

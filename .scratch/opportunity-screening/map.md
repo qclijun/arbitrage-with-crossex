@@ -1,7 +1,7 @@
 # 投资机会筛选脚本工作地图
 
 Label: wayfinder:map
-Status: open
+Status: resolved
 Updated: 2026-10-07 Asia/Taipei
 
 ## Destination
@@ -45,4 +45,4 @@ Updated: 2026-10-07 Asia/Taipei
 
 ## Delivered
 
-- 2026-10-07：[实施票 04](issues/04-readonly-opportunity-screening.md) resolved；交付单次只读 CLI、16 个公开运行边界离线测试及合成双格式示例。用法见 [说明](../../docs/OPPORTUNITY-SCREENING.zh-CN.md)。历史决策票 01/03 保留历史，不代表已完成访谈或原型；02 维持范围外。集成分支审查仍由 implement-spec 工作流完成。
+- 2026-10-07：[实施票 04](issues/04-readonly-opportunity-screening.md) resolved；交付单次只读 CLI、18 个公开运行边界离线测试及合成双格式示例。用法见 [说明](../../docs/OPPORTUNITY-SCREENING.zh-CN.md)。历史决策票 01/03 保留历史，不代表已完成访谈或原型；02 维持范围外。集成分支 `codex/opportunity-screening` 已完成双轴审查：Standards 无发现，Spec 两项 P2 已修复并复核通过。全仓离线验证和生产构建通过；未查询实盘。
