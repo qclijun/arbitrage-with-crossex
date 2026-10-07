@@ -238,3 +238,26 @@ class ScreeningTest(unittest.TestCase):
         code, report = self.run_scan(close, roll)
         self.assertEqual(code, 0)
         self.assertNotIn('synthetic-token', json.dumps(report) + self.md)
+
+    def test_numeric_overflow_saves_unknown_report_instead_of_crashing(self):
+        for profit, capital in ((10 ** 400, 400), (1e308, 1e-308)):
+            with self.subTest(profit=profit, capital=capital):
+                close = response()
+                close['data']['groups'][0]['pairs'][0].update(estProfitUsd=profit, capitalUsd=capital)
+                code, report = self.run_scan(close, response('roll'))
+                self.assertEqual(code, 2)
+                self.assertEqual(report['candidates'], [])
+                self.assertEqual(report['excluded'][0]['status'], 'UNKNOWN')
+                self.assertNotIn('Infinity', json.dumps(report))
+
+    def test_roll_maker_leg_mismatch_preserves_close_and_marks_comparison_unknown(self):
+        roll = response('roll')
+        roll['data']['groups'][0]['pairs'][0]['makerLeg'] = 'long'
+        code, report = self.run_scan(response(), roll)
+        self.assertEqual(code, 2)
+        self.assertEqual(len(report['candidates']), 1)
+        self.assertEqual(report['candidates'][0]['makerLeg'], 'short')
+        comparison = report['candidates'][0]['roll']
+        self.assertEqual(comparison['status'], 'UNKNOWN')
+        self.assertIn('maker leg mismatch', comparison['reasons'])
+        self.assertIn('maker leg mismatch', self.md)

@@ -34,3 +34,5 @@ Blocked by: none
 - TDD 先验证缺脚本失败，再实现有效报告；随后以假设费率参考、畸形嵌套证据、错误类型规模与凭据嵌入标签逐次 red/green。`python3 -m unittest discover -s tests/screening -v`：16 测试通过，含多组参数化场景。`python3 -m py_compile scripts/opportunity_screening.py` 通过。
 - 集成前父代理基线检查：`yarn verify`、`yarn typecheck`、`yarn --cwd web build` 全通过；首次沙箱内 verify 的子进程 EPERM 在沙箱外重跑解决，日志 `/tmp/opportunity-screening-verify.log`。本票未修改 TypeScript/UI。
 - 证据限制：使用既有 API 聚合 observedAt/stale 与文字 warning，未独立验证逐项上游费用来源；warning 保守降级。盘口与模型资金不代表四腿执行准备，未计 Gas/借款利息等成本，未叠加客户端返费。
+
+- 2026-10-07 集成代码审查修正两项 P2：巨型 JSON 整数及持有期收益除法溢出现在写 UNKNOWN 降级报告并退出 2；close/roll makerLeg 不同保留有效 close 主榜，对照明确 maker leg mismatch/UNKNOWN 并退出 2。两项均先通过公开运行边界观察失败，再修正；`python3 -m unittest discover -s tests/screening -v` 现 18 测试全部通过，`python3 -m py_compile scripts/opportunity_screening.py` 与 `git diff --check` 通过。既有合成示例行为不变，未修改样例。

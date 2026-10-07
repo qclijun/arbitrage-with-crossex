@@ -21,7 +21,12 @@ LIMITATIONS = ['Maker entry and modeled maker exit assume a fill at mid; resting
 
 
 def number(value):
-    return type(value) in (int, float) and math.isfinite(value)
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def label(value):
@@ -147,8 +152,12 @@ def normalize(envelope, mode, args, now):
             if issues:
                 excluded.append(dict(status='UNKNOWN', reasons=sorted(set(issues)), reference=dict(values={k: pair[k] if number(pair.get(k)) else None for k in VALUES}, costs={k: costs[k] if isinstance(costs, dict) and number(costs.get(k)) else None for k in COSTS}) if 'assumed fee schedule: reference only' in issues else None))
                 continue
+            holding_return = pair['estProfitUsd'] / pair['capitalUsd']
+            if not number(holding_return):
+                excluded.append(dict(status='UNKNOWN', reasons=['holding-period return exceeds finite numeric range']))
+                continue
             row = dict(identity=list(key), underlying=label(group['underlying']), collateral=label(group['collateral']), maturity=group['maturity'], shortLeg=legs[0], longLeg=legs[1], makerLeg=pair['makerLeg'], costs={k: costs[k] for k in COSTS}, capital={k: capital[k] for k in CAPITAL}, **{k: pair[k] for k in VALUES})
-            row['holdingPeriodReturn'] = pair['estProfitUsd'] / pair['capitalUsd']
+            row['holdingPeriodReturn'] = holding_return
             row['extraCostToZeroUsd'] = max(0, pair['estProfitUsd'])
             row['oiUsd'] = [m.get('oiUsd') if number(m.get('oiUsd')) and m['oiUsd'] >= 0 else None for m in group['markets'] if isinstance(m, dict) and m.get('marketId') in (legs[0]['marketId'], legs[1]['marketId'])]
             row['reasons'] = ['Ranked by model capital efficiency, then notional return and executable spread.', 'Absolute net profit and total API costs are shown over the remaining term.']
@@ -251,6 +260,8 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
     for row in close:
         match = roll_map.get(tuple(row['identity']))
         why = compare + roll_issues + ([] if match else ['matching roll comparison unavailable'])
+        if match and match['makerLeg'] != row['makerLeg']:
+            why.append('maker leg mismatch')
         row['roll'] = dict(status='UNKNOWN', reasons=sorted(set(why))) if why else dict(match, status='VALID')
     close.sort(key=lambda row: (-row['netFixedAprOnCapital'], -row['netFixedApr'], -row['execSpreadApr'], tuple(row['identity'])))
     data_issues = failures + issues + roll_issues + compare
