@@ -262,6 +262,33 @@ class ScreeningTest(unittest.TestCase):
         self.assertIn('maker leg mismatch', comparison['reasons'])
         self.assertIn('maker leg mismatch', self.md)
 
+    def test_unknown_roll_outside_top_is_saved_and_explains_overall_status(self):
+        for problem in ('maker-mismatch', 'missing-match'):
+            with self.subTest(problem=problem):
+                close, roll = response(count=2), response('roll', count=2)
+                if problem == 'maker-mismatch':
+                    roll['data']['groups'][0]['pairs'][1]['makerLeg'] = 'long'
+                    reason = 'maker leg mismatch'
+                else:
+                    roll['data']['groups'][0]['pairs'].pop()
+                    reason = 'matching roll comparison unavailable'
+                code, report = self.run_scan(close, roll, ['--top', '1'])
+                self.assertEqual(code, 2)
+                self.assertEqual(report['status'], 'UNKNOWN')
+                self.assertEqual(len(report['candidates']), 1)
+                self.assertEqual(report['candidates'][0]['roll']['status'], 'VALID')
+                self.assertEqual(report['dataReasons'], [])
+                self.assertEqual(report['excluded'], [])
+                issue = report['comparisonIssues'][0]
+                self.assertEqual(issue['rank'], 2)
+                self.assertFalse(issue['inTop'])
+                self.assertEqual(issue['shortLeg']['marketId'], 3)
+                self.assertEqual(issue['longLeg']['marketId'], 4)
+                self.assertEqual(issue['reasons'], [reason])
+                self.assertIn('## Roll comparison issues', self.md)
+                self.assertIn('markets 3 → 4', self.md)
+                self.assertIn(reason, self.md)
+
     def test_unrelated_unsupported_market_warning_does_not_exclude_valid_pair(self):
         close, roll = response(), response('roll')
         for envelope in (close, roll):

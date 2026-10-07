@@ -305,6 +305,13 @@ def markdown(report):
         if roll['status'] == 'VALID':
             lines.append('Roll costs: ' + '; '.join(f"{k}: {fmt(v, k == 'annualizedApr')}" for k, v in roll['costs'].items()))
         lines.append('')
+    if report.get('comparisonIssues'):
+        lines += ['## Roll comparison issues', '', 'These issues affect the overall data status, including candidates outside the Top list.', '']
+        for item in report['comparisonIssues']:
+            short, long = item['shortLeg'], item['longLeg']
+            context = f"{item['underlying']} / {item['collateral']} / maturity {taipei_time(item['maturity'])} / markets {short['marketId']} → {long['marketId']} / short {short['crossexSymbol']} / long {long['crossexSymbol']}"
+            lines.append(f"- [roll; rank {item['rank']}; {'in Top list' if item['inTop'] else 'outside Top list'}] {context} — UNKNOWN: {', '.join(item['reasons'])}")
+        lines.append('')
     lines += ['## Exclusions and evidence', '']
     exclusions = {}
     for item in report['excluded']:
@@ -405,9 +412,11 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
             why.append('maker leg mismatch')
         row['roll'] = dict(status='UNKNOWN', reasons=sorted(set(why))) if why else dict(match, status='VALID')
     close.sort(key=lambda row: (-row['netFixedAprOnCapital'], -row['netFixedApr'], -row['execSpreadApr'], tuple(row['identity'])))
+    comparison_issues = [dict(status='UNKNOWN', comparison='roll', rank=rank, inTop=rank <= args.top, reasons=row['roll']['reasons'], **pair_context(row, row)) for rank, row in enumerate(close, 1) if row['roll']['status'] == 'UNKNOWN']
     data_issues = failures + issues + roll_issues + compare
-    unknown = bool(data_issues or any(x['status'] == 'UNKNOWN' for x in excluded + roll_excluded) or any(x['roll']['status'] == 'UNKNOWN' for x in close))
+    unknown = bool(data_issues or any(x['status'] == 'UNKNOWN' for x in excluded + roll_excluded) or comparison_issues)
     report = dict(runId=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).strftime('%Y%m%dT%H%M%S') + '-' + uuid4().hex[:12], timeTaipei=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).isoformat(), status='UNKNOWN' if unknown else 'VALID', assumptions=dict(notionalUsd=args.notional, top=args.top, entryMode='maker-hedge', borosEntry='market', primaryExitMode='close', maxAgeSeconds=args.max_age, maxSkewSeconds=args.max_skew, clientRebatesAdded=False, feeEvidence='UNKNOWN' if issues or roll_issues else 'API without assumption warning'), evidence=dict(closeObservedAtMs=close_time if number(close_time) else None, rollObservedAtMs=roll_time if number(roll_time) else None), candidates=close[:args.top], excluded=excluded + [dict(item, comparison='roll') for item in roll_excluded], dataReasons=sorted(set(data_issues)), limitations=LIMITATIONS)
+    report['comparisonIssues'] = comparison_issues
     report['assumptions'].update(maxMarketAgeSeconds=args.max_age, maxStaticAgeSeconds=args.max_static_age, skewBasis='marketData')
     report['evidence'].update(close=freshness_evidence(envelopes.get('close'), args, stamp), roll=freshness_evidence(envelopes.get('roll'), args, stamp))
     for mode in ('close', 'roll'):
