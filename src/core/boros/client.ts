@@ -349,11 +349,9 @@ export async function fetchBorosMarkets(fetchImpl: FetchLike): Promise<BorosMark
   const seen = new Set<unknown>();
   let resumeToken: string | null = null;
   for (;;) {
-    const cursor = resumeToken ? `&resumeToken=${encodeURIComponent(resumeToken)}` : '';
-    const body = (await requestJson(
-      fetchImpl,
-      `${BOROS_GATEWAY_BASE_URL}/v1/markets?isMatured=false&limit=200${cursor}`,
-    )) as { results?: Array<Record<string, unknown>>; resumeToken?: unknown };
+    const body = (await fetchBorosMarketPage(fetchImpl, { resumeToken })) as {
+      results?: Array<Record<string, unknown>>; resumeToken?: unknown;
+    };
     if (!Array.isArray(body?.results)) {
       throw new CoreError('Boros /markets: unexpected response shape (no results[])', 'network');
     }
@@ -365,6 +363,30 @@ export async function fetchBorosMarkets(fetchImpl: FetchLike): Promise<BorosMark
   }
   const nowSec = Date.now() / 1000;
   return out.map((m) => normalizeBorosMarket(m, nowSec));
+}
+
+/** Shared raw public reads. Strict evidence consumers retain fields the legacy
+ * strategy normalizers discard; query scopes must use separate cache keys. */
+export function fetchBorosMarketPage(
+  fetchImpl: FetchLike,
+  query: { resumeToken: string | null; isUiWhitelisted?: boolean },
+): Promise<unknown> {
+  const cursor = query.resumeToken ? `&resumeToken=${encodeURIComponent(query.resumeToken)}` : '';
+  const ui = query.isUiWhitelisted === undefined ? '' : `&isUiWhitelisted=${query.isUiWhitelisted}`;
+  return requestJson(fetchImpl, `${BOROS_GATEWAY_BASE_URL}/v1/markets?isMatured=false&limit=200${ui}${cursor}`);
+}
+
+export function fetchBorosCollateralAssets(fetchImpl: FetchLike): Promise<unknown> {
+  return requestJson(fetchImpl, `${BOROS_GATEWAY_BASE_URL}/v1/assets?isCollateral=true`);
+}
+
+export function fetchBorosOrderBookResponse(
+  fetchImpl: FetchLike,
+  marketId: number,
+  includeAmm?: boolean,
+): Promise<unknown> {
+  const amm = includeAmm === undefined ? '' : `&includeAmm=${includeAmm}`;
+  return requestJson(fetchImpl, `${BOROS_GATEWAY_BASE_URL}/v1/markets/order-book?marketId=${marketId}&tickSize=${BOROS_BOOK_TICK_SIZE}${amm}`);
 }
 
 /**
@@ -443,8 +465,7 @@ export async function fetchBorosOrderBook(
   fetchImpl: FetchLike,
   marketId: number,
 ): Promise<BorosOrderBook> {
-  const path = `${BOROS_GATEWAY_BASE_URL}/v1/markets/order-book?marketId=${marketId}&tickSize=${BOROS_BOOK_TICK_SIZE}`;
-  const body = (await requestJson(fetchImpl, path)) as {
+  const body = (await fetchBorosOrderBookResponse(fetchImpl, marketId)) as {
     short?: { ia?: unknown; sz?: unknown };
     long?: { ia?: unknown; sz?: unknown };
   };

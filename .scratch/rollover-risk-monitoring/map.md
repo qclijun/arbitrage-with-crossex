@@ -9,7 +9,7 @@ Updated: 2026-10-07 Asia/Taipei
 | 票 | 阶段 | 交付 | Blocked by | 进度 |
 | --- | --- | --- | --- | --- |
 | 02 | 一 | [Boros market 流动性数据源与单位核验](issues/02-boros-liquidity-sources.md) | — | resolved |
-| 03 | 一 | [Boros market 流动性快照只读获取](issues/03-boros-liquidity-snapshot.md) | 02 | unclaimed / open |
+| 03 | 一 | [Boros market 流动性快照只读获取](issues/03-boros-liquidity-snapshot.md) | 02 | resolved |
 | 04 | 一 | [Boros Spread 与双边订单簿深度计算](issues/04-boros-liquidity-metrics.md) | 03 | unclaimed / open |
 | 05 | 一 | [Boros market 流动性指标展示与第一阶段验收](issues/05-boros-liquidity-view.md) | 04 | unclaimed / open |
 | 06 | 二 | [原子展期计划身份、候选市场与四腿权限](issues/06-atomic-rollover-plan-permissions.md) | 05 | unclaimed / open |
@@ -43,3 +43,5 @@ Updated: 2026-10-07 Asia/Taipei
 2026-10-07：#02 resolved，交付 [消费契约](research/02-liquidity-contract.md) 与 [官方证据](research/02-official-sources.md)。rolling 24h volume、单边 OI、YU 单位、book best-50/AMM scope 已核验；官网 OI 算法、统计独立时间和覆盖限制保持 UNKNOWN。#03 的依赖 02 已满足，可以认领；#03–10 未实现，01 未关闭。
 
 2026-10-07 #02 验证与审查：根 typecheck、Boros client 定向 43 项、完整 yarn verify（根 106 文件/2554 通过/8 跳过；web 99 文件/1451 通过及两端 typecheck）、web 生产构建、14 份文档本地链接与格式检查全部通过。首次沙箱内安装脚本测试因 spawnSync bash EPERM 失败；允许子进程的环境重跑完整 verify 后通过。测试仍有 React/MSW 日志，构建有包体积提示，均未使检查失败。code-review 标准轴 0 项、规格轴 0 项；未新增生产逻辑，因此不添加镜像式测试或应用 TDD。研究只用了公开 GET，未进行交易或账户查询。本次提交含此前拆票框架，保证文档引用可随提交检出；其余票未实现。
+
+2026-10-07：[#03](issues/03-boros-liquidity-snapshot.md) resolved。交付 `GET /api/boros/liquidity`：固定公开 UI whitelist/live scope、分页覆盖、逐字段/逐侧来源与独立时钟、native rolling 24h YU/单边 OI、精确 18-decimal book raw 与 best-50 限制、UNKNOWN/partial/stale/失败证据。复用公开 client seam 与原 TTL/429 冷却，缓存按部署/chain/market/query scope 隔离，无账户或交易调用、无后台采样。18 项新 API 用例、144 项定向回归、完整 verify（根 2572 通过/8 跳过、web 1451 通过及两端 typecheck）、web build 与格式检查通过；规范建议整理后复审 0 项，规格轴 0 项。未提前实现 #04–05；#04 依赖已满足，仍未认领，第一阶段/父票尚未完成。
