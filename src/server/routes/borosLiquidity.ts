@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { BOROS_NETWORK } from '../../../web/src/lib/borosNetwork';
 import { fetchBorosCollateralAssets, fetchBorosOrderBookResponse, resolveBorosFetch } from '../../core/boros/client';
 import { bookInputs, evidence, fetchLiquidityMarkets, LIQUIDITY_SCOPE, marketInputs, record, type MarketListing } from '../../core/boros/liquidity';
+import { calculateLiquidityMetrics } from '../../core/boros/liquidity-metrics';
 import { classifyGateError, CoreError } from '../../core/errors';
 import type { AppDeps } from '../app';
 import { TTL } from '../cache';
@@ -53,13 +54,14 @@ export function borosLiquidityRoutes(deps: AppDeps) {
           ...(collateral && (!collateral.assetId || !collateral.symbol || collateral.decimals === null) ? ['COLLATERAL_FIELDS_MISSING'] : [])];
         const book = await cached(`${scopeKey}:book:${id}:tickSize=0.0001:includeAmm=false`, TTL.borosBook,
           () => fetchBorosOrderBookResponse(fetchImpl, id, false));
-        markets.push({ ...inputs,
+        const snapshot = { ...inputs,
           collateral: evidence({ value: collateral, raw: asset, unit: 'collateral-identity',
             source: `${BOROS_NETWORK.apiBase}/v1/assets?isCollateral=true#tokenId=${tokenId}`, marketKey: inputs.marketKey,
             collectedAt: assets.collectedAt, sourceSyncStatus: null, ttlMs: TTL.boros, reason: collateralReason,
             completeness: collateralReason.length ? 'partial' : 'complete' }),
           book: bookInputs(book.value, id, book.collectedAt, TTL.borosBook, book.reason),
-        });
+        };
+        markets.push({ ...snapshot, metrics: calculateLiquidityMetrics(snapshot.book, snapshot.collateral) });
       }
       const coverage = evidence({ value: { returnedMarkets: list.rows.length, pages: list.pages, resumeToken: list.resumeToken }, raw: null,
         unit: 'market-list-coverage', source: `${BOROS_NETWORK.apiBase}/v1/markets?isMatured=false&isUiWhitelisted=true&limit=200`, marketKey: null,

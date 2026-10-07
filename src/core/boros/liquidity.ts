@@ -156,7 +156,7 @@ export function marketInputs(row: MarketRow, list: MarketListing, ttl: number, f
 }
 
 export interface BookLevel { aggregateIndex: number; apr: number; sizeRaw: string; sizeYu: string }
-function yu(raw: string): string {
+export function formatYuRaw(raw: string): string {
   const n = BigInt(raw);
   const fraction = (n % 10n ** 18n).toString().padStart(18, '0').replace(/0+$/, '');
   return `${n / 10n ** 18n}${fraction ? `.${fraction}` : ''}`;
@@ -184,7 +184,7 @@ export function bookInputs(body: unknown, id: number, collectedAt: number | null
           discardedLevels += 1; continue;
         }
         seen.add(index);
-        levels.push({ aggregateIndex: index, apr: index * LIQUIDITY_SCOPE.tickSize, sizeRaw: size, sizeYu: yu(size) });
+        levels.push({ aggregateIndex: index, apr: index * LIQUIDITY_SCOPE.tickSize, sizeRaw: size, sizeYu: formatYuRaw(size) });
       }
       levels.sort((a, b) => name === 'long' ? b.aggregateIndex - a.aggregateIndex : a.aggregateIndex - b.aggregateIndex);
       if (discardedLevels) reason.push('INVALID_OR_DUPLICATE_LEVELS');
