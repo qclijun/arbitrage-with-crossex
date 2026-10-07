@@ -21,7 +21,7 @@ def response(mode='close', count=1):
             legs.append(leg)
             markets.append(dict(leg, bookStatus='ok', execShortApr=.1, execLongApr=.1, oiUsd=100000))
         pairs.append(dict(base='ETH', shortLeg=legs[0], longLeg=legs[1], grossSpreadApr=.08, execSpreadApr=.06, borosImpactApr=.02, makerLeg='short', costs=dict(borosTakerFeeUsd=2, borosSettleFeeUsd=2, perpEntryFeesUsd=2, perpEntrySlippageUsd=2, perpExitFeesUsd=0 if mode == 'roll' else 2, perpExitSlippageUsd=0 if mode == 'roll' else 2, totalUsd=8 if mode == 'roll' else 12, annualizedApr=.01), capital=dict(borosShortImUsd=100, borosLongImUsd=100, perpShortImUsd=100, perpLongImUsd=100, shortLeverageMax=100, longLeverageMax=100), capitalUsd=400, netFixedApr=.05, netFixedAprOnCapital=1.25, effectiveLeverage=25, estProfitUsd=50 + i, secondsToMaturity=3153600, reasons=[]))
-    return dict(ok=True, meta=dict(observedAt=NOW * 1000, credentialId='synthetic-secret-id'), data=dict(meta=dict(asOfSec=NOW, notionalUsd=10000, borosEntry='market', entryMode='maker-hedge', exitMode=mode), groups=[dict(tokenId=1, collateral='USDT', maturity=NOW + 3153600, secondsToMaturity=3153600, underlying='ETH', markets=markets, pairs=pairs, warnings=[])], warnings=[]))
+    return dict(ok=True, meta=dict(observedAt=NOW * 1000, credentialId='synthetic-secret-id'), data=dict(meta=dict(asOfSec=NOW, notionalUsd=10000, borosEntry='market', entryMode='maker-hedge', exitMode=mode, freshness=dict(marketData=dict(observedAt=NOW * 1000, stale=False), staticData=dict(observedAt=NOW * 1000, stale=False))), groups=[dict(tokenId=1, collateral='USDT', maturity=NOW + 3153600, secondsToMaturity=3153600, underlying='ETH', markets=markets, pairs=pairs, warnings=[])], warnings=[]))
 
 class ScreeningTest(unittest.TestCase):
     @classmethod
@@ -261,3 +261,101 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(comparison['status'], 'UNKNOWN')
         self.assertIn('maker leg mismatch', comparison['reasons'])
         self.assertIn('maker leg mismatch', self.md)
+
+    def test_unrelated_unsupported_market_warning_does_not_exclude_valid_pair(self):
+        close, roll = response(), response('roll')
+        for envelope in (close, roll):
+            group = envelope['data']['groups'][0]
+            group['markets'].append(dict(marketId=225, name='ETH Kucoin', venue='Kucoin', crossexVenue=None, crossexSymbol=None))
+            group['warnings'] = ["ETH Kucoin trades against Kucoin, which has no CrossEx perp venue — it can't carry a hedge leg here."]
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(report['candidates']), 1)
+        for envelope in (close, roll):
+            group = envelope['data']['groups'][0]
+            group['markets'][-1].update(crossexVenue='gate', base='ETH')
+            group['warnings'] = ["No live CrossEx gate symbol for ETH — ETH Kucoin can't carry a hedge leg here."]
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(report['candidates']), 1)
+        close['data']['groups'][0]['warnings'] = ['unrecognized source warning']
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 2)
+        self.assertEqual(report['candidates'], [])
+
+    def test_missing_maker_and_costs_have_identified_specific_reasons(self):
+        close, roll = response(), response('roll')
+        for envelope in (close, roll):
+            pair = envelope['data']['groups'][0]['pairs'][0]
+            pair['makerLeg'] = None
+            pair['costs']['perpEntrySlippageUsd'] = None
+            pair['reasons'] = ["No usable okx order book for OKX_ETH_USDT — the perp slippage at $10,000 can't be estimated.", 'synthetic-token synthetic-secret-id private prose']
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 2)
+        item = report['excluded'][0]
+        self.assertEqual(item['underlying'], 'ETH')
+        self.assertEqual(item['shortLeg']['marketId'], 1)
+        self.assertIn('costs.perpEntrySlippageUsd', item['invalidFields'])
+        self.assertIn('maker entry assignment unavailable', item['reasons'])
+        self.assertIn('short: perpetual order book unavailable', item['reasons'])
+        self.assertNotIn('invalid direction or maturity evidence', item['reasons'])
+        self.assertIn('[close, roll]', self.md)
+        self.assertIn('markets 1 → 2', self.md)
+        self.assertIn('maturity 2026-11-13T08:00:00+08:00', self.md)
+        self.assertNotIn('private prose', self.md + json.dumps(report))
+
+    def test_warning_for_selected_market_and_groupwide_warning_remain_unknown(self):
+        for warning in ("OKX ETH trades against OKX, which has no CrossEx perp venue — it can't carry a hedge leg here.", "Can't price USDT collateral in USD (no reference market) — this group's book depth and open interest can't be sized in dollars."):
+            close = response()
+            market = close['data']['groups'][0]['markets'][0]
+            market['name'] = 'OKX ETH'
+            market['crossexVenue'] = None
+            close['data']['groups'][0]['warnings'] = [warning]
+            code, report = self.run_scan(close, response('roll'))
+            self.assertEqual(code, 2)
+            self.assertEqual(report['candidates'], [])
+
+    def test_market_and_static_freshness_use_independent_age_limits(self):
+        close, roll = response(), response('roll')
+        for envelope in (close, roll):
+            envelope['meta']['observedAt'] = (NOW - 339) * 1000
+            envelope['data']['meta']['freshness'] = dict(marketData=dict(observedAt=(NOW - 10) * 1000, stale=False), staticData=dict(observedAt=(NOW - 339) * 1000, stale=False))
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(report['candidates']), 1)
+        self.assertEqual(report['evidence']['close']['marketData']['ageSeconds'], 10)
+        self.assertEqual(report['evidence']['close']['staticData']['ageSeconds'], 339)
+        self.assertIn('Static data: VALID', self.md)
+        self.assertEqual(self.run_scan(close, roll, ['--max-static-age', '300'])[0], 2)
+
+    def test_category_freshness_rejects_old_future_stale_or_missing_evidence(self):
+        for category, evidence in (('marketData', dict(observedAt=(NOW - 181) * 1000, stale=False)), ('staticData', dict(observedAt=(NOW - 601) * 1000, stale=False)), ('staticData', dict(observedAt=(NOW + 1) * 1000, stale=False)), ('staticData', dict(observedAt=NOW * 1000, stale=True)), ('staticData', None)):
+            close = response()
+            close['data']['meta']['freshness'] = dict(marketData=dict(observedAt=NOW * 1000, stale=False), staticData=dict(observedAt=NOW * 1000, stale=False))
+            close['data']['meta']['freshness'][category] = evidence
+            code, report = self.run_scan(close, response('roll'))
+            self.assertEqual(code, 2)
+            self.assertEqual(report['candidates'], [])
+            self.assertEqual(report['evidence']['close'][category]['status'], 'UNKNOWN')
+
+    def test_legacy_aggregate_timestamp_cannot_prove_category_freshness(self):
+        close = response()
+        close['data']['meta'].pop('freshness')
+        code, report = self.run_scan(close, response('roll'))
+        self.assertEqual(code, 2)
+        self.assertEqual(report['candidates'], [])
+        self.assertIsNone(report['evidence']['close']['marketData']['observedAtMs'])
+        self.assertIsNone(report['evidence']['close']['staticData']['observedAtMs'])
+
+    def test_comparison_skew_uses_market_time_not_static_cache_age(self):
+        close, roll = response(), response('roll')
+        for envelope, age in ((close, 339), (roll, 500)):
+            envelope['meta']['observedAt'] = (NOW - age) * 1000
+            envelope['data']['meta']['freshness']['staticData']['observedAt'] = (NOW - age) * 1000
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 0)
+        self.assertEqual(report['candidates'][0]['roll']['status'], 'VALID')
+        roll['data']['meta']['freshness']['marketData']['observedAt'] = (NOW - 121) * 1000
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 2)
+        self.assertEqual(report['candidates'][0]['roll']['status'], 'UNKNOWN')

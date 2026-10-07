@@ -6,7 +6,14 @@ Data status: VALID
 
 ## Assumptions
 
-{"notionalUsd": 10000, "top": 5, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "API without assumption warning"}
+{"notionalUsd": 10000, "top": 5, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "API without assumption warning", "maxMarketAgeSeconds": 180, "maxStaticAgeSeconds": 600, "skewBasis": "marketData"}
+
+## Freshness evidence
+
+- close Market data: VALID; observed 2026-10-07T19:59:50+08:00; age 10.00 seconds; limit 180.00 seconds
+- close Static data: VALID; observed 2026-10-07T19:54:21+08:00; age 339.00 seconds; limit 600.00 seconds
+- roll Market data: VALID; observed 2026-10-07T19:59:50+08:00; age 10.00 seconds; limit 180.00 seconds
+- roll Static data: VALID; observed 2026-10-07T19:54:21+08:00; age 339.00 seconds; limit 600.00 seconds
 
 ## Top candidates
 

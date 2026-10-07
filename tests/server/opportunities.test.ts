@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import nock from 'nock';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreError } from '../../src/core/errors';
+import { TtlCache } from '../../src/server/cache';
 import { imInputs, raw } from '../helpers/boros-fixtures';
 import { borosStub } from '../helpers/boros-stub';
 import { HOST, makeTestApp, mockGateGet } from './helpers/gate-nock';
@@ -132,6 +133,67 @@ afterEach(async () => {
 });
 
 describe('GET /api/opportunities', () => {
+  it.each(['fees', `boros:book:${HL_MARKET}`])('keeps freshness stale flags independent when %s is stale', async (staleKey) => {
+    const cache = new TtlCache();
+    const cacheGet = cache.get.bind(cache);
+    vi.spyOn(cache, 'get').mockImplementation(async function<T>(key: string, ttl: number, load: () => Promise<T>, options?: { fresh?: boolean }) {
+      const snapshot = await cacheGet(key, ttl, load, options);
+      return { ...snapshot, stale: key === staleKey };
+    });
+    app = makeTestApp({ cache, borosFetch: borosStub(borosBodies()) });
+    mockGate();
+    mockVenueBooks();
+    const { data, meta } = (await app.inject({ method: 'GET', url: '/api/opportunities', headers: HOST })).json();
+    expect(data.meta.freshness.marketData.stale).toBe(staleKey !== 'fees');
+    expect(data.meta.freshness.staticData.stale).toBe(staleKey === 'fees');
+    expect(meta.stale).toBe(true);
+  });
+
+  it('does not invent a static observation time when static sources fail', async () => {
+    const cache = new TtlCache();
+    const cacheGet = cache.get.bind(cache);
+    vi.spyOn(cache, 'get').mockImplementation(async function<T>(key: string, ttl: number, load: () => Promise<T>, options?: { fresh?: boolean }) {
+      if (key === 'rules:all' || key === 'fees' || key.startsWith('risk:')) {
+        throw new CoreError('no credentials', 'not-configured');
+      }
+      return cacheGet(key, ttl, load, options);
+    });
+    app = makeTestApp({ cache, borosFetch: borosStub(borosBodies()) });
+    mockVenueBooks();
+    const { data } = (await app.inject({ method: 'GET', url: '/api/opportunities', headers: HOST })).json();
+    expect(data.meta.freshness.staticData).toEqual({ observedAt: null, stale: false });
+    expect(data.meta.freshness.marketData.observedAt).toEqual(expect.any(Number));
+    expect(data.warnings.length).toBeGreaterThan(0);
+  });
+
+  it('reports market and static observation times independently across polls and fresh reads', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const start = Date.now();
+      app = makeTestApp({ borosFetch: borosStub(borosBodies()) });
+      mockGate(2);
+      mockVenueBooks(3);
+      const read = (fresh = false) => app!.inject({ method: 'GET', url: `/api/opportunities${fresh ? '?fresh=1' : ''}`, headers: HOST });
+      const first = (await read()).json();
+      expect(first.data.meta.freshness).toEqual({
+        marketData: { observedAt: start, stale: false },
+        staticData: { observedAt: start, stale: false },
+      });
+      vi.setSystemTime(start + 339_000);
+      const polled = (await read()).json();
+      expect(polled.data.meta.freshness).toEqual({
+        marketData: { observedAt: start + 339_000, stale: false },
+        staticData: { observedAt: start, stale: false },
+      });
+      expect(polled.meta.observedAt).toBe(start);
+      const refreshed = (await read(true)).json();
+      expect(refreshed.data.meta.freshness.staticData.observedAt).toBe(start + 339_000);
+      expect(refreshed.meta.observedAt).toBe(start + 339_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('prices the arb group end to end and echoes the request params in meta', async () => {
     app = makeTestApp({ borosFetch: borosStub(borosBodies()) });
     mockGate();

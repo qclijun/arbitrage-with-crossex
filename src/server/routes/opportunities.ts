@@ -214,9 +214,21 @@ export function opportunitiesRoutes(deps: AppDeps) {
       );
       let inputsStale = stale;
       let observedAt = marketObservedAt;
-      const observe = (result: { observedAt: number; stale: boolean }) => {
+      const freshness = {
+        marketData: { observedAt: marketObservedAt as number | null, stale },
+        staticData: { observedAt: null as number | null, stale: false },
+      };
+      const observe = (
+        result: { observedAt: number; stale: boolean },
+        category: keyof typeof freshness = 'marketData',
+      ) => {
         observedAt = Math.min(observedAt, result.observedAt);
         inputsStale ||= result.stale;
+        const evidence = freshness[category];
+        evidence.observedAt = evidence.observedAt === null
+          ? result.observedAt
+          : Math.min(evidence.observedAt, result.observedAt);
+        evidence.stale ||= result.stale;
       };
       const markets = allMarkets.filter((m) => isSupportedCoin(normalizeUnderlying(m.base)));
 
@@ -238,7 +250,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
           async () => (await ruleClient(deps).listCrossexRuleSymbols()).body,
           { fresh },
         );
-        observe(snapshot);
+        observe(snapshot, 'staticData');
         symbolsByVenueBase = resolveHedgeSymbols(snapshot.value);
         rulesAvailable = true;
       } catch (err) {
@@ -266,7 +278,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
             async () => (await deps.getClients().crossEx.getCrossexFee()).body,
             { fresh },
           );
-          observe(snapshot);
+          observe(snapshot, 'staticData');
           feeRows = snapshot.value as VenueFeeRow[];
         } catch {
           feeRows = feeRowsForTier('vip0', crossexVenues);
@@ -348,7 +360,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
           observe(snapshot);
           venueBooks.set(key, snapshot.value);
         }),
-        loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol, observe).then((warning) => {
+        loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol, (snapshot) => observe(snapshot, 'staticData')).then((warning) => {
           if (warning !== null) warnings.push(warning);
         }),
       ]);
@@ -368,7 +380,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
         { notionalUsd, borosEntry, entryMode, exitMode, takerFeeOverride },
       );
       return reply.ok(
-        { ...result, warnings: [...new Set([...warnings, ...result.warnings])] },
+        { ...result, meta: { ...result.meta, freshness }, warnings: [...new Set([...warnings, ...result.warnings])] },
         { stale: inputsStale, observedAt },
       );
     });

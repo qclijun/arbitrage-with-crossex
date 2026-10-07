@@ -4,7 +4,8 @@
  * Everything here degrades to `null` (never throws) — a missing book just moves
  * `estimateFill` down its fallback chain.
  */
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { gateProxy } from '../clients';
 
 export interface NormalizedBook {
@@ -17,6 +18,29 @@ export interface NormalizedBook {
 type Level = [number, number];
 
 const TIMEOUT_MS = 2500;
+
+let proxyPool: { url: string; agent: HttpsProxyAgent<string> } | undefined;
+
+/** Keep public market-data tunnels alive without changing signed Gate clients.
+ * Axios's implicit proxy agent uses v5, which closes every completed socket. */
+function bookRequestOptions(): AxiosRequestConfig {
+  const proxy = gateProxy();
+  if (!proxy) {
+    proxyPool?.agent.destroy();
+    proxyPool = undefined;
+    return { timeout: TIMEOUT_MS };
+  }
+  const host = proxy.host.includes(':') ? `[${proxy.host}]` : proxy.host;
+  const url = `${proxy.protocol}://${host}:${proxy.port}`;
+  if (proxyPool?.url !== url) {
+    proxyPool?.agent.destroy();
+    proxyPool = { url, agent: new HttpsProxyAgent(url, {
+      keepAlive: true, maxSockets: 8, maxFreeSockets: 2, scheduling: 'lifo', timeout: 30_000,
+    }) };
+  }
+  // The explicit agent owns CONNECT; disable Axios's second proxy layer.
+  return { timeout: TIMEOUT_MS, proxy: false, httpsAgent: proxyPool.agent };
+}
 
 /** The venue's own instrument id for a CrossEx BASE/QUOTE; null = venue unsupported. */
 export function nativeSymbol(exchange: string, base: string, quote: string): string | null {
@@ -241,9 +265,9 @@ const marketIdCache = new Map<string, string>();
 export async function fetchVenueBook(exchange: string, base: string, quote: string): Promise<NormalizedBook | null> {
   const src = BOOK_SOURCES[exchange.toUpperCase()];
   if (!src) return null;
-  // Same Gate routing as clients.ts — api.gateio.ws must go through the configured proxy.
-  const proxy = exchange.toUpperCase() === 'GATE' ? gateProxy() : undefined;
   try {
+    // Metadata and books share the same per-origin connection pool.
+    const requestOptions = bookRequestOptions();
     let sizeMult = 1;
     if (src.meta) {
       const key = `${exchange.toUpperCase()}:${nativeSymbol(exchange, base, quote)}`;
@@ -251,7 +275,7 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
       if (cached != null) {
         sizeMult = cached;
       } else {
-        const { data } = await axios.get(src.meta.url(base, quote), { timeout: TIMEOUT_MS, proxy });
+        const { data } = await axios.get(src.meta.url(base, quote), requestOptions);
         const m = src.meta.extract(data);
         // Without the multiplier the sizes would be off by orders of magnitude — bail.
         if (m == null) return null;
@@ -264,7 +288,7 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
       const key = `${exchange.toUpperCase()}:${base}`;
       marketId = marketIdCache.get(key) ?? null;
       if (marketId === null) {
-        const { data } = await axios.get(src.market.url, { timeout: TIMEOUT_MS, proxy });
+        const { data } = await axios.get(src.market.url, requestOptions);
         marketId = src.market.extract(data, base);
         if (marketId === null) return null;
         marketIdCache.set(key, marketId);
@@ -273,8 +297,8 @@ export async function fetchVenueBook(exchange: string, base: string, quote: stri
     const url = src.url(base, quote, marketId);
     const { data } =
       src.method === 'POST'
-        ? await axios.post(url, src.body?.(base, quote), { timeout: TIMEOUT_MS, proxy })
-        : await axios.get(url, { timeout: TIMEOUT_MS, proxy });
+        ? await axios.post(url, src.body?.(base, quote), requestOptions)
+        : await axios.get(url, requestOptions);
     return src.parse(data, sizeMult);
   } catch {
     return null;

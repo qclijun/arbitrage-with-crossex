@@ -29,9 +29,10 @@ export interface Credentials {
 }
 
 /**
- * Optional HTTP(S) proxy for Gate API calls — `.env`: `GATE_PROXY=http://127.0.0.1:7899`.
- * Scoped per axios instance (never process-wide) so Boros and other venues keep their
- * own routes. Axios CONNECT-tunnels HTTPS targets through it, so signed TLS stays
+ * Optional HTTP(S) proxy for Gate API calls and public venue books —
+ * `.env`: `GATE_PROXY=http://127.0.0.1:7899`.
+ * Scoped per axios instance/request (never process-wide); Boros keeps its own
+ * transport. Axios CONNECT-tunnels HTTPS targets through it, so signed TLS stays
  * end-to-end and the proxy only sees the destination host.
  */
 export function gateProxy(): AxiosProxyConfig | undefined {

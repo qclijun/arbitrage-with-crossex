@@ -29,6 +29,14 @@ Blocked by: none
 
 ## Answer
 
+- 2026-10-07 用户要求解决代理超时根因：确认 Axios 隐式代理使用 v5 Agent，请求结束销毁 socket；公开行情改用独立的 `https-proxy-agent 7` keepAlive 连接池，同站点元数据与盘口复用隧道，保留 2.5 秒超时、TLS 校验与失败返回 null，没有重试或更改签名 Gate 客户端。真实本机 HTTPS/CONNECT 回归修复前 7 条隧道、修复后按三个目标站仅 3 条，额外验证未信任证书拒绝。只读实测 Gate 复用后 130～149ms、Binance 127ms、Hyperliquid 133～174ms；首次建连仍可能超时。完整 `yarn verify` 与生产构建通过；未重启用户服务。
+
+- 2026-10-07 用户要求统一代理：修复公开永续盘口采集仅 Gate 使用 `GATE_PROXY` 的问题，所有交易所盘口 GET/POST 及合约元数据、市场发现查询复用该配置。7 项网络边界回归场景修复前 6 失败、修复后全部通过；相关 113 项测试和 25 项脚本测试通过。只读实测 Binance ETH/BTC 各买卖 100 档，Gate ETH、Lighter ETH/BTC、Bybit HYPE 也取得盘口。代理失败仍返回缺失证据，不直连回退；本机筛选请求不经代理。没有重启用户服务，需重新加载代码后生效。
+
+- 2026-10-07 用户后续批准最小 API 扩展：Opportunity 的 `data.meta.freshness` 新增 `marketData/staticData`，各自汇总 observedAt 与 stale，原聚合元数据、缓存 TTL 和收益模型不变。脚本行情上限默认 180 秒、静态默认 600 秒，`--max-age` 保留为行情别名，close/roll 偏差比较行情时间；旧服务缺分类字段仍 UNKNOWN。25 项脚本测试、75 项相关接口/模型测试、全仓 `yarn verify`（2588 服务端/单元通过、1456 UI 通过）、生产构建及差异检查全部通过。合成有效示例包含行情 10 秒/静态 339 秒且 VALID。只读检查确认当前服务尚未加载字段；没有重启服务，需重新加载代码后生效。
+
+- 2026-10-07 后续修复：已知缺合约组告警按市场关联，忽略候选未使用市场的告警；未知/整组告警仍 UNKNOWN。拆分 maker 与到期错误，排除项新增组合身份、缺失字段和固定盘口/费率原因，Markdown 合并相同 close/roll 项。21 项离线测试通过，包含误伤复现和敏感文本不落盘。相同只读命令实测生成 `20261007T213103-8ba84c9747f0`；组级误伤与误导性到期原因消失，本次因实际观察年龄超 180 秒及部分永续盘口不可用保持 UNKNOWN。未修改原报告或服务端，未放宽证据门槛。
+
 - 2026-10-07：交付 `scripts/opportunity_screening.py`，仅双次 Opportunity GET；本机传输、完整证据准入、close/roll 匹配、稳定 Top 排序与 UNKNOWN 降级均由单次公开运行边界验证。没有实盘、凭据查询、服务启动或 API 修改。
 - 使用说明：`docs/OPPORTUNITY-SCREENING.zh-CN.md`；合成有效/降级双格式示例：`docs/examples/opportunity-screening/`。
 - TDD 先验证缺脚本失败，再实现有效报告；随后以假设费率参考、畸形嵌套证据、错误类型规模与凭据嵌入标签逐次 red/green。`python3 -m unittest discover -s tests/screening -v`：16 测试通过，含多组参数化场景。`python3 -m py_compile scripts/opportunity_screening.py` 通过。

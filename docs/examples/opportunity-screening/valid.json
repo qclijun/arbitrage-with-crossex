@@ -11,11 +11,46 @@
     "maxAgeSeconds": 180,
     "maxSkewSeconds": 120,
     "clientRebatesAdded": false,
-    "feeEvidence": "API without assumption warning"
+    "feeEvidence": "API without assumption warning",
+    "maxMarketAgeSeconds": 180,
+    "maxStaticAgeSeconds": 600,
+    "skewBasis": "marketData"
   },
   "evidence": {
-    "closeObservedAtMs": 1791374400000,
-    "rollObservedAtMs": 1791374400000
+    "closeObservedAtMs": 1791374061000,
+    "rollObservedAtMs": 1791374061000,
+    "close": {
+      "marketData": {
+        "observedAtMs": 1791374390000,
+        "ageSeconds": 10.0,
+        "maxAgeSeconds": 180,
+        "status": "VALID",
+        "reasons": []
+      },
+      "staticData": {
+        "observedAtMs": 1791374061000,
+        "ageSeconds": 339.0,
+        "maxAgeSeconds": 600,
+        "status": "VALID",
+        "reasons": []
+      }
+    },
+    "roll": {
+      "marketData": {
+        "observedAtMs": 1791374390000,
+        "ageSeconds": 10.0,
+        "maxAgeSeconds": 180,
+        "status": "VALID",
+        "reasons": []
+      },
+      "staticData": {
+        "observedAtMs": 1791374061000,
+        "ageSeconds": 339.0,
+        "maxAgeSeconds": 600,
+        "status": "VALID",
+        "reasons": []
+      }
+    }
   },
   "candidates": [
     {

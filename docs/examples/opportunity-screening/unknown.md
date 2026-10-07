@@ -6,27 +6,24 @@ Data status: UNKNOWN
 
 ## Assumptions
 
-{"notionalUsd": 10000, "top": 5, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "API without assumption warning"}
+{"notionalUsd": 10000, "top": 5, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "UNKNOWN", "maxMarketAgeSeconds": 180, "maxStaticAgeSeconds": 600, "skewBasis": "marketData"}
+
+## Freshness evidence
+
+- close Market data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 180.00 seconds
+- close Static data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 600.00 seconds
+- roll Market data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 180.00 seconds
+- roll Static data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 600.00 seconds
 
 ## Top candidates
 
-### 1. ETH / USDT / markets 1 → 2
-
-Maturity: 2026-11-13T08:00:00+08:00; remaining days: 36.50
-Capital net APR: 125.00%; notional net APR: 5.00%; execution spread: 6.00%
-Net profit: $50.00; total costs: $12.00; model capital: $400.00; holding return: 12.50%
-Extra cost to erase net profit: $50.00
-Maker leg: short; short OKX_ETH_USDT; long BINANCE_ETH_USDT
-Costs: borosTakerFeeUsd: 2.00; borosSettleFeeUsd: 2.00; perpEntryFeesUsd: 2.00; perpEntrySlippageUsd: 2.00; perpExitFeesUsd: 2.00; perpExitSlippageUsd: 2.00; totalUsd: 12.00; annualizedApr: 1.00%
-Capital model: borosShortImUsd: 100.00; borosLongImUsd: 100.00; perpShortImUsd: 100.00; perpLongImUsd: 100.00; shortLeverageMax: 100.00; longLeverageMax: 100.00
-OI USD (reference): 100,000.00, 100,000.00
-Ranked by model capital efficiency, then notional return and executable spread.
-Absolute net profit and total API costs are shown over the remaining term.
-Roll comparison: UNKNOWN (observation skew or missing comparison)
-
+No qualifying candidates. Top list is not padded.
 ## Exclusions and evidence
 
-- UNKNOWN: observation skew or missing comparison
+- [close] ETH / USDT / maturity 2026-11-13T08:00:00+08:00 / markets 1 → 2 / short OKX_ETH_USDT / long BINANCE_ETH_USDT — UNKNOWN: assumed fee schedule: reference only
+  Reference only values: grossSpreadApr: 8.00%; execSpreadApr: 6.00%; borosImpactApr: 2.00%; capitalUsd: 400.00; netFixedApr: 5.00%; netFixedAprOnCapital: 125.00%; effectiveLeverage: 25.00; estProfitUsd: 50.00; secondsToMaturity: 3,153,600.00
+  Reference only costs: borosTakerFeeUsd: 2.00; borosSettleFeeUsd: 2.00; perpEntryFeesUsd: 2.00; perpEntrySlippageUsd: 2.00; perpExitFeesUsd: 2.00; perpExitSlippageUsd: 2.00; totalUsd: 12.00; annualizedApr: 1.00%
+- UNKNOWN: assumed fee schedule: reference only
 
 ## Limits
 
