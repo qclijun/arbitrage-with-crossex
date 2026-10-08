@@ -267,15 +267,34 @@ def normalize(envelope, mode, args, now):
             if not number(holding_return):
                 excluded.append(dict(status='UNKNOWN', reasons=['holding-period return exceeds finite numeric range'], **pair_context(group, pair)))
                 continue
+            admission = {}
+            if mode == 'close':
+                gross_profit = pair['grossSpreadApr'] * args.notional * (pair['secondsToMaturity'] / (365 * 86400))
+                if not number(gross_profit) or (gross_profit == 0 and pair['grossSpreadApr'] > 0):
+                    excluded.append(dict(status='UNKNOWN', reasons=['gross profit exceeds finite numeric range'], **pair_context(group, pair)))
+                    continue
+                friction = costs['totalUsd'] / gross_profit if gross_profit > 0 else None
+                if friction is not None and not number(friction):
+                    excluded.append(dict(status='UNKNOWN', reasons=['friction exceeds finite numeric range'], **pair_context(group, pair)))
+                    continue
+                admission = dict(grossProfitUsd=gross_profit, friction=friction)
+                filters = []
+                if gross_profit <= 0:
+                    filters.append('gross profit is not positive; friction is undefined')
+                elif friction >= args.max_friction:
+                    filters.append('friction is not below the configured maximum')
+                if pair['estProfitUsd'] <= args.min_profit_usd:
+                    filters.append('net profit is not above the configured minimum')
+                if filters:
+                    excluded.append(dict(status='FILTERED', reasons=filters, estProfitUsd=pair['estProfitUsd'], **admission, **pair_context(group, pair)))
+                    continue
             row = dict(identity=list(key), underlying=label(group['underlying']), collateral=label(group['collateral']), maturity=group['maturity'], shortLeg=legs[0], longLeg=legs[1], makerLeg=pair['makerLeg'], costs={k: costs[k] for k in COSTS}, capital={k: capital[k] for k in CAPITAL}, **{k: pair[k] for k in VALUES})
+            row.update(admission)
             row['holdingPeriodReturn'] = holding_return
             row['extraCostToZeroUsd'] = max(0, pair['estProfitUsd'])
             row['oiUsd'] = [m.get('oiUsd') if number(m.get('oiUsd')) and m['oiUsd'] >= 0 else None for m in group['markets'] if isinstance(m, dict) and m.get('marketId') in (legs[0]['marketId'], legs[1]['marketId'])]
             row['reasons'] = ['Ranked by model capital efficiency, then notional return and executable spread.', 'Absolute net profit and total API costs are shown over the remaining term.']
-            if pair['estProfitUsd'] <= 0 and mode == 'close':
-                excluded.append(dict(status='FILTERED', reasons=['net profit is not positive'], estProfitUsd=pair['estProfitUsd'], **pair_context(group, pair)))
-            else:
-                rows.append(row)
+            rows.append(row)
     return rows, excluded, sorted(set(reasons)), evidence['marketData']['observedAtMs'], meta.get('credentialId')
 
 
@@ -296,11 +315,15 @@ def markdown(report):
                 freshness_lines.append(f"- {mode} {title}: {item['status']}; observed {taipei_time(item['observedAtMs'] / 1000 if item['observedAtMs'] is not None else None)}; age {fmt(item['ageSeconds'])} seconds; limit {fmt(item['maxAgeSeconds'])} seconds" + ('; ' + ', '.join(item['reasons']) if item['reasons'] else ''))
     if len(freshness_lines) > 2:
         lines += freshness_lines + ['']
+    if 'maxFriction' in report['assumptions']:
+        lines += ['## Close admission thresholds', '', f"Friction < {fmt(report['assumptions']['maxFriction'], True)}; minimum net profit ${fmt(report['assumptions']['minProfitUsd'])} (must be strictly exceeded; {fmt(report['assumptions']['minProfitRatio'], True)} of per-leg notional).", '']
     lines += ['## Top candidates', '']
     if not report['candidates']:
         lines.append('No qualifying candidates. Top list is not padded.')
     for i, row in enumerate(report['candidates'], 1):
         lines += [f"### {i}. {row['underlying']} / {row['collateral']} / markets {row['shortLeg']['marketId']} → {row['longLeg']['marketId']}", '', f"Maturity: {datetime.fromtimestamp(row['maturity'], ZoneInfo('Asia/Taipei')).isoformat()}; remaining days: {row['secondsToMaturity'] / 86400:.2f}", f"Capital net APR: {fmt(row['netFixedAprOnCapital'], True)}; notional net APR: {fmt(row['netFixedApr'], True)}; execution spread: {fmt(row['execSpreadApr'], True)}", f"Net profit: ${fmt(row['estProfitUsd'])}; total costs: ${fmt(row['costs']['totalUsd'])}; model capital: ${fmt(row['capitalUsd'])}; holding return: {fmt(row['holdingPeriodReturn'], True)}", f"Extra cost to erase net profit: ${fmt(row['extraCostToZeroUsd'])}", f"Maker leg: {row['makerLeg']}; short {row['shortLeg']['crossexSymbol']}; long {row['longLeg']['crossexSymbol']}", 'Costs: ' + '; '.join(f"{k}: {fmt(v, k == 'annualizedApr')}" for k, v in row['costs'].items()), 'Capital model: ' + '; '.join(f'{k}: {fmt(v)}' for k, v in row['capital'].items()), 'OI USD (reference): ' + ', '.join(fmt(v) for v in row['oiUsd']), *row['reasons']]
+        if 'friction' in row:
+            lines.append(f"Friction: {fmt(row['friction'], True)}; gross profit ${fmt(row['grossProfitUsd'])} (mid-rate spread before Boros impact and model costs).")
         roll = row['roll']
         lines.append('Roll comparison: ' + ('UNKNOWN (' + ', '.join(roll['reasons']) + ')' if roll['status'] == 'UNKNOWN' else f"net profit ${fmt(roll['estProfitUsd'])}; capital APR {fmt(roll['netFixedAprOnCapital'], True)}; total costs ${fmt(roll['costs']['totalUsd'])}"))
         if roll['status'] == 'VALID':
@@ -323,6 +346,8 @@ def markdown(report):
         short, long = item.get('shortLeg', {}), item.get('longLeg', {})
         context = f"{item.get('underlying') or 'UNKNOWN'} / {item.get('collateral') or 'UNKNOWN'} / maturity {taipei_time(item.get('maturity'))} / markets {short.get('marketId')} → {long.get('marketId')} / short {short.get('crossexSymbol') or 'UNKNOWN'} / long {long.get('crossexSymbol') or 'UNKNOWN'}"
         lines.append(f"- [{', '.join(modes)}] {context} — {item['status']}: {', '.join(item['reasons'])}")
+        if 'friction' in item:
+            lines.append(f"  Friction: {fmt(item['friction'], True)}; gross profit ${fmt(item['grossProfitUsd'])}; net profit ${fmt(item['estProfitUsd'])}")
         if item.get('invalidFields'):
             lines.append('  Missing or invalid fields: ' + ', '.join(item['invalidFields']))
         if item.get('reference'):
@@ -363,17 +388,24 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
     parser.add_argument('--url', default='http://127.0.0.1:6688')
     parser.add_argument('--token-file', default='api-token')
     parser.add_argument('--notional', type=float, default=10000)
-    parser.add_argument('--top', type=int, default=5)
+    parser.add_argument('--top', type=int, default=10)
     parser.add_argument('--output-dir', default='data/opportunity-screening')
     parser.add_argument('--max-age', '--max-market-age', dest='max_age', type=float, default=180)
     parser.add_argument('--max-static-age', type=float, default=600)
     parser.add_argument('--max-skew', type=float, default=120)
     parser.add_argument('--timeout', type=float, default=20)
+    parser.add_argument('--max-friction', type=float, default=.4, help='Close admission requires total cost / gross profit below this ratio (default: 0.4).')
+    parser.add_argument('--min-profit-ratio', type=float, default=.001, help='Close net profit must exceed per-leg notional times this ratio (default: 0.001 = 0.1%%).')
     try:
         args = parser.parse_args(argv)
         base = local_base(args.url)
         if args.top <= 0 or any(not number(v) or v <= 0 for v in (args.notional, args.max_age, args.max_static_age, args.max_skew, args.timeout)):
             raise ValueError('Numeric options must be positive and finite')
+        if not number(args.max_friction) or args.max_friction <= 0 or not number(args.min_profit_ratio) or args.min_profit_ratio < 0:
+            raise ValueError('Invalid admission thresholds')
+        args.min_profit_usd = args.notional * args.min_profit_ratio
+        if not number(args.min_profit_usd) or (args.min_profit_ratio > 0 and args.min_profit_usd == 0):
+            raise ValueError('Minimum profit exceeds finite numeric range')
         token = Path(args.token_file).read_text().strip()
         if not token or '\n' in token or '\r' in token:
             raise ValueError('Invalid token file')
@@ -419,6 +451,7 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
     report = dict(runId=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).strftime('%Y%m%dT%H%M%S') + '-' + uuid4().hex[:12], timeTaipei=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).isoformat(), status='UNKNOWN' if unknown else 'VALID', assumptions=dict(notionalUsd=args.notional, top=args.top, entryMode='maker-hedge', borosEntry='market', primaryExitMode='close', maxAgeSeconds=args.max_age, maxSkewSeconds=args.max_skew, clientRebatesAdded=False, feeEvidence='UNKNOWN' if issues or roll_issues else 'API without assumption warning'), evidence=dict(closeMarketObservedAtMs=close_market_time if number(close_market_time) else None, rollMarketObservedAtMs=roll_market_time if number(roll_market_time) else None), candidates=close[:args.top], excluded=excluded + [dict(item, comparison='roll') for item in roll_excluded], dataReasons=sorted(set(data_issues)), limitations=LIMITATIONS)
     report['comparisonIssues'] = comparison_issues
     report['assumptions'].update(maxMarketAgeSeconds=args.max_age, maxStaticAgeSeconds=args.max_static_age, skewBasis='marketData')
+    report['assumptions'].update(maxFriction=args.max_friction, minProfitRatio=args.min_profit_ratio, minProfitUsd=args.min_profit_usd)
     report['evidence'].update(close=freshness_evidence(envelopes.get('close'), args, stamp), roll=freshness_evidence(envelopes.get('roll'), args, stamp))
     for mode in ('close', 'roll'):
         report['evidence'][mode]['venueBookFailures'] = book_failures(envelopes.get(mode))

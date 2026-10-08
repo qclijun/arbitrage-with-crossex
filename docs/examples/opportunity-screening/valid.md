@@ -6,7 +6,7 @@ Data status: VALID
 
 ## Assumptions
 
-{"notionalUsd": 10000, "top": 5, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "API without assumption warning", "maxMarketAgeSeconds": 180, "maxStaticAgeSeconds": 600, "skewBasis": "marketData"}
+{"notionalUsd": 10000, "top": 10, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "API without assumption warning", "maxMarketAgeSeconds": 180, "maxStaticAgeSeconds": 600, "skewBasis": "marketData", "maxFriction": 0.4, "minProfitRatio": 0.001, "minProfitUsd": 10.0}
 
 ## Freshness evidence
 
@@ -14,6 +14,10 @@ Data status: VALID
 - close Static data: VALID; observed 2026-10-07T19:54:21+08:00; age 339.00 seconds; limit 600.00 seconds
 - roll Market data: VALID; observed 2026-10-07T19:59:50+08:00; age 10.00 seconds; limit 180.00 seconds
 - roll Static data: VALID; observed 2026-10-07T19:54:21+08:00; age 339.00 seconds; limit 600.00 seconds
+
+## Close admission thresholds
+
+Friction < 40.00%; minimum net profit $10.00 (must be strictly exceeded; 0.10% of per-leg notional).
 
 ## Top candidates
 
@@ -29,6 +33,7 @@ Capital model: borosShortImUsd: 100.00; borosLongImUsd: 100.00; perpShortImUsd: 
 OI USD (reference): 100,000.00, 100,000.00
 Ranked by model capital efficiency, then notional return and executable spread.
 Absolute net profit and total API costs are shown over the remaining term.
+Friction: 15.00%; gross profit $80.00 (mid-rate spread before Boros impact and model costs).
 Roll comparison: net profit $50.00; capital APR 125.00%; total costs $8.00
 Roll costs: borosTakerFeeUsd: 2.00; borosSettleFeeUsd: 2.00; perpEntryFeesUsd: 2.00; perpEntrySlippageUsd: 2.00; perpExitFeesUsd: 0.00; perpExitSlippageUsd: 0.00; totalUsd: 8.00; annualizedApr: 1.00%
 

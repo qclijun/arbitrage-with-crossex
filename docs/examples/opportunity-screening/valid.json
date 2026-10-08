@@ -4,7 +4,7 @@
   "status": "VALID",
   "assumptions": {
     "notionalUsd": 10000,
-    "top": 5,
+    "top": 10,
     "entryMode": "maker-hedge",
     "borosEntry": "market",
     "primaryExitMode": "close",
@@ -14,7 +14,10 @@
     "feeEvidence": "API without assumption warning",
     "maxMarketAgeSeconds": 180,
     "maxStaticAgeSeconds": 600,
-    "skewBasis": "marketData"
+    "skewBasis": "marketData",
+    "maxFriction": 0.4,
+    "minProfitRatio": 0.001,
+    "minProfitUsd": 10.0
   },
   "evidence": {
     "closeObservedAtMs": 1791374061000,
@@ -198,7 +201,9 @@
           "Absolute net profit and total API costs are shown over the remaining term."
         ],
         "status": "VALID"
-      }
+      },
+      "grossProfitUsd": 80.0,
+      "friction": 0.15
     }
   ],
   "excluded": [],

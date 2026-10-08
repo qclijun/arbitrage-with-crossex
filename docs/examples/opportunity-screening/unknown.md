@@ -6,7 +6,7 @@ Data status: UNKNOWN
 
 ## Assumptions
 
-{"notionalUsd": 10000, "top": 5, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "UNKNOWN", "maxMarketAgeSeconds": 180, "maxStaticAgeSeconds": 600, "skewBasis": "marketData"}
+{"notionalUsd": 10000, "top": 10, "entryMode": "maker-hedge", "borosEntry": "market", "primaryExitMode": "close", "maxAgeSeconds": 180, "maxSkewSeconds": 120, "clientRebatesAdded": false, "feeEvidence": "UNKNOWN", "maxMarketAgeSeconds": 180, "maxStaticAgeSeconds": 600, "skewBasis": "marketData", "maxFriction": 0.4, "minProfitRatio": 0.001, "minProfitUsd": 10.0}
 
 ## Freshness evidence
 
@@ -14,6 +14,10 @@ Data status: UNKNOWN
 - close Static data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 600.00 seconds
 - roll Market data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 180.00 seconds
 - roll Static data: VALID; observed 2026-10-07T20:00:00+08:00; age 0.00 seconds; limit 600.00 seconds
+
+## Close admission thresholds
+
+Friction < 40.00%; minimum net profit $10.00 (must be strictly exceeded; 0.10% of per-leg notional).
 
 ## Top candidates
 

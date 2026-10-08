@@ -104,16 +104,119 @@ class ScreeningTest(unittest.TestCase):
             self.assertEqual(report['excluded'][0]['status'], 'FILTERED')
         self.assertEqual(self.run_scan(response(count=0), response('roll', count=0))[0], 0)
 
+    def test_friction_uses_gross_spread_and_strict_configurable_limit(self):
+        close = response()
+        pair = close['data']['groups'][0]['pairs'][0]
+        # gross = .08 * 10000 * .5 = 400; execution spread is deliberately different.
+        close['data']['groups'][0]['maturity'] = NOW + 15768000
+        close['data']['groups'][0]['secondsToMaturity'] = pair['secondsToMaturity'] = 15768000
+        pair['costs']['totalUsd'] = 160
+        roll = copy.deepcopy(close)
+        roll['data']['meta']['exitMode'] = 'roll'
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 0)
+        self.assertEqual(report['candidates'], [])
+        item = report['excluded'][0]
+        self.assertEqual(item['status'], 'FILTERED')
+        self.assertEqual(item['grossProfitUsd'], 400)
+        self.assertEqual(item['friction'], .4)
+        self.assertIn('friction is not below the configured maximum', item['reasons'])
+        code, report = self.run_scan(close, roll, ['--max-friction', '.41'])
+        self.assertEqual(code, 0)
+        self.assertEqual(report['candidates'][0]['friction'], .4)
+        self.assertEqual(report['candidates'][0]['roll']['status'], 'VALID')
+        pair['costs']['totalUsd'] = 159.999
+        self.assertEqual(len(self.run_scan(close, roll)[1]['candidates']), 1)
+
+    def test_minimum_net_profit_is_notional_ratio_with_strict_boundary(self):
+        for profit, included in ((9.99, False), (10, False), (10.01, True)):
+            close = response()
+            close['data']['groups'][0]['pairs'][0]['estProfitUsd'] = profit
+            code, report = self.run_scan(close, response('roll'))
+            self.assertEqual(code, 0)
+            self.assertEqual(bool(report['candidates']), included)
+            self.assertEqual(report['assumptions']['minProfitRatio'], .001)
+            self.assertEqual(report['assumptions']['minProfitUsd'], 10)
+            self.assertEqual(report['assumptions']['maxFriction'], .4)
+        close['data']['groups'][0]['pairs'][0]['estProfitUsd'] = 10
+        self.assertEqual(len(self.run_scan(close, response('roll'), ['--min-profit-ratio', '0'])[1]['candidates']), 1)
+        self.assertEqual(self.run_scan(response(), response('roll'), ['--min-profit-ratio', '.005'])[1]['candidates'], [])
+
+    def test_minimum_profit_scales_with_per_leg_notional(self):
+        close, roll = response(), response('roll')
+        for envelope in (close, roll):
+            envelope['data']['meta']['notionalUsd'] = 20000
+        for profit, included in ((20, False), (20.01, True)):
+            close['data']['groups'][0]['pairs'][0]['estProfitUsd'] = profit
+            code, report = self.run_scan(close, roll, ['--notional', '20000'])
+            self.assertEqual(code, 0)
+            self.assertEqual(report['assumptions']['minProfitUsd'], 20)
+            self.assertEqual(bool(report['candidates']), included)
+
+    def test_new_gates_preserve_roll_comparison_and_unknown_priority(self):
+        roll = response('roll')
+        roll['data']['groups'][0]['pairs'][0]['estProfitUsd'] = -1
+        roll['data']['groups'][0]['pairs'][0]['costs']['totalUsd'] = 1000
+        code, report = self.run_scan(response(), roll)
+        self.assertEqual(code, 0)
+        self.assertEqual(report['candidates'][0]['roll']['status'], 'VALID')
+        close = response()
+        close['data']['groups'][0]['pairs'][0]['estProfitUsd'] = 1
+        close['data']['groups'][0]['pairs'][0]['costs']['totalUsd'] = None
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 2)
+        self.assertEqual(report['excluded'][0]['status'], 'UNKNOWN')
+
+    def test_friction_denominator_and_numeric_range_are_handled_explicitly(self):
+        for spread in (0, -.01):
+            close = response()
+            close['data']['groups'][0]['pairs'][0]['grossSpreadApr'] = spread
+            code, report = self.run_scan(close, response('roll'))
+            self.assertEqual(code, 0)
+            self.assertEqual(report['candidates'], [])
+            self.assertEqual(report['excluded'][0]['status'], 'FILTERED')
+            self.assertIsNone(report['excluded'][0]['friction'])
+        for spread in (1e308, 1e-312):
+            close['data']['groups'][0]['pairs'][0]['grossSpreadApr'] = spread
+            code, report = self.run_scan(close, response('roll'))
+            self.assertEqual(code, 2)
+            self.assertEqual(report['excluded'][0]['status'], 'UNKNOWN')
+            self.assertNotIn('Infinity', json.dumps(report))
+
+    def test_gate_parameters_are_validated_before_requests(self):
+        for extra in (['--max-friction', '0'], ['--max-friction', '-1'],
+                      ['--max-friction', 'nan'], ['--max-friction', 'inf'],
+                      ['--min-profit-ratio', '-1'], ['--min-profit-ratio', 'nan'],
+                      ['--min-profit-ratio', 'inf'], ['--min-profit-ratio', '1e308']):
+            code, report = self.run_scan(response(), response('roll'), extra)
+            self.assertEqual(code, 1)
+            self.assertIsNone(report)
+            self.assertEqual(self.calls, [])
+
+    def test_gate_values_and_explanations_are_present_in_both_formats(self):
+        code, report = self.run_scan(response(), response('roll'))
+        self.assertEqual(code, 0)
+        self.assertEqual(report['candidates'][0]['grossProfitUsd'], 80)
+        self.assertAlmostEqual(report['candidates'][0]['friction'], .15)
+        self.assertIn('Friction: 15.00%', self.md)
+        self.assertIn('gross profit $80.00', self.md)
+        close = response()
+        close['data']['groups'][0]['pairs'][0]['estProfitUsd'] = 10
+        close['data']['groups'][0]['pairs'][0]['costs']['totalUsd'] = 32
+        _, report = self.run_scan(close, response('roll'))
+        self.assertEqual(len(report['excluded'][0]['reasons']), 2)
+        self.assertIn('minimum net profit $10.00', self.md)
+
     def test_top_limit_and_stable_sort(self):
-        close, roll = response(count=7), response('roll', count=7)
+        close, roll = response(count=12), response('roll', count=12)
         close['data']['groups'][0]['pairs'].reverse()
         code, report = self.run_scan(close, roll)
         self.assertEqual(code, 0)
-        self.assertEqual([r['shortLeg']['marketId'] for r in report['candidates']], [1, 3, 5, 7, 9])
+        self.assertEqual([r['shortLeg']['marketId'] for r in report['candidates']], list(range(1, 20, 2)))
         close['data']['groups'][0]['pairs'][0]['netFixedAprOnCapital'] = 2
         code, report = self.run_scan(close, roll, ['--top', '2'])
         self.assertEqual(len(report['candidates']), 2)
-        self.assertEqual(report['candidates'][0]['shortLeg']['marketId'], 13)
+        self.assertEqual(report['candidates'][0]['shortLeg']['marketId'], 23)
 
     def test_missing_contract_book_cost_or_capital_is_unknown(self):
         for target, field, value in [('market', 'bookStatus', 'insufficient-depth'), ('market', 'crossexSymbol', None), ('cost', 'perpEntryFeesUsd', None), ('capital', 'shortLeverageMax', 0), ('pair', 'capitalUsd', 0)]:

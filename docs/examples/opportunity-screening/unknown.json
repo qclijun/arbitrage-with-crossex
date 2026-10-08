@@ -4,7 +4,7 @@
   "status": "UNKNOWN",
   "assumptions": {
     "notionalUsd": 10000,
-    "top": 5,
+    "top": 10,
     "entryMode": "maker-hedge",
     "borosEntry": "market",
     "primaryExitMode": "close",
@@ -14,7 +14,10 @@
     "feeEvidence": "UNKNOWN",
     "maxMarketAgeSeconds": 180,
     "maxStaticAgeSeconds": 600,
-    "skewBasis": "marketData"
+    "skewBasis": "marketData",
+    "maxFriction": 0.4,
+    "minProfitRatio": 0.001,
+    "minProfitUsd": 10.0
   },
   "evidence": {
     "closeObservedAtMs": 1791374400000,
