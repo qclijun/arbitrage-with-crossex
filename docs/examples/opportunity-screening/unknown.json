@@ -33,7 +33,8 @@
         "maxAgeSeconds": 600,
         "status": "VALID",
         "reasons": []
-      }
+      },
+      "venueBookFailures": []
     },
     "roll": {
       "marketData": {
@@ -49,8 +50,11 @@
         "maxAgeSeconds": 600,
         "status": "VALID",
         "reasons": []
-      }
-    }
+      },
+      "venueBookFailures": []
+    },
+    "closeMarketObservedAtMs": 1791374400000,
+    "rollMarketObservedAtMs": 1791374400000
   },
   "candidates": [],
   "excluded": [
@@ -110,5 +114,6 @@
     "No client rebates added. Gas, borrowing interest and other unmodelled costs are excluded.",
     "Boros price impact is already in execution APR and is not deducted again.",
     "Roll avoids this period's perpetual exit costs; final exit can still cost money and future opportunities are not guaranteed."
-  ]
+  ],
+  "comparisonIssues": []
 }

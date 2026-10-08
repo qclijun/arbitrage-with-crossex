@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchVenueBook, fetchVenueBookWithDiagnostics } from '../../src/core/estimate/books';
+import diagnosticsContract from '../fixtures/venue-book-diagnostics.json';
 
 const adapter = axios.defaults.adapter;
 afterEach(() => {
@@ -10,6 +11,15 @@ afterEach(() => {
 });
 
 describe('safe public book failure diagnostics', () => {
+  it.each(diagnosticsContract.errorCodes)('preserves the shared diagnostic contract code %s', async (code) => {
+    vi.stubEnv('GATE_PROXY', '');
+    axios.defaults.adapter = async (config) => { throw new AxiosError('private-body', code, config); };
+    const { failure } = await fetchVenueBookWithDiagnostics('HYPERLIQUID', 'HYPE', 'USDC');
+    expect(failure?.errorCode).toBe(code);
+    expect(diagnosticsContract.categories).toContain(failure?.category);
+    expect(diagnosticsContract.stages).toContain(failure?.stage);
+  });
+
   it.each([
     ['ECONNABORTED', undefined, 'timeout'],
     ['ETIMEDOUT', undefined, 'timeout'],

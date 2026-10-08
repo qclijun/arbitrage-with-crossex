@@ -38,11 +38,15 @@ close/roll 按标的、抵押品、到期、市场及方向匹配，验证规模
 
 模型资金只是收益分母，不能视作实际账户余额、安全预算或执行就绪。maker 成本假设挂单按 mid 成交，入场和模型 maker 退出均不保证成交；book ok 不证明四腿均能成交，OI 仅为市场规模参考。Boros 冲击已含在执行利率，不能再次扣除。未叠加客户端返费；Gas、借款利息及模型未涵盖成本不在结果内。滚仓只省去本期永续退出成本，最终退出仍可能付费，也不保证后续机会。
 
-API 提供聚合及分类观察时间，费用来源仍通过文字 warning 表达，没有逐项上游费率证据。无 warning 仅表示现有 API 未声明假设费率，不证明完整执行准备或独立核验每个费用来源。异常 warning 统一保守降级。
+API 提供聚合及分类观察时间；`warningEvidence` 用稳定 `code` 表达假设费率等告警，`warnings` 继续供界面显示。脚本不解析英文句子，没有逐项上游费率证据。无告警仅表示现有 API 未声明假设费率，不证明完整执行准备或独立核验每个费用来源。旧服务有文字告警却缺少机器证据，或两者数量不符时，统一保守降级 UNKNOWN。
 
 分类新鲜度检查使用 Opportunity 返回的 `data.meta.freshness.marketData` 与 `staticData`，每类含 Unix 毫秒 `observedAt` 和明确布尔 `stale`，取该类已获取输入中的最旧时刻，stale 为该类输入状态的并集；整类无法取得观察时间则为 null。行情包括 Boros 市场/盘口与永续盘口，静态数据包括手续费、合约规则及杠杆限制。两类分别检查缺失、未来、陈旧及超龄；聚合时间只核对一致性，不再按 180 秒统一拒绝。报告分别展示观察时间、年龄、上限和状态。旧服务没有这些字段时，两类均为 UNKNOWN，脚本不会把构建时间或聚合时间猜作分类证据。2026-10-07 用户已批准仅新增分类元数据，不改变缓存频率或收益模型；正在运行的旧服务需重新加载代码后才能返回新字段，脚本不会自动重启服务。
 
-组级告警按市场关联：已知的缺 CrossEx 合约告警只影响使用该市场的候选，不会排除同组其他完整组合；无法识别或影响整组的告警仍降级 UNKNOWN。排除项包含标的、抵押品、到期、两侧市场及合约、缺失/无效字段，并将 API 已知的盘口或费率原因转换为固定说明，不保存原始文本。缺少 maker 腿与到期证据分别说明。JSON 保留 close/roll 各自结果，Markdown 合并内容完全相同的排除记录并标明两种口径。
+组级 `warningEvidence` 的 `unsupported-perp-venue`、`missing-perp-symbol` 带 `marketId`，脚本同时核对该市场的合约字段，只影响使用该市场的候选。无法识别、关联无效或影响整组的告警仍降级 UNKNOWN。全局 `assumed-fee-schedule` 保留假设值作为参考，其他全局告警均保守降级。调整显示文案不改变这些判定。
+
+排除项包含标的、抵押品、到期、两侧市场及合约、缺失/无效字段。盘口缺失的具体腿从 `venueBookFailures.symbol` 关联，费用缺失从成本字段判定，不解析或保存原始 reason 文本。旧服务没有盘口诊断时只能提供字段级原因，不猜测失败来源。缺少 maker 腿与到期证据分别说明。JSON 保留 close/roll 各自结果，Markdown 合并内容完全相同的排除记录并标明两种口径。
+
+JSON 的 `evidence.closeObservedAtMs/rollObservedAtMs` 保留原聚合时间语义；新增 `closeMarketObservedAtMs/rollMarketObservedAtMs` 明确记录跨报价偏差所用的行情时间，分别等于对应 `evidence.close/roll.marketData.observedAtMs`。聚合时间与两类最旧时间的比较仅检查响应契约是否一致，不是独立采集或上游正确性的证明。
 
 整体数据状态覆盖所有候选，包括未进入 Top 榜的合格候选。任何 roll 对照异常都会保存到 JSON 的 `comparisonIssues` 并在 Markdown 的 `Roll comparison issues` 中显示组合身份、排名、是否在 Top 榜和原因；Top 榜数量及排序不变。正常利润过滤仍记录在排除项中，不触发 UNKNOWN。
 

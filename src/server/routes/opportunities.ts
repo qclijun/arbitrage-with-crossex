@@ -28,6 +28,7 @@ import {
   type BorosEntryMode,
   type EntryMode,
   type ExitMode,
+  type OpportunityWarningEvidence,
 } from '../../core/boros/opportunities';
 import { normalizeVenue } from '../../core/boros/venue';
 import { isSupportedCoin } from '../../core/coins';
@@ -220,7 +221,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
       };
       const observe = (
         result: { observedAt: number; stale: boolean },
-        category: keyof typeof freshness = 'marketData',
+        category: keyof typeof freshness,
       ) => {
         observedAt = Math.min(observedAt, result.observedAt);
         inputsStale ||= result.stale;
@@ -240,6 +241,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
       // with or without credentials — the market view's listings and leverage
       // caps are always the real ones.
       const warnings: string[] = [];
+      const warningEvidence: OpportunityWarningEvidence[] = [];
       let symbolsByVenueBase = new Map<string, string>();
       let rulesAvailable = false;
       let feeRows: VenueFeeRow[] | null = null;
@@ -255,6 +257,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
         rulesAvailable = true;
       } catch (err) {
         const { category } = classifyGateError(err);
+        warningEvidence.push({ code: 'symbol-list-unavailable' });
         warnings.push(
           `Couldn't load the CrossEx symbol list right now (${category}) — pricing the perp legs from the venues' public books instead; listings and leverage return on the next refresh.`,
         );
@@ -286,6 +289,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
         }
       }
       if (assumedTier !== undefined) {
+        warningEvidence.push({ code: 'assumed-fee-schedule' });
         warnings.push(
           `Perp fees assume the ${feeTierLabel(assumedTier)} Gate CrossEx schedule — everything else here is live. Your real rates follow your Gate VIP tier; connect Gate keys to price from them.`,
         );
@@ -326,7 +330,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
               () => fetchBorosOrderBook(fetchImpl, marketId),
               { fresh },
             );
-            observe(snapshot);
+            observe(snapshot, 'marketData');
             borosBooks.set(marketId, snapshot.value);
           } catch {
             borosBooks.set(marketId, null);
@@ -343,7 +347,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
             },
             { fresh },
           );
-          observe(snapshot);
+          observe(snapshot, 'marketData');
           venueBooks.set(symbol, snapshot.value.book);
           if (snapshot.value.failure) venueBookFailures.push({ ...snapshot.value.failure, symbol, observedAt: snapshot.observedAt, stale: snapshot.stale });
         }),
@@ -359,12 +363,15 @@ export function opportunitiesRoutes(deps: AppDeps) {
             },
             { fresh },
           );
-          observe(snapshot);
+          observe(snapshot, 'marketData');
           venueBooks.set(key, snapshot.value.book);
           if (snapshot.value.failure) venueBookFailures.push({ ...snapshot.value.failure, symbol: key, observedAt: snapshot.observedAt, stale: snapshot.stale });
         }),
         loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol, (snapshot) => observe(snapshot, 'staticData')).then((warning) => {
-          if (warning !== null) warnings.push(warning);
+          if (warning !== null) {
+            warnings.push(warning);
+            warningEvidence.push({ code: 'risk-limits-unavailable' });
+          }
         }),
       ]);
 
@@ -383,7 +390,12 @@ export function opportunitiesRoutes(deps: AppDeps) {
         { notionalUsd, borosEntry, entryMode, exitMode, takerFeeOverride },
       );
       return reply.ok(
-        { ...result, meta: { ...result.meta, freshness, venueBookFailures: venueBookFailures.sort((a, b) => a.symbol.localeCompare(b.symbol)) }, warnings: [...new Set([...warnings, ...result.warnings])] },
+        {
+          ...result,
+          meta: { ...result.meta, freshness, venueBookFailures: venueBookFailures.sort((a, b) => a.symbol.localeCompare(b.symbol)) },
+          warnings: [...warnings, ...result.warnings],
+          warningEvidence: [...warningEvidence, ...result.warningEvidence],
+        },
         { stale: inputsStale, observedAt },
       );
     });

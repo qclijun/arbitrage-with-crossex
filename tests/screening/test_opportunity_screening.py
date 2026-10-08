@@ -68,6 +68,7 @@ class ScreeningTest(unittest.TestCase):
     def test_assumed_fees_are_reference_only_unknown(self):
         close = response()
         close['data']['warnings'] = ['Perp fees assume the VIP0 Gate CrossEx schedule — secret synthetic-token']
+        close['data']['warningEvidence'] = [dict(code='assumed-fee-schedule')]
         code, report = self.run_scan(close, response('roll'))
         self.assertEqual(code, 2)
         self.assertEqual(report['candidates'], [])
@@ -295,6 +296,7 @@ class ScreeningTest(unittest.TestCase):
             group = envelope['data']['groups'][0]
             group['markets'].append(dict(marketId=225, name='ETH Kucoin', venue='Kucoin', crossexVenue=None, crossexSymbol=None))
             group['warnings'] = ["ETH Kucoin trades against Kucoin, which has no CrossEx perp venue — it can't carry a hedge leg here."]
+            group['warningEvidence'] = [dict(code='unsupported-perp-venue', marketId=225)]
         code, report = self.run_scan(close, roll)
         self.assertEqual(code, 0)
         self.assertEqual(len(report['candidates']), 1)
@@ -302,9 +304,14 @@ class ScreeningTest(unittest.TestCase):
             group = envelope['data']['groups'][0]
             group['markets'][-1].update(crossexVenue='gate', base='ETH')
             group['warnings'] = ["No live CrossEx gate symbol for ETH — ETH Kucoin can't carry a hedge leg here."]
+            group['warningEvidence'] = [dict(code='missing-perp-symbol', marketId=225)]
         code, report = self.run_scan(close, roll)
         self.assertEqual(code, 0)
         self.assertEqual(len(report['candidates']), 1)
+        for envelope in (close, roll):
+            envelope['data']['groups'][0]['warnings'] = ['措辞已改变 synthetic-token']
+        self.assertEqual(self.run_scan(close, roll)[0], 0)
+        close['data']['groups'][0]['warningEvidence'] = [dict(code='future-warning-code', marketId=225)]
         close['data']['groups'][0]['warnings'] = ['unrecognized source warning']
         code, report = self.run_scan(close, roll)
         self.assertEqual(code, 2)
@@ -317,6 +324,7 @@ class ScreeningTest(unittest.TestCase):
             pair['makerLeg'] = None
             pair['costs']['perpEntrySlippageUsd'] = None
             pair['reasons'] = ["No usable okx order book for OKX_ETH_USDT — the perp slippage at $10,000 can't be estimated.", 'synthetic-token synthetic-secret-id private prose']
+            envelope['data']['meta']['venueBookFailures'] = [dict(symbol='OKX_ETH_USDT', category='timeout', stage='book')]
         code, report = self.run_scan(close, roll)
         self.assertEqual(code, 2)
         item = report['excluded'][0]
@@ -330,6 +338,60 @@ class ScreeningTest(unittest.TestCase):
         self.assertIn('markets 1 → 2', self.md)
         self.assertIn('maturity 2026-11-13T08:00:00+08:00', self.md)
         self.assertNotIn('private prose', self.md + json.dumps(report))
+        for envelope in (close, roll):
+            envelope['data']['groups'][0]['pairs'][0]['reasons'] = ['任意新文案 synthetic-token']
+        self.assertEqual(self.run_scan(close, roll)[1]['excluded'][0]['reasons'], item['reasons'])
+
+    def test_legacy_warning_without_machine_evidence_is_unknown(self):
+        close = response()
+        group = close['data']['groups'][0]
+        group['markets'].append(dict(marketId=225, crossexVenue=None))
+        group['warnings'] = ["ETH Kucoin trades against Kucoin, which has no CrossEx perp venue — it can't carry a hedge leg here."]
+        self.assertEqual(self.run_scan(close, response('roll'))[0], 2)
+
+    def test_invalid_market_warning_scope_cannot_exempt_a_candidate(self):
+        for evidence in (dict(code='missing-perp-symbol', marketId=999),
+                         dict(code='missing-perp-symbol', marketId=True),
+                         dict(code='unsupported-perp-venue', marketId=2),
+                         dict(code='unknown-code', marketId=2)):
+            close = response()
+            group = close['data']['groups'][0]
+            group['warnings'] = ['arbitrary display text']
+            group['warningEvidence'] = [evidence]
+            self.assertEqual(self.run_scan(close, response('roll'))[0], 2)
+
+    def test_invalid_contract_label_does_not_crash_diagnostic_association(self):
+        close = response()
+        close['data']['groups'][0]['pairs'][0]['shortLeg']['crossexSymbol'] = {}
+        code, report = self.run_scan(close, response('roll'))
+        self.assertEqual(code, 2)
+        self.assertEqual(report['candidates'], [])
+
+    def test_assumed_fee_reference_does_not_depend_on_warning_wording(self):
+        close = response()
+        close['data']['warnings'] = ['假设费率 synthetic-token']
+        close['data']['warningEvidence'] = [dict(code='assumed-fee-schedule')]
+        code, report = self.run_scan(close, response('roll'))
+        self.assertEqual(code, 2)
+        self.assertEqual(report['excluded'][0]['reference']['values']['estProfitUsd'], 50)
+
+    def test_aggregate_consistency_detects_corrupt_response(self):
+        close = response()
+        close['meta']['observedAt'] -= 1000
+        code, report = self.run_scan(close, response('roll'))
+        self.assertEqual(code, 2)
+        self.assertIn('aggregate observation differs from classified input times', report['dataReasons'])
+
+    def test_report_distinguishes_aggregate_and_market_observation(self):
+        close, roll = response(), response('roll')
+        for envelope in (close, roll):
+            envelope['meta']['observedAt'] = (NOW - 339) * 1000
+            envelope['data']['meta']['freshness']['staticData']['observedAt'] = (NOW - 339) * 1000
+        code, report = self.run_scan(close, roll)
+        self.assertEqual(code, 0)
+        for mode in ('close', 'roll'):
+            self.assertEqual(report['evidence'][mode + 'ObservedAtMs'], (NOW - 339) * 1000)
+            self.assertEqual(report['evidence'][mode + 'MarketObservedAtMs'], NOW * 1000)
 
     def test_warning_for_selected_market_and_groupwide_warning_remain_unknown(self):
         for warning in ("OKX ETH trades against OKX, which has no CrossEx perp venue — it can't carry a hedge leg here.", "Can't price USDT collateral in USD (no reference market) — this group's book depth and open interest can't be sized in dollars."):
@@ -355,6 +417,19 @@ class ScreeningTest(unittest.TestCase):
         self.assertIn('category=timeout', self.md)
         self.assertIn('no HTTP status recorded', self.md)
         self.assertEqual(report['evidence']['roll']['venueBookFailures'], [])
+
+    def test_shared_diagnostics_contract_survives_report_sanitization(self):
+        contract = json.loads((ROOT / 'tests/fixtures/venue-book-diagnostics.json').read_text())
+        close = response()
+        rows = [dict(symbol='OKX_ETH_USDT', category=category, stage=stage, errorCode=code)
+                for category in contract['categories'] for stage in contract['stages'] for code in contract['errorCodes']]
+        close['data']['meta']['venueBookFailures'] = rows
+        _, report = self.run_scan(close, response('roll'))
+        saved = report['evidence']['close']['venueBookFailures']
+        self.assertEqual(len(saved), len(rows))
+        self.assertEqual([item['errorCode'] for item in saved], [item['errorCode'] for item in rows])
+        self.assertEqual({item['category'] for item in saved}, set(contract['categories']))
+        self.assertEqual({item['stage'] for item in saved}, set(contract['stages']))
 
     def test_market_and_static_freshness_use_independent_age_limits(self):
         close, roll = response(), response('roll')

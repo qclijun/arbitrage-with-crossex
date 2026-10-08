@@ -156,7 +156,7 @@ describe('GET /api/opportunities', () => {
     expect(recovered.meta.venueBookFailures).toEqual([]);
     expect(recovered.groups[0].pairs[0].makerLeg).not.toBeNull();
   });
-  it.each(['fees', `boros:book:${HL_MARKET}`])('keeps freshness stale flags independent when %s is stale', async (staleKey) => {
+  it.each(['fees', 'risk:HYPERLIQUID_FUTURE_ETH_USDC', `boros:book:${HL_MARKET}`])('keeps freshness stale flags independent when %s is stale', async (staleKey) => {
     const cache = new TtlCache();
     const cacheGet = cache.get.bind(cache);
     vi.spyOn(cache, 'get').mockImplementation(async function<T>(key: string, ttl: number, load: () => Promise<T>, options?: { fresh?: boolean }) {
@@ -167,8 +167,8 @@ describe('GET /api/opportunities', () => {
     mockGate();
     mockVenueBooks();
     const { data, meta } = (await app.inject({ method: 'GET', url: '/api/opportunities', headers: HOST })).json();
-    expect(data.meta.freshness.marketData.stale).toBe(staleKey !== 'fees');
-    expect(data.meta.freshness.staticData.stale).toBe(staleKey === 'fees');
+    expect(data.meta.freshness.marketData.stale).toBe(staleKey.startsWith('boros:book:'));
+    expect(data.meta.freshness.staticData.stale).toBe(!staleKey.startsWith('boros:book:'));
     expect(meta.stale).toBe(true);
   });
 
@@ -471,6 +471,7 @@ describe('GET /api/opportunities', () => {
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
     expect(data.warnings.join(' ')).toMatch(/Perp fees assume the VIP 0 Gate CrossEx schedule/);
+    expect(data.warningEvidence).toEqual([{ code: 'assumed-fee-schedule' }]);
     // Never claims the listings or leverage are missing — they aren't.
     expect(data.warnings.join(' ')).not.toMatch(/symbol list/);
 
@@ -502,6 +503,7 @@ describe('GET /api/opportunities', () => {
     expect(res.statusCode).toBe(200);
     const { data } = res.json();
     expect(data.warnings.join(' ')).toMatch(/Couldn't load the CrossEx symbol list right now/);
+    expect(data.warningEvidence).toEqual([{ code: 'symbol-list-unavailable' }, { code: 'assumed-fee-schedule' }]);
     // The Boros spread still prices; the perp side degrades to null.
     const group = data.groups[0];
     expect(group.pairs[0].grossSpreadApr).toBeGreaterThan(0);

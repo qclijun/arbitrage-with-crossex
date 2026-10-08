@@ -1,7 +1,7 @@
 # 单次只读 Opportunity 筛选脚本规格
 
 Status: resolved
-Updated: 2026-10-07 Asia/Taipei
+Updated: 2026-10-08 Asia/Taipei
 
 ## Problem Statement
 
@@ -31,12 +31,14 @@ Opportunity 中的组合有不同期限、成本和资金净年化，人工比�
 
 ## Implementation Decisions
 
-- **复用**：采用独立单次脚本，优先沿用 Python 标准库惯例；收益、成本和模型资金消费 Opportunity 返回值，不复制服务端模型、不启动监控。2026-10-07 后续授权仅为 Opportunity 响应新增分类新鲜度元数据，不改变收益或缓存模型。
+- **复用**：采用独立单次脚本，优先沿用 Python 标准库惯例；收益、成本和模型资金消费 Opportunity 返回值，不复制服务端模型、不启动监控。2026-10-07 分类新鲜度扩展不改变收益或缓存模型。2026-10-08 本次 review 修复明确保留现有 `venueBookFailures` 诊断，并新增稳定 `warningEvidence`，消除脚本对显示文案的依赖；这次范围澄清不反推首次授权内容。
 - **请求**：唯一业务接口是 GET `/api/opportunities`，分别显式传入 close 和 roll；固定 `entryMode=maker-hedge`（limit + hedge）、`borosEntry=market`。脚本不请求账户、持仓、资产汇总、钱包、保证金、返费或独立费率接口。
 - **参数**：本机 URL、API token 文件、每腿名义本金（默认 $10,000）、Top 数量（默认 5）、输出目录、最大证据年龄和两次报价时间偏差。删除钱包、子账户及资金预留参数。
 - **传输**：验证 loopback 目标后读取 token；拒绝远程地址、URL 内认证、重定向、环境代理转发和非白名单请求。token 仅在本机请求头中使用，不接受命令行明文 token，不写入报告。单次采集，有超时，不循环轮询或另建行情采集器。
 - **新鲜度**：使用 `data.meta.freshness.marketData/staticData` 的 observedAt、stale 分别核查行情和静态输入；不以响应 ts 或构建时间代替输入观察时间。行情最大年龄默认 180 秒（`--max-market-age`，兼容 `--max-age`），静态默认 600 秒（`--max-static-age`）。分类 observedAt 取该类已取得输入的最旧时间，stale 合并该类输入；原聚合 observedAt/stale 保持兼容并核对一致性。close/roll 行情观察时刻偏差默认上限 120 秒，均可配置并披露。缺分类观察时间、陈旧、未来时刻或不完整证据标记 UNKNOWN。
 - **一致性**：close/roll 按标的、抵押品、到期日、两侧市场及方向匹配，规模和入场假设一致。直接比较响应中的 credentialId（如有），不额外查询身份；错配时不合并结果。时间偏差超限或对照缺失时，保留独立有效主榜并标注对照 UNKNOWN，不伪称同批报价。
+- **机器告警**：根响应及每组新增 `warningEvidence`，与现有显示告警逐项对应。每项含稳定 `code`，市场级告警另含 `marketId`；脚本核对市场结构，不匹配英文模板。未知代码、错误关联或旧服务仅有文字告警时保守 UNKNOWN；空告警可兼容旧服务。假设费率用 `assumed-fee-schedule` 识别。盘口原因消费已有结构化诊断，费用缺失核对已有成本字段。
+- **报告时间**：旧 `closeObservedAtMs/rollObservedAtMs` 保持聚合语义；`closeMarketObservedAtMs/rollMarketObservedAtMs` 专用于行情偏差。聚合等于两类最旧时间只是契约一致性校验，不宣称独立上游验证。
 - **费用**：使用 Opportunity 的费用与 warning，不额外查询返费或独立账户费率；明确未叠加客户端返费。API 明确提示假设费率时保留假设数值供参考，不混入实际费率主榜；无法验证的费用标记 UNKNOWN。
 - **准入**：两侧有对应永续合约、Boros 目标规模盘口为 ok，利差、成本、资本、期限和净收益有效且完整，预计净利润大于零。null、NaN、Infinity、布尔值和错误类型不能作为数值；模型资本及剩余期限必须大于零。
 - **排序**：资金净年化降序，其次名义本金净年化、执行利差降序，再按稳定组合身份排序。最多输出指定数量，不另设固定最低利润或安全 APR 门槛。
@@ -57,7 +59,7 @@ Opportunity 中的组合有不同期限、成本和资金净年化，人工比�
 ## Out of Scope
 
 - 读取账户保证金、四腿持仓、钱包或子账户；资金预留、账户适用性、原仓复用、续作、换仓、持仓集中度及安全仓位分析。
-- 额外读取返费或账户费率、客户端收益覆盖、除已授权分类新鲜度元数据之外的服务端 API 修改、独立行情采集和完整执行准备评估。
+- 额外读取返费或账户费率、客户端收益覆盖、除分类新鲜度、现有盘口失败诊断及本次修复的机器告警外的服务端 API 修改、独立行情采集和完整执行准备评估。
 - 交易、转账、补充保证金、自动展期、后台定时运行及通知。
 - 强行补满 Top 5、统一安全 APR/保证金倍数或把模型排名表述为保证收益。
 
@@ -67,3 +69,4 @@ Opportunity 中的组合有不同期限、成本和资金净年化，人工比�
 - 保留已确认选择：单次只读、Markdown + JSON、无固定最低净利润门槛、limit + hedge、缺证据 UNKNOWN。2026-10-07 用户后续明确授权最小分类时间戳扩展，取代首版不修改 API 的该项限制。
 - [筛选原则](../../docs/OPPORTUNITY-SELECTION.zh-CN.md) 仅采用机会比较相关内容，已有持仓章节不纳入本规格；[工作地图](map.md) 和 [实施工单](issues/04-readonly-opportunity-screening.md) 同步本次范围。
 - 实施票已 resolved；后续修复与分类时间戳扩展的验证记录追加在该票 Answer 中。
+- 2026-10-08：用户要求核实并修复 Claude Code review。本次消除英文告警耦合、区分报告时间，并同步此前遗漏的诊断范围；不将独立签名连接复用票纳入筛选交付，不重启服务、不修改签名交易传输。

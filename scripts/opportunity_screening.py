@@ -110,46 +110,45 @@ def pair_context(group, pair):
     return context
 
 
-def group_warning_issues(group, pair):
-    warnings = group.get('warnings', [])
+def warning_evidence(data):
+    warnings = data.get('warnings', [])
     if not isinstance(warnings, list) or any(not isinstance(w, str) for w in warnings):
-        return ['invalid group warning evidence']
+        return None
+    evidence = data.get('warningEvidence', [])
+    if not isinstance(evidence, list) or len(evidence) != len(warnings) or any(not isinstance(item, dict) for item in evidence):
+        return None
+    return evidence
+
+
+def group_warning_issues(group, pair):
+    evidence = warning_evidence(group)
+    if evidence is None:
+        return ['group warning: missing or invalid machine evidence']
     selected = {leg.get('marketId') for side in ('short', 'long') if isinstance(leg := pair.get(side + 'Leg'), dict) and type(leg.get('marketId')) is int}
     issues = []
-    for warning in warnings:
-        affected = []
-        for market in group['markets']:
-            if not isinstance(market, dict) or type(market.get('marketId')) is not int:
-                continue
-            unsupported = f"{market.get('name')} trades against {market.get('venue')}, which has no CrossEx perp venue — it can't carry a hedge leg here."
-            missing_symbol = f"No live CrossEx {market.get('crossexVenue')} symbol for {market.get('base')} — {market.get('name')} can't carry a hedge leg here."
-            if (not market.get('crossexVenue') and warning == unsupported) or (market.get('crossexVenue') and not market.get('crossexSymbol') and warning == missing_symbol):
-                affected.append(market['marketId'])
-        if not affected:
+    for item in evidence:
+        code, market_id = item.get('code'), item.get('marketId')
+        market = next((m for m in group['markets'] if isinstance(m, dict) and type(m.get('marketId')) is int and m['marketId'] == market_id), None)
+        scoped = (type(market_id) is int and market is not None and
+                  ((code == 'unsupported-perp-venue' and not market.get('crossexVenue')) or
+                   (code == 'missing-perp-symbol' and market.get('crossexVenue') and not market.get('crossexSymbol'))))
+        if not scoped:
             issues.append('group warning: evidence requires review')
-        elif selected.intersection(affected):
+        elif market_id in selected:
             issues.append('selected market lacks a confirmed CrossEx perpetual contract')
     return issues
 
 
-def source_issue_details(pair):
-    # Translate known API evidence into fixed reasons; never persist upstream prose.
+def source_issue_details(pair, failures):
+    # Use structured diagnostics, never upstream reason templates.
     details = []
-    source = pair.get('reasons', [])
-    if not isinstance(source, list):
-        return details
+    missing_books = {item['symbol'] for item in failures}
     for side in ('short', 'long'):
         leg = pair.get(side + 'Leg')
         if not isinstance(leg, dict):
             continue
-        venue, symbol = leg.get('crossexVenue'), leg.get('crossexSymbol') or leg.get('base')
-        patterns = ((f'No usable {venue} order book for {symbol} — ', 'perpetual order book unavailable'),
-                    (f'The {venue} {symbol} book has no usable levels on one side — ', 'perpetual book missing one side'),
-                    (f'No CrossEx fee row for {venue} ({symbol}) — ', 'perpetual fee row unavailable'),
-                    (f'The CrossEx fee schedule is unavailable — perp trading fees for {venue} {symbol} ', 'perpetual fee schedule unavailable'))
-        for prefix, explanation in patterns:
-            if any(isinstance(reason, str) and reason.startswith(prefix) for reason in source):
-                details.append(side + ': ' + explanation)
+        if label(leg.get('crossexSymbol')) in missing_books:
+            details.append(side + ': perpetual order book unavailable')
     return details
 
 
@@ -200,11 +199,12 @@ def normalize(envelope, mode, args, now):
         reasons.append('build time missing, future or inconsistent')
     if not number(settings.get('notionalUsd')) or settings.get('notionalUsd') != args.notional or settings.get('entryMode') != 'maker-hedge' or settings.get('borosEntry') != 'market' or settings.get('exitMode') != mode:
         reasons.append('request assumptions mismatch')
-    warnings = data.get('warnings', [])
-    if not isinstance(warnings, list) or any(not isinstance(w, str) for w in warnings):
-        reasons.append('invalid warning evidence')
+    warnings = warning_evidence(data)
+    if warnings is None:
+        reasons.append('API warning: missing or invalid machine evidence')
     elif warnings:
-        reasons.append('assumed fee schedule: reference only' if any('Perp fees assume' in w for w in warnings) else 'API warning: source or fee evidence requires review')
+        reasons.append('assumed fee schedule: reference only' if any(w.get('code') == 'assumed-fee-schedule' for w in warnings) else 'API warning: source or fee evidence requires review')
+    failures = book_failures(envelope)
     groups = data.get('groups')
     if not isinstance(groups, list):
         return [], [], reasons + ['groups missing'], evidence['marketData']['observedAtMs'], meta.get('credentialId')
@@ -260,7 +260,7 @@ def normalize(envelope, mode, args, now):
                 issues.append('invalid maturity or remaining term evidence')
             issues.extend(group_warning_issues(group, pair))
             if issues:
-                issues.extend(source_issue_details(pair))
+                issues.extend(source_issue_details(pair, failures))
                 excluded.append(dict(status='UNKNOWN', reasons=sorted(set(issues)), invalidFields=sorted(set(invalid_fields)), **pair_context(group, pair), reference=dict(values={k: pair[k] if number(pair.get(k)) else None for k in VALUES}, costs={k: costs[k] if isinstance(costs, dict) and number(costs.get(k)) else None for k in COSTS}) if 'assumed fee schedule: reference only' in issues else None))
                 continue
             holding_return = pair['estProfitUsd'] / pair['capitalUsd']
@@ -287,7 +287,7 @@ def markdown(report):
             return datetime.fromtimestamp(value, ZoneInfo('Asia/Taipei')).isoformat()
         except (TypeError, ValueError, OverflowError, OSError):
             return 'UNKNOWN'
-    lines = ['# Opportunity screening', '', f"Run: {report['runId']}", f"Taipei time: {report['timeTaipei']}", f"Data status: {report['status']}", '', '## Assumptions', '', json.dumps(report['assumptions'], ensure_ascii=False), '', '## Top candidates', '']
+    lines = ['# Opportunity screening', '', f"Run: {report['runId']}", f"Taipei time: {report['timeTaipei']}", f"Data status: {report['status']}", '', '## Assumptions', '', json.dumps(report['assumptions'], ensure_ascii=False), '']
     freshness_lines = ['## Freshness evidence', '']
     for mode in ('close', 'roll'):
         for category, title in (('marketData', 'Market data'), ('staticData', 'Static data')):
@@ -295,7 +295,8 @@ def markdown(report):
             if item:
                 freshness_lines.append(f"- {mode} {title}: {item['status']}; observed {taipei_time(item['observedAtMs'] / 1000 if item['observedAtMs'] is not None else None)}; age {fmt(item['ageSeconds'])} seconds; limit {fmt(item['maxAgeSeconds'])} seconds" + ('; ' + ', '.join(item['reasons']) if item['reasons'] else ''))
     if len(freshness_lines) > 2:
-        lines[10:10] = freshness_lines + ['']
+        lines += freshness_lines + ['']
+    lines += ['## Top candidates', '']
     if not report['candidates']:
         lines.append('No qualifying candidates. Top list is not padded.')
     for i, row in enumerate(report['candidates'], 1):
@@ -397,12 +398,12 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
         print('Unable to collect Opportunity data.', file=sys.stderr)
         return 1
     stamp = now()
-    close, excluded, issues, close_time, close_id = normalize(envelopes.get('close'), 'close', args, stamp)
-    rolls, roll_excluded, roll_issues, roll_time, roll_id = normalize(envelopes.get('roll'), 'roll', args, stamp)
+    close, excluded, issues, close_market_time, close_id = normalize(envelopes.get('close'), 'close', args, stamp)
+    rolls, roll_excluded, roll_issues, roll_market_time, roll_id = normalize(envelopes.get('roll'), 'roll', args, stamp)
     compare = []
     if close_id != roll_id:
         compare.append('credential scope mismatch')
-    if not number(close_time) or not number(roll_time) or abs(close_time - roll_time) > args.max_skew * 1000:
+    if not number(close_market_time) or not number(roll_market_time) or abs(close_market_time - roll_market_time) > args.max_skew * 1000:
         compare.append('observation skew or missing comparison')
     roll_map = {tuple(row['identity']): row for row in rolls}
     for row in close:
@@ -415,7 +416,7 @@ def run(argv=None, *, fetch=fetch_json, now=time.time):
     comparison_issues = [dict(status='UNKNOWN', comparison='roll', rank=rank, inTop=rank <= args.top, reasons=row['roll']['reasons'], **pair_context(row, row)) for rank, row in enumerate(close, 1) if row['roll']['status'] == 'UNKNOWN']
     data_issues = failures + issues + roll_issues + compare
     unknown = bool(data_issues or any(x['status'] == 'UNKNOWN' for x in excluded + roll_excluded) or comparison_issues)
-    report = dict(runId=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).strftime('%Y%m%dT%H%M%S') + '-' + uuid4().hex[:12], timeTaipei=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).isoformat(), status='UNKNOWN' if unknown else 'VALID', assumptions=dict(notionalUsd=args.notional, top=args.top, entryMode='maker-hedge', borosEntry='market', primaryExitMode='close', maxAgeSeconds=args.max_age, maxSkewSeconds=args.max_skew, clientRebatesAdded=False, feeEvidence='UNKNOWN' if issues or roll_issues else 'API without assumption warning'), evidence=dict(closeObservedAtMs=close_time if number(close_time) else None, rollObservedAtMs=roll_time if number(roll_time) else None), candidates=close[:args.top], excluded=excluded + [dict(item, comparison='roll') for item in roll_excluded], dataReasons=sorted(set(data_issues)), limitations=LIMITATIONS)
+    report = dict(runId=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).strftime('%Y%m%dT%H%M%S') + '-' + uuid4().hex[:12], timeTaipei=datetime.fromtimestamp(stamp, ZoneInfo('Asia/Taipei')).isoformat(), status='UNKNOWN' if unknown else 'VALID', assumptions=dict(notionalUsd=args.notional, top=args.top, entryMode='maker-hedge', borosEntry='market', primaryExitMode='close', maxAgeSeconds=args.max_age, maxSkewSeconds=args.max_skew, clientRebatesAdded=False, feeEvidence='UNKNOWN' if issues or roll_issues else 'API without assumption warning'), evidence=dict(closeMarketObservedAtMs=close_market_time if number(close_market_time) else None, rollMarketObservedAtMs=roll_market_time if number(roll_market_time) else None), candidates=close[:args.top], excluded=excluded + [dict(item, comparison='roll') for item in roll_excluded], dataReasons=sorted(set(data_issues)), limitations=LIMITATIONS)
     report['comparisonIssues'] = comparison_issues
     report['assumptions'].update(maxMarketAgeSeconds=args.max_age, maxStaticAgeSeconds=args.max_static_age, skewBasis='marketData')
     report['evidence'].update(close=freshness_evidence(envelopes.get('close'), args, stamp), roll=freshness_evidence(envelopes.get('roll'), args, stamp))

@@ -12,7 +12,7 @@ Blocked by: none
 
 依据 [单次只读投资机会筛选脚本规格](../spec.md) 实现 CLI、配套离线测试和使用说明。规格是本票的唯一验收主体，不复制详细决策或测试列表。
 
-首版单次运行，默认每腿 $10,000、永续 limit + hedge、Boros 市价成交利率，平仓主榜与滚仓对照；输出 Markdown + JSON。仅查询 Opportunity API，缺证据保留 UNKNOWN，不读取账户保证金或四腿持仓。不修改 API，不执行交易或启动监控。
+首版单次运行，默认每腿 $10,000、永续 limit + hedge、Boros 市价成交利率，平仓主榜与滚仓对照；输出 Markdown + JSON。仅查询 Opportunity API，缺证据保留 UNKNOWN，不读取账户保证金或四腿持仓。首版不修改 API；后续扩展以规格和下面的追加记录为准。不执行交易或启动监控。
 
 ## Completion
 
@@ -28,6 +28,8 @@ Blocked by: none
 - 2026-10-07 用户收窄范围：仅筛选 Opportunity，删除已有持仓关系与账户保证金/四腿持仓读取。保留合成响应到报告的测试边界，账户与持仓分析不再纳入验收。
 
 ## Answer
+
+- 2026-10-08 review 修复：确认英文 warning 模板耦合和报告时间命名歧义。根响应/每组新增稳定 `warningEvidence`；脚本不再解析英文 warning/reason，盘口腿通过已有结构化诊断关联，旧告警缺机器证据仍 UNKNOWN。报告保留聚合字段并新增显式行情时刻。静态/行情分类参数改为必填，加入风险限制 stale 回归和跨语言安全诊断 fixture。修正规格范围漂移及地图的历史审查表述，逐项结论见[复核记录](../evidence/review-followup.md)。独立签名票继续待办，不修改交易传输、不重启服务。
 
 - 2026-10-08 状态复核：维持 resolved。盘口失败诊断及三路并发连接保留修复已提交为 `575ae58`；榜外 roll 异常完整报告修复为 `227c755`，均已进入 `codex/opportunity-screening`。当前脚本 27 项离线测试通过；最新只读扫描 `20261008T005518-f47dbc261379` 为 VALID，Top 5，无对照异常。该扫描仅验证当次证据，不证明实盘执行准备，也不保证未来没有 UNKNOWN。01/03 同步关闭，02 维持 wontfix。
 

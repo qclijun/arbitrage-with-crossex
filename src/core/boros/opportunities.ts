@@ -167,6 +167,14 @@ export interface OpportunityPair {
   reasons: string[];
 }
 
+/** Stable evidence for CLI consumers; prose warnings remain for display. */
+export interface OpportunityWarningEvidence {
+  code: 'collateral-price-unavailable' | 'unsupported-perp-venue' | 'missing-perp-symbol'
+    | 'fee-schedule-unavailable' | 'assumed-fee-schedule' | 'symbol-list-unavailable'
+    | 'risk-limits-unavailable';
+  marketId?: number;
+}
+
 export interface OpportunityGroup {
   tokenId: number;
   /** Collateral token symbol, e.g. "USDT". */
@@ -182,6 +190,7 @@ export interface OpportunityGroup {
   /** pairs[0] when its netFixedAprOnCapital is known; null otherwise. */
   bestPair: OpportunityPair | null;
   warnings: string[];
+  warningEvidence: OpportunityWarningEvidence[];
 }
 
 export interface OpportunitiesResult {
@@ -194,6 +203,7 @@ export interface OpportunitiesResult {
     exitMode: ExitMode;
   };
   warnings: string[];
+  warningEvidence: OpportunityWarningEvidence[];
 }
 
 /** What the route must fetch for one group — produced by `groupBorosMarkets`
@@ -841,7 +851,9 @@ export function buildOpportunities(
   options: BuildOpportunitiesOptions,
 ): OpportunitiesResult {
   const warnings: string[] = [];
+  const warningEvidence: OpportunityWarningEvidence[] = [];
   if (input.feeRows === null) {
+    warningEvidence.push({ code: 'fee-schedule-unavailable' });
     warnings.push(
       "The CrossEx fee schedule is unavailable — perp trading fees are unknown, so net fixed APRs can't be quoted.",
     );
@@ -857,7 +869,9 @@ export function buildOpportunities(
       collateralPriceUsd,
     };
     const groupWarnings: string[] = [];
+    const groupWarningEvidence: OpportunityWarningEvidence[] = [];
     if (collateralPriceUsd === null && options.borosEntry === 'market') {
+      groupWarningEvidence.push({ code: 'collateral-price-unavailable' });
       groupWarnings.push(
         `Can't price ${plan.collateral} collateral in USD (no reference market) — this group's book depth and open interest can't be sized in dollars.`,
       );
@@ -866,10 +880,12 @@ export function buildOpportunities(
     const builds = plan.markets.map((m) => buildMarketRow(m, input, options, collateralPriceUsd));
     for (const build of builds) {
       if (!build.row.crossexVenue) {
+        groupWarningEvidence.push({ code: 'unsupported-perp-venue', marketId: build.row.marketId });
         groupWarnings.push(
           `${build.row.name} trades against ${build.row.venue}, which has no CrossEx perp venue — it can't carry a hedge leg here.`,
         );
       } else if (!build.row.crossexSymbol) {
+        groupWarningEvidence.push({ code: 'missing-perp-symbol', marketId: build.row.marketId });
         groupWarnings.push(
           `No live CrossEx ${build.row.crossexVenue} symbol for ${build.row.base} — ${build.row.name} can't carry a hedge leg here.`,
         );
@@ -909,7 +925,8 @@ export function buildOpportunities(
       markets: builds.map((x) => x.row),
       pairs,
       bestPair: pairs.length && pairs[0].netFixedAprOnCapital !== null ? pairs[0] : null,
-      warnings: [...new Set(groupWarnings)],
+      warnings: groupWarnings,
+      warningEvidence: groupWarningEvidence,
     };
   });
 
@@ -939,5 +956,6 @@ export function buildOpportunities(
       exitMode: options.exitMode,
     },
     warnings: [...new Set(warnings)],
+    warningEvidence,
   };
 }
