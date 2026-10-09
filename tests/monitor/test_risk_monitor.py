@@ -54,7 +54,7 @@ class RiskMonitorTest(unittest.TestCase):
 
     def test_every_risk_and_check_emitted_with_no_data(self):
         report = evaluate({}, self.config, {}, self.rules, NOW, {'collector': 'offline'})
-        self.assertEqual(len(report['checks']), 30)
+        self.assertEqual(len(report['checks']), 29)
         self.assertEqual({c['risk'] for c in report['checks']}, set(range(1, 9)) - {3})
         self.assertTrue(all(c['metrics'] for c in report['checks']))
         self.assertTrue(all(c['status'] != 'OK' for c in report['checks']))
@@ -455,7 +455,8 @@ class RiskMonitorTest(unittest.TestCase):
         self.assertEqual(check['status'], 'UNKNOWN')
 
     def test_disabled_checks_clear_queued_alerts(self):
-        disabled = ('collateral.eth_net', 'collateral.stress_loss_usd', 'basis.executable_exit_cost_usd')
+        disabled = ('collateral.eth_net', 'collateral.stress_loss_usd', 'basis.executable_exit_cost_usd',
+                    'market.trading_status')
         state = {'pending': {key: {'id': key, 'status': 'UNKNOWN'} for key in disabled},
                  'observed_status': {key: 'UNKNOWN' for key in disabled},
                  'risk_status': {key: 'CRITICAL' for key in disabled},
@@ -467,6 +468,7 @@ class RiskMonitorTest(unittest.TestCase):
         self.assertFalse(any(c['risk'] == 3 for c in report['checks']))
         self.assertFalse(any(key.startswith('collateral.') for c in report['checks'] for key in c['metrics']))
         self.assertFalse(any(c['id'] == 'basis.executable_exit_cost_usd' for c in report['checks']))
+        self.assertFalse(any(c['id'] == 'market.trading_status' for c in report['checks']))
         self.assertTrue(any(c['id'] == 'basis.mark_spread_usd_per_eth' for c in report['checks']))
         for key in ('pending', 'observed_status', 'risk_status', 'critical_metrics'):
             self.assertFalse(any(check_id in state[key] for check_id in disabled))
@@ -474,6 +476,7 @@ class RiskMonitorTest(unittest.TestCase):
         notify_report(report, state, {}, {}, NOW, sent.append)
         self.assertFalse(any('collateral.' in message for message in sent))
         self.assertFalse(any('basis.executable_exit_cost_usd' in message for message in sent))
+        self.assertFalse(any('market.trading_status' in message for message in sent))
 
 
     def test_critical_not_erased_by_lost_data(self):

@@ -581,6 +581,7 @@
   },
   {
     "id": "market.trading_status",
+    "enabled": false,
     "risk": 6,
     "label": "6. 市场交易限制",
     "metrics": [

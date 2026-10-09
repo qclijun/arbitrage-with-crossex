@@ -6,6 +6,16 @@ const now = 1800000000;
 const evidence = (value: unknown, extra = {}): MetricEvidence => ({ value, unit: 'ratio', source: 'synthetic official read', evidence: 'fixture', observedAt: now, ttlSeconds: 3600, scope, complete: true, ...extra });
 const run = (value: unknown, previous = {}) => evaluateRisk(scope, { 'gate.im_coverage': evidence(value) }, now, previous);
 describe('Risk catalog evaluation', () => {
+  it('pauses market trading restrictions without suppressing other risk checks', () => {
+    const report = evaluateRisk(scope, {}, now, {
+      'market.trading_status': { status: 'CRITICAL', criticalMetrics: ['market.trading_status'] },
+    });
+    expect(rules.find(r => r.id === 'market.trading_status')?.enabled).toBe(false);
+    expect(report.checks.some(c => c.id === 'market.trading_status')).toBe(false);
+    expect(report.state['market.trading_status']).toBeUndefined();
+    expect(report.checks.some(c => c.id === 'rollover.days_to_maturity')).toBe(true);
+    expect(report.checks.some(c => c.id === 'data.age_seconds')).toBe(true);
+  });
   it('keeps strict boundaries and requires hysteresis for recovery', () => {
     expect(run(1.1).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('WARNING');
     const critical = run(1.09);
@@ -18,7 +28,7 @@ describe('Risk catalog evaluation', () => {
   it('accounts for every enabled check and metric, and rejects foreign/expired evidence', () => {
     const report = run(2);
     expect(report.checks).toHaveLength(rules.filter(r => r.enabled !== false).length);
-    expect(new Set(report.checks.flatMap(c => Object.keys(c.metrics))).size).toBe(61);
+    expect(new Set(report.checks.flatMap(c => Object.keys(c.metrics))).size).toBe(59);
     for (const extra of [{ observedAt: now + 1 }, { observedAt: now - 3601 }, { unit: 'USD' }, { scope: { ...scope, credentialId: 'b' } }, { complete: false }]) {
       expect(evaluateRisk(scope, { 'gate.im_coverage': evidence(2, extra) }, now).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('UNKNOWN');
     }
