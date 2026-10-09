@@ -2458,7 +2458,7 @@ function RollReview({
         gasBalanceUsd={roll.data?.gasBalanceUsd}
         amount={gasTopUpStr}
         onAmountChange={setGasTopUpStr}
-        onTopUp={canTrade ? () => topUpGas.mutate({ amountUsd: Number(gasTopUpStr), address }) : undefined}
+        onTopUp={canTrade ? () => topUpGas.mutate({ amountUsd: Number(gasTopUpStr), address, marketId: target.longMarketId }) : undefined}
         busy={topUpGas.isPending}
       />
       {topUpGas.isSuccess && (
@@ -2721,7 +2721,7 @@ function OpenOnlyReview({
         gasBalanceUsd={sim.data?.gasBalanceUsd}
         amount={gasTopUpStr}
         onAmountChange={setGasTopUpStr}
-        onTopUp={canTrade ? () => topUpGas.mutate({ amountUsd: Number(gasTopUpStr), address }) : undefined}
+        onTopUp={canTrade ? () => topUpGas.mutate({ amountUsd: Number(gasTopUpStr), address, marketId: target.longMarketId }) : undefined}
         busy={topUpGas.isPending}
       />
       {topUpGas.isSuccess && (
