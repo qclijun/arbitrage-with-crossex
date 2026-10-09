@@ -56,6 +56,7 @@ import { LedgerStore } from '../ledgerStore';
 import { netSettlementWindow } from '../../core/boros/riskSettlement';
 import type { RiskAssetEvidence, RiskBorosPosition } from '../../core/risk';
 import { earliestSupportedOpenMs, TrackingStartFile } from '../trackingStart';
+import { borosFeesKnown, currentBorosCycle } from '../borosTracking';
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -147,6 +148,7 @@ export interface AssetPerpClosedOut {
 }
 
 export interface AssetBorosOpenOut {
+  tradeFeesComplete?: boolean;
   marketId: number;
   venue: string;
   maturity: number;
@@ -184,6 +186,7 @@ export interface AssetBorosOpenOut {
 /** Per-market history sums since `since` — covers open, closed and matured
  * positions uniformly (settlements and fills are account-level events). */
 export interface AssetBorosHistoryOut {
+  tradeFeesComplete?: boolean;
   marketId: number;
   venue: string;
   maturity: number;
@@ -261,6 +264,7 @@ export interface AssetGroupOut {
 }
 
 export interface AssetViewOut {
+  trackingStart?: { complete: boolean; corrected: boolean };
   risk?: RiskAssetEvidence;
   sinceSec: number;
   nowSec: number;
@@ -584,6 +588,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
         { fresh },
       );
       perpPositions = rememberMarks(value as PerpPositionLike[]).rows;
+      sourceStale ||= stale;
       if (stale) warnings.push('Gate position snapshot is stale; only historical values are available.');
     } catch (err) {
       perpAvailable = false;
@@ -618,6 +623,8 @@ export function createAssetViewBuilder(deps: AppDeps) {
     }
 
     let defaultSinceSec: number | null = null;
+    let trackingUserId: string | null = null;
+    let confirmedSinceSec: number | null = null;
     {
       const gateRows: Array<{ symbol?: string; createTime?: string; userId?: unknown }> = [
         ...perpPositions,
@@ -625,8 +632,12 @@ export function createAssetViewBuilder(deps: AppDeps) {
       ];
       const owner = gateRows.find((r) => r.userId !== undefined && r.userId !== null && r.userId !== '')?.userId;
       const userId = owner === undefined ? null : String(owner);
-      const saved = trackingStart.read();
-      if (saved && (userId === null || saved.userId === userId)) {
+      trackingUserId = userId;
+      const scoped = userId === null ? null : trackingStart.readScope(userId, address);
+      confirmedSinceSec = scoped ? Math.floor(scoped.firstOpenMs / 1000) : null;
+      const legacy = trackingStart.read();
+      const saved = scoped ? { userId: scoped.userId, firstOpenMs: scoped.gateFirstOpenMs } : legacy;
+      if (saved && userId !== null && saved.userId === userId) {
         defaultSinceSec = Math.floor(saved.firstOpenMs / 1000);
       } else if (perpAvailable && closedAvailable) {
         const firstOpenMs = earliestSupportedOpenMs(gateRows);
@@ -637,8 +648,14 @@ export function createAssetViewBuilder(deps: AppDeps) {
       }
     }
 
-    const sinceSec = requestedSinceSec ?? defaultSinceSec ?? 0;
-    const floorFor = (marketId: number): number => Math.max(sinceSec, legSince.get(marketId) ?? 0);
+    let sinceSec = requestedSinceSec ?? defaultSinceSec ?? 0;
+    const gateSinceSec = defaultSinceSec;
+    const cycleStarts = new Map<number, number>();
+    const unknownCycles = new Set<number>();
+    const feesComplete = new Map<number, boolean>();
+    const floorFor = (marketId: number): number => Math.max(sinceSec, legSince.get(marketId) ?? 0,
+      requestedSinceSec === null && !legSince.has(marketId)
+        ? unknownCycles.has(marketId) ? Infinity : cycleStarts.get(marketId) ?? 0 : 0);
 
     // --- Boros reads (shared cache keys with the strategy feed) ----------
     let marketObservedAt = 0;
@@ -658,12 +675,11 @@ export function createAssetViewBuilder(deps: AppDeps) {
       readLedger(address, sinceSec, fresh),
     ]);
     const ledger = ledgerRead.ledger;
-    const settlements = settlementWindow(ledger, sinceSec);
+    let settlements = settlementWindow(ledger, sinceSec);
     // Backend-provided per-settlement rebate amounts, joined onto the windowed
     // events by (marketId, timeSec). Nothing before the program start is ever
     // rebated, so the backend returns none — the client passes `sinceSec` and
     // lets the backend bound it.
-    const rebateByEvent = await readRebateByEvent(address, sinceSec, fresh);
 
     const marketById = new Map<number, BorosMarket>(markets.map((m) => [m.marketId, m]));
     const collateralPriceUsd = resolveCollateralPricesUsd(markets);
@@ -680,10 +696,10 @@ export function createAssetViewBuilder(deps: AppDeps) {
     const txnsComplete: boolean[] = [];
     const txnsByToken = new Map<
       number,
-      Array<{ marketId: number; time: number; pnlTok: number; feeTok: number; fixedApr: number; prev: number; post: number }>
+      Array<{ marketId: number; time: number; pnlTok: number; feeTok: number; fixedApr: number; prev: number; post: number; inCurrentCycle: boolean }>
     >(
       await Promise.all(
-        zones.map(async (z): Promise<[number, Array<{ marketId: number; time: number; pnlTok: number; feeTok: number; fixedApr: number; prev: number; post: number }>]> => {
+        zones.map(async (z): Promise<[number, Array<{ marketId: number; time: number; pnlTok: number; feeTok: number; fixedApr: number; prev: number; post: number; inCurrentCycle: boolean }>]> => {
           const pairs = new Map<string, { marketAcc: string; marketId: number; live: boolean }>();
           for (const a of settlements.pairs) {
             if (a.tokenId !== z.tokenId) continue;
@@ -705,20 +721,46 @@ export function createAssetViewBuilder(deps: AppDeps) {
           const perMarket = await Promise.all(
             [...pairs.values()].map(async ({ marketAcc, marketId, live }) => {
               const key = `boros:txns:${marketAcc}:${marketId}:${live ? 'live' : 'past'}`;
-              const { value } = await deps.cache.get(
-                key,
-                live ? BOROS_LIVE_TTL_MS : TTL.borosHistory,
-                async () => {
-                  const read = await fetchBorosTransactions(fetchImpl, marketAcc, marketId, {
-                    pace,
-                    prev: lastFills.get(key),
-                  });
-                  lastFills.set(key, read);
-                  return read;
-                },
-                { fresh },
-              );
-              return value;
+              let value: { txns: BorosTxn[]; complete: boolean };
+              let stale = false;
+              try {
+                const read = await deps.cache.get(
+                  key,
+                  live ? BOROS_LIVE_TTL_MS : TTL.borosHistory,
+                  async () => {
+                    const read = await fetchBorosTransactions(fetchImpl, marketAcc, marketId, {
+                      pace,
+                      prev: lastFills.get(key),
+                    });
+                    lastFills.set(key, read);
+                    return read;
+                  },
+                  { fresh },
+                );
+                value = read.value;
+                stale = read.stale;
+              } catch {
+                value = { txns: [], complete: false };
+              }
+              const group = [...(z.cross ? [z.cross] : []), ...z.isolated]
+                .find((g) => g.marketAcc.toLowerCase() === marketAcc.toLowerCase());
+              const position = group?.marketPositions.find((p) => p.marketId === marketId);
+              const market = marketById.get(marketId);
+              const amountsKnown = borosFeesKnown(value.txns);
+              let known = value.complete && !stale && amountsKnown;
+              let currentTxns: Set<BorosTxn> | null = null;
+              if (position && norm18(position.notionalSize) !== 0 && market && isSupportedCoin(market.base)) {
+                const opened = currentBorosCycle(value.txns, position.notionalSize,
+                  known && !sourceStale && group?.positionsComplete === true);
+                if (opened !== null) {
+                  currentTxns = opened.txns;
+                  cycleStarts.set(marketId, Math.min(cycleStarts.get(marketId) ?? opened.openedSec, opened.openedSec));
+                }
+                else unknownCycles.add(marketId);
+                if (requestedSinceSec === null && opened === null) known = false;
+              }
+              feesComplete.set(marketId, (feesComplete.get(marketId) ?? true) && known);
+              return { ...value, complete: known, currentTxns };
             }),
           );
           for (const v of perMarket) txnsComplete.push(v.complete);
@@ -733,12 +775,33 @@ export function createAssetViewBuilder(deps: AppDeps) {
                 fixedApr: Number(t.fixedApr),
                 prev: norm18(t.prevPositionS ?? '0'),
                 post: norm18(t.postPositionS ?? '0'),
+                inCurrentCycle: v.currentTxns?.has(t) ?? true,
               })),
             ),
           ];
         }),
       ),
     );
+
+    if (cycleStarts.size) {
+      const firstBorosSec = Math.min(...cycleStarts.values());
+      defaultSinceSec = Math.min(defaultSinceSec ?? firstBorosSec, firstBorosSec);
+    }
+    const cyclesComplete = unknownCycles.size === 0 && txnsComplete.every(Boolean) && !sourceStale;
+    if (!cyclesComplete && confirmedSinceSec !== null) {
+      defaultSinceSec = Math.min(defaultSinceSec ?? confirmedSinceSec, confirmedSinceSec);
+    }
+    sinceSec = requestedSinceSec ?? defaultSinceSec ?? 0;
+    settlements = settlementWindow(ledger, sinceSec);
+    if (trackingUserId !== null && gateSinceSec !== null && defaultSinceSec !== null
+      && perpAvailable && closedAvailable && cyclesComplete) {
+      trackingStart.writeScope(address, { userId: trackingUserId, firstOpenMs: defaultSinceSec * 1000,
+        gateFirstOpenMs: gateSinceSec * 1000 });
+    }
+    if (unknownCycles.size || [...feesComplete.values()].some((v) => !v)) {
+      warnings.push('Boros fee history is incomplete: the current position cycle or paid trading fees could not be confirmed. Totals may omit historical fees.');
+    }
+    const rebateByEvent = await readRebateByEvent(address, sinceSec, fresh);
 
     // The listing serves LIVE markets only — a matured market drops out of
     // it, taking its history's asset/venue mapping with it. Resolve every
@@ -778,7 +841,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
      */
     let fundingWindow: Map<string, number> | null = null; // positionId → USD
     let feesWindow: Map<string, number> | null = null; // symbol → USD
-    if (perpAvailable && sinceSec > 0) {
+    if (perpAvailable && perpPositions.length > 0 && sinceSec > 0) {
       try {
         const { value } = await deps.cache.get(
           `crossex:funding-window:${Math.floor(sinceSec / 3600)}`,
@@ -1084,6 +1147,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
           const g = groupFor(market.base);
           if (g.priceUsd === 0 && market.assetMarkPriceUsd > 0) g.priceUsd = market.assetMarkPriceUsd;
           g.borosOpen.push({
+            tradeFeesComplete: feesComplete.get(p.marketId) !== false,
             marketId: p.marketId,
             venue: normalizeVenue(market.venue),
             maturity: market.maturity,
@@ -1123,6 +1187,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
       const market = marketById.get(marketId);
       if (!market) return null;
       h = {
+        tradeFeesComplete: feesComplete.get(marketId) !== false,
         marketId,
         venue: normalizeVenue(market.venue),
         maturity: market.maturity,
@@ -1192,10 +1257,13 @@ export function createAssetViewBuilder(deps: AppDeps) {
     for (const [tokenId, txns] of txnsByToken) {
       const px = tokenPrice(tokenId);
       for (const t of txns) {
+        if (requestedSinceSec === null && !legSince.has(t.marketId) && !t.inCurrentCycle) continue;
         // An OPENING fill grows |position|; its traded rate, weighted by
         // the size it added, is what the position locked.
         const grew = Math.abs(t.post) - Math.abs(t.prev);
-        if (grew > 0 && Number.isFinite(t.fixedApr) && t.time >= (legSince.get(t.marketId) ?? 0)) {
+        const rateFloor = Math.max(legSince.get(t.marketId) ?? 0,
+          requestedSinceSec === null ? cycleStarts.get(t.marketId) ?? 0 : 0);
+        if (grew > 0 && Number.isFinite(t.fixedApr) && t.time >= rateFloor) {
           const r = openRate.get(t.marketId) ?? { size: 0, sizeApr: 0, side: 'LONG' as const };
           r.size += grew;
           r.sizeApr += grew * t.fixedApr;
@@ -1313,6 +1381,9 @@ export function createAssetViewBuilder(deps: AppDeps) {
     const settlement = ledgerRead.stale ? { ...net, netEth: null, complete: false,
       reason: 'Settlement producer read incomplete / stale' } : net;
     const out: AssetViewOut = {
+      trackingStart: { complete: unknownCycles.size === 0 && txnsComplete.every(Boolean) && perpAvailable && closedAvailable
+          && !sourceStale && borosPositionsComplete && perpClosedFromSec === 0,
+        corrected: gateSinceSec !== null && defaultSinceSec !== null && defaultSinceSec < gateSinceSec },
       risk: { address, accountId: 0, observedAt: Math.min(marketObservedAt, collateralObservedAt),
         stale: sourceStale, positionsComplete: riskPositionsComplete, positions: riskPositions, settlement },
       sinceSec,

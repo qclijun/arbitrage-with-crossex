@@ -4,7 +4,7 @@
  * estimate instead, labelled without "(Fixed)" and split into its fixed and
  * floating parts (his call 2026-10-01).
  */
-import { screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AssetBorosOpen, AssetGroup, AssetPerpOpen } from '../../api/types';
@@ -89,6 +89,31 @@ beforeEach(() => {
 });
 
 describe('the asset hero APR', () => {
+  it('shows corrected Boros entry fees in the pair popup', () => {
+    const group = book(100);
+    group.borosHistory = [1, 2].map((marketId) => ({ marketId, venue: marketId === 1 ? 'GATE' : 'HYPERLIQUID',
+      maturity: group.borosOpen[0].maturity, settleUsd: 0, settleFeeUsd: 0, tradePnlUsd: -1.0392806574200926,
+      tradeFeeUsd: 1.0392806574200926, firstEventSec: group.earliestSec!, tradeFeesComplete: true }));
+    renderCard(group);
+    fireEvent.click(screen.getByRole('button', { name: 'fees ›' }));
+    const dialog = screen.getByRole('dialog');
+    const tile = within(dialog).getByText('Boros Trade Fees').parentElement!;
+    expect(tile).toHaveTextContent('−$2.08');
+    expect(within(dialog).getByText('Profit at Maturity (est.)').parentElement).toHaveTextContent('$1,367.78');
+  });
+
+  it('shows unknown Boros fees and withholds net profit when the position cycle is incomplete', () => {
+    const group = book(100);
+    group.borosOpen[0].tradeFeesComplete = false;
+    renderCard(group);
+    fireEvent.click(screen.getByRole('button', { name: 'fees ›' }));
+    const dialog = screen.getByRole('dialog');
+    const tile = within(dialog).getByText('Boros Trade Fees').parentElement!;
+    expect(tile).toHaveTextContent('UNKNOWN');
+    expect(within(dialog).getByText(/Fee history incomplete/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Profit at Maturity (est.)').parentElement).toHaveTextContent('—');
+  });
+
   it('a fully locked book keeps "Current APR (Fixed)" and its fixed rate, with no split', () => {
     renderCard(book(100));
     expect(screen.getByText('Current APR (Fixed)')).toBeInTheDocument();

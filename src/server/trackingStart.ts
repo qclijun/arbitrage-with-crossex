@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { isSupportedCoin } from '../core/coins';
 import { parseSymbol } from '../core/numbers';
 import { readOwnerJson, writeOwnerOnlyJson } from './secretFile';
@@ -28,6 +29,24 @@ export class TrackingStartFile {
 
   write(start: TrackingStart): void {
     writeOwnerOnlyJson(this.file, start);
+  }
+
+  private scopeFile(userId: string, address: string): string {
+    const key = createHash('sha256').update(JSON.stringify([userId, address.toLowerCase()])).digest('hex');
+    return path.join(path.dirname(this.file), `tracking-start-${key}.json`);
+  }
+
+  readScope(userId: string, address: string): (TrackingStart & { gateFirstOpenMs: number }) | null {
+    return readOwnerJson(this.scopeFile(userId, address), (raw) => {
+      const start = parseStart(raw);
+      const gate = (raw as { gateFirstOpenMs?: unknown } | null)?.gateFirstOpenMs;
+      return start && start.userId === userId && typeof gate === 'number' && Number.isFinite(gate) && gate > 0
+        ? { ...start, gateFirstOpenMs: gate } : null;
+    });
+  }
+
+  writeScope(address: string, start: TrackingStart & { gateFirstOpenMs: number }): void {
+    writeOwnerOnlyJson(this.scopeFile(start.userId, address), start);
   }
 }
 

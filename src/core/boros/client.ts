@@ -754,8 +754,8 @@ export async function fetchBorosTransactions(
       // OTC price. Absent must stay absent.
       const asRate = (v: unknown): number =>
         v === null || v === undefined || v === '' ? Number.NaN : Number(v);
-      const prevPositionS = String(t.prevPositionS ?? '0');
-      const postPositionS = String(t.postPositionS ?? '0');
+      const prevPositionS = String(t.prevPositionS ?? '');
+      const postPositionS = String(t.postPositionS ?? '');
       // `prevPositionF` rides on EVERY row, but the venue only ever reported
       // an entry rate on a fill that reduces the position without flipping it
       // — and the difference is load-bearing: on an open-from-flat the field
@@ -772,8 +772,8 @@ export async function fetchBorosTransactions(
         id,
         marketId: Number(t.marketId),
         time: Number(t.timestamp ?? 0),
-        fee: String(t.fee ?? '0'),
-        pnl: String(t.pnl ?? '0'),
+        fee: String(t.fee ?? ''),
+        pnl: String(t.pnl ?? ''),
         prevPositionS,
         postPositionS,
         // No `?? 0` on the rate: a rate of exactly 0 is a real OTC price, so a

@@ -681,7 +681,7 @@ describe('GET /api/asset-view/:address', () => {
     expect(btc.borosHistory).toHaveLength(1);
     expect(btc.borosHistory[0]).toMatchObject({ marketId: 42, venue: 'BINANCE' });
     expect(btc.borosHistory[0].settleUsd).toBeCloseTo(75, 6);
-    expect(data.warnings).toHaveLength(0);
+    expect(data.warnings).toEqual([]);
   });
 
   it('excludes history rows on unlisted markets and says so', async () => {

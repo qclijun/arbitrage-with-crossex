@@ -554,14 +554,14 @@ function PairCard({
    * same fee as APR drag on capital over the hedge's life. A fee that is
    * switched off stays visible, struck through, so what the switch removed
    * is never out of sight. */
-  const feeTile = (key: string, label: string, title: string, usd: number, on: boolean) => {
+  const feeTile = (key: string, label: string, title: string, usd: number, on: boolean, complete = true) => {
     const drag = dragOf(usd);
     return (
       <div key={key} title={title}>
         <div className={`${statLabel} ${on ? '' : '!text-ink-600'}`}>{label}</div>
-        <div className={`${statValue} ${on ? 'text-ink-100' : 'text-ink-600 line-through'}`}>−{fmtUsd(usd)}</div>
+        <div className={`${statValue} ${on ? 'text-ink-100' : 'text-ink-600 line-through'}`}>{complete ? `−${fmtUsd(usd)}` : 'UNKNOWN'}</div>
         <div className={`${statSub} ${on ? '' : '!text-ink-600'}`}>
-          {!on ? 'not charged' : drag !== null ? `−${fmtPct(drag)} drag` : ' '}
+          {!complete ? 'incomplete history' : !on ? 'not charged' : drag !== null ? `−${fmtPct(drag)} drag` : ' '}
         </div>
       </div>
     );
@@ -705,7 +705,7 @@ function PairCard({
               <button
                 type="button"
                 className="ml-2 text-[11px] text-ink-400 underline decoration-dotted underline-offset-2 hover:text-ink-200"
-                title={`Fees charged\t−${fmtUsd(chargedUsd)}`}
+                title={pair.borosFeesComplete === false ? 'Fee history incomplete' : `Fees charged\t−${fmtUsd(chargedUsd)}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   setFeesOpen(true);
@@ -879,6 +879,9 @@ function PairCard({
           <p className="mb-3 text-[11.5px] text-ink-300">
             What this pair's fixed earning is charged with. The switches change the row's Est. fixed APR and profit at maturity.
           </p>
+          {pair.borosFeesComplete === false && (
+            <p role="alert" className="mb-3 text-xs text-amber-400">Fee history incomplete — Boros paid fees and net profit are unknown.</p>
+          )}
           <div className="flex flex-col rounded border border-ink-700">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-800 bg-wash/[0.03] px-3 py-2 text-xs">
               <span className={microLabelClass}>Charge</span>
@@ -919,6 +922,7 @@ function PairCard({
                 'What crossing the Boros book cost when these legs were opened. Settlement fees are NOT here: they accrue to maturity however you enter or roll, so they are already netted out of the locked rate.',
                 pair.borosFeesPaidUsd,
                 true,
+                pair.borosFeesComplete !== false,
               )}
               {feeTile(
                 'perp',
@@ -5271,6 +5275,9 @@ export function AssetCard({
         <SinceChip base={group.base} storedSec={storedSinceSec} defaultSec={defaultSinceSec} onChange={onChangeSince} />
       </div>
 
+      {(group.borosOpen.some((p) => p.tradeFeesComplete === false) || group.borosHistory.some((h) => h.tradeFeesComplete === false)) && (
+        <p role="alert" className="mb-3 text-xs text-amber-400">Fee history incomplete — displayed totals are partial.</p>
+      )}
       {!group.supported && (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-400">
           <span className="font-semibold">

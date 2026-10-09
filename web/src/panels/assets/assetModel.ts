@@ -259,7 +259,7 @@ export function pairMaturityProfit(pair: PairEstimate, nowSec: number,
   const carryUsd = perYearUsd !== null && termYears > 0 ? perYearUsd * termYears : null;
   const chargedUsd = pair.borosFeesPaidUsd + (includePerpFees ? pair.perpFeesPaidUsd : 0)
     + (includeExitFee ? pair.exitFeeUsd : 0);
-  const netUsd = carryUsd === null ? null : carryUsd - chargedUsd;
+  const netUsd = carryUsd === null || pair.borosFeesComplete === false ? null : carryUsd - chargedUsd;
   return { termYears, perYearUsd, carryUsd, chargedUsd, netUsd };
 }
 
@@ -526,6 +526,7 @@ export interface PairEstimate {
    * (structural: the Boros side is never exited, so never excludable). */
   perpFeesPaidUsd: number;
   borosFeesPaidUsd: number;
+  borosFeesComplete?: boolean;
 }
 
 /**
@@ -1650,6 +1651,7 @@ export function deriveAsset(
       const perpOpened = Math.max(lLeg.openedAt ?? 0, sLeg.openedAt ?? 0);
       let borosOpened = Number.POSITIVE_INFINITY;
       let borosFeesPaidUsd = 0;
+      let borosFeesComplete = true;
       const addBoros = (b: AssetBorosOpen, frac: number) => {
         const slice = keptSlice(exclusions, borosKey(b.marketId), b.sizeToken, b.entryApr);
         const keep = slice.keep * frac;
@@ -1666,6 +1668,7 @@ export function deriveAsset(
           if (soonest === 0 || b.maturity < soonest) soonest = b.maturity;
         }
         const h = histByMarket.get(b.marketId);
+        borosFeesComplete &&= b.tradeFeesComplete !== false && h?.tradeFeesComplete !== false;
         // TRADE fees only: settlement fees are already netted out of the
         // locked rate above, and charging them again here would double-count
         // them against the same carry.
@@ -1733,6 +1736,7 @@ export function deriveAsset(
         legs,
         perpFeesPaidUsd: lLeg.feesUsd * lKeep * lShare + sLeg.feesUsd * sKeep * share,
         borosFeesPaidUsd,
+        borosFeesComplete,
       });
     }
     /**
@@ -1766,6 +1770,7 @@ export function deriveAsset(
         exitFeeUsd: prev.exitFeeUsd + p.exitFeeUsd,
         perpFeesPaidUsd: prev.perpFeesPaidUsd + p.perpFeesPaidUsd,
         borosFeesPaidUsd: prev.borosFeesPaidUsd + p.borosFeesPaidUsd,
+        borosFeesComplete: prev.borosFeesComplete !== false && p.borosFeesComplete !== false,
         legs: mergeLegs(prev.legs, p.legs),
         hedgedSinceSec:
           prev.hedgedSinceSec !== null && p.hedgedSinceSec !== null

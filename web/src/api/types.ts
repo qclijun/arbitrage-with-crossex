@@ -1512,6 +1512,7 @@ export interface AssetPerpClosedRow {
 }
 
 export interface AssetBorosOpen {
+  tradeFeesComplete?: boolean;
   marketId: number;
   venue: string;
   maturity: number;
@@ -1542,6 +1543,7 @@ export interface AssetBorosOpen {
 /** Per-market history sums since the start date — open, closed and matured
  * positions uniformly (settlements and fills are account-level events). */
 export interface AssetBorosHistory {
+  tradeFeesComplete?: boolean;
   marketId: number;
   venue: string;
   maturity: number;
@@ -1610,6 +1612,7 @@ export interface AssetGroup {
 }
 
 export interface AssetViewResponse {
+  trackingStart?: { complete: boolean; corrected: boolean };
   risk?: import('../lib/risk').RiskAssetEvidence;
   sinceSec: number;
   nowSec: number;

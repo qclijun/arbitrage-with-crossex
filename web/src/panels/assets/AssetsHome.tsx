@@ -234,6 +234,9 @@ export function AssetsHome() {
           {data.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
         </div>
       )}
+      {data.trackingStart?.corrected && (
+        <p className="mb-4 text-xs text-ink-300">Earlier Boros opening fees are now included in the default window; profit figures reflect those historical costs.</p>
+      )}
       {/* Account health lives on Accounts; here only a warning when needed. */}
       <AccountsAlert />
       {viewOnly && address && loggedInRoot && (
