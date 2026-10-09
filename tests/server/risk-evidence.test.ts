@@ -30,6 +30,17 @@ async function fixture() {
   return { now, folder, scope, config, state, cache };
 }
 describe('scoped read-only Risk evidence API', () => {
+  it('exposes effective configuration and applies scoped thresholds before a collector has run', async () => {
+    const f = await fixture();
+    const config = { ...f.config, thresholds: { 'gate.im_coverage': [['gate.im_coverage', 'lt', 1.8, 'WARNING']] }, recovery_margin_fraction: .1 };
+    writeFileSync(path.join(f.folder, 'config.json'), JSON.stringify(config));
+    writeFileSync(path.join(f.folder, 'state.json'), '{}');
+    const data = (await app!.inject({ url: `/api/risk/evidence?address=${root}`, headers: HOST })).json().data;
+    expect(data.settings).toEqual({ thresholds: config.thresholds, recoveryMarginFraction: .1 });
+    expect(data.configuration).toEqual({ configId: producerConfigId(config, root), stateDir: f.folder,
+      observationsFile: path.join(f.folder, 'observations.json') });
+    expect(data.metrics['notify.pending_count']).toBeUndefined();
+  });
   it('separates fresh heartbeat, old complete collection and confirmed delivery without exposing or modifying files', async () => {
     const f = await fixture();
     const before = ['state.json', 'heartbeat.json', 'config.json', 'observations.json'].map(file => readFileSync(path.join(f.folder, file), 'utf8'));

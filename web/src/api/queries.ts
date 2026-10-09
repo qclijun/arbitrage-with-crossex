@@ -15,6 +15,7 @@ import type { BorosLiquidityResponse } from './borosLiquidity';
 import { useTabActive } from '../components/TabBar';
 import { uuid } from '../lib/uuid';
 import type {
+  AccountInterest,
   AssetBorosMargin,
   AssetViewResponse,
   BorosCancelAndCloseResult,
@@ -614,10 +615,7 @@ export function usePutCredentials() {
   });
 }
 
-export interface AccountInterest {
-  account: CrossexAccount;
-  buckets: import('./types').RebalanceBucket[] | null;
-}
+export type { AccountInterest } from './types';
 export function useAccountInterest() {
   const shown = useTabActive();
   return useQuery({ queryKey: ['account', 'interest'], structuralSharing: false,

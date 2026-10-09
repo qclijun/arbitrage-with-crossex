@@ -49,6 +49,7 @@ class ContractTest(unittest.TestCase):
             'hedge.perp_net_eth': ('hedge.perp_net_eth', -.02, 'CRITICAL'),
             'hedge.hl_size_gap_eth': ('hedge.direction_match', False, 'CRITICAL'),
             'hedge.maturity_match': ('hedge.maturity_match', False, 'CRITICAL'),
+            'hedge.market_identity_match': ('hedge.market_identity_match', False, 'CRITICAL'),
             'execution.unhedged_eth': ('execution.unhedged_eth', .01, 'CRITICAL'),
             'positions.unexpected_change_eth': ('positions.unexpected_change_eth', .01, 'CRITICAL'),
             'rollover.days_to_maturity': ('rollover.days_to_maturity', .5, 'CRITICAL'),

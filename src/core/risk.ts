@@ -39,6 +39,7 @@ export interface RiskSupplement {
   fundingGapObservedAt?: number | null;
   fundingGapEth?: number | null;
   settings?: { thresholds: Record<string, Condition[]>; recoveryMarginFraction: number };
+  configuration?: { configId: string; stateDir: string; observationsFile: string };
 }
 export interface CheckState { status: RiskStatus; criticalMetrics: string[] }
 export type RiskState = Record<string, CheckState>;
@@ -49,6 +50,11 @@ export interface RiskCheck {
 export const rules = catalog as RiskRule[];
 export const contracts = metricContracts as Record<string, MetricContract>;
 export const severity: Record<RiskStatus, number> = { PAUSED: -1, OK: 0, UNKNOWN: 1, WARNING: 2, CRITICAL: 3 };
+/** Checks currently displayed by Risk and used by the background notifier. */
+export function visibleRiskChecks(checks: RiskCheck[]): RiskCheck[] {
+  return checks.filter(check => check.risk !== 8
+    && check.id !== 'hedge.market_identity_match' && check.id !== 'positions.unexpected_change_eth');
+}
 export function scopeKey(scope: RiskScope): string {
   return JSON.stringify([scope.credentialId, scope.address?.toLowerCase(), scope.accountId, scope.pool]);
 }
