@@ -1,6 +1,5 @@
-import type { AccountInterest } from '../api/queries';
-import type { AssetViewResponse, BorosCollateralResponse, CrossexAccount, DealAlert, DealView, OpenOrder, OpportunitiesResult, PositionsResponse } from '../api/types';
-import { readEvidence } from '../api/client';
+import type { AccountInterest, AssetViewResponse, BorosCollateralResponse, CrossexAccount, DealAlert, DealView, OpenOrder, OpportunitiesResult, PositionsResponse } from '../api/types';
+import { readEvidence, type ReadEvidence } from '../api/client';
 import { gateNumber, liquidationLines } from './liquidation';
 import { deriveAsset, pairMaturityProfit } from '../panels/assets/assetModel';
 import { contracts, fundingGapFingerprint, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
@@ -19,14 +18,15 @@ const signed = (b: { side: string; sizeToken: number }): number => b.sizeToken *
 export const BASIS_QUANTITY_TOLERANCE_ETH = 0.001;
 
 /** Adapts shared snapshots. Domain owners keep all money/position calculations. */
-export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: number, historicalOnly = false) {
+export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: number, historicalOnly = false,
+  evidenceFor: (data: unknown) => ReadEvidence | undefined = readEvidence) {
   const metrics: Record<string, MetricEvidence> = {};
   const put = (id: string, value: unknown, source: string, observedAt: number | null, complete = true, reason?: string) => {
     metrics[id] = { value, source, observedAt, complete, reason: value === null || !complete ? reason : undefined, scope, evidence: source,
       unit: contracts[id].unit, ttlSeconds: contracts[id].max_age_seconds };
   };
   const read = <T,>(q: RiskRead<T>, ids: string[], source: string, observed?: number | null) => {
-    const meta = readEvidence(q.data);
+    const meta = evidenceFor(q.data);
     const sameAccount = meta?.credentialId === scope.credentialId && Boolean(scope.credentialId);
     const time = observed === undefined ? (meta?.observedAt === undefined ? null : meta.observedAt / 1000) : observed;
     const failed = (!historicalOnly && (q.isError || meta?.stale)) || q.isPlaceholderData;
@@ -294,7 +294,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   if (health) put('service.http_ok', health.data.status === 'ok', 'Terminal HTTP availability; independent collector status shown separately', health.observedAt);
   else if (input.health.isError) put('service.http_ok', false, 'Terminal HTTP read failed', now);
   const sourcesFailed = Object.values(input).some(q => q && q.isError);
-  const markedStale = Object.values(input).some(q => q && readEvidence(q.data)?.stale)
+  const markedStale = Object.values(input).some(q => q && evidenceFor(q.data)?.stale)
     || Boolean(rows?.some(p => p.markHeldSinceMs || p.markStaleSinceMs)) || Boolean(risk?.stale || collateralData?.stale);
   put('data.stale', sourcesFailed || markedStale, 'Existing query failures and upstream stale/held marks', now, true);
   const complete = Boolean(account && perpsComplete && borosComplete && settlement?.complete && asset?.data.coverage.borosTxnsComplete && !asset.data.coverage.backfilling && asset.data.warnings.length === 0);
@@ -303,7 +303,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   if (quote?.data && !quote.isError && !quote.isPlaceholderData && pair && days !== null && days < 14 && token && finite(token.priceUsd)) {
     const q = quote.data;
     const size = pair[0].sizeToken * token.priceUsd;
-    const quoteRead = readEvidence(q);
+    const quoteRead = evidenceFor(q);
     const scopeMatches = quoteRead?.credentialId === scope.credentialId && !quoteRead.stale && finite(quoteRead.observedAt);
     if (scopeMatches && baseline && perpsComplete && uniquePerps && perpLegs.length === 2
       && pair[0].side === 'SHORT' && pair[1].side === 'LONG' && pair[0].sizeToken === pair[1].sizeToken

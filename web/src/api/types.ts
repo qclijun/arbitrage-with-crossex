@@ -125,6 +125,11 @@ export interface CrossexAsset {
   liability: string;
 }
 
+export interface AccountInterest {
+  account: CrossexAccount;
+  buckets: RebalanceBucket[] | null;
+}
+
 export interface CrossexAccount {
   marginBalance: string;
   availableMargin: string;

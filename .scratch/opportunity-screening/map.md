@@ -1,8 +1,8 @@
 # 投资机会筛选脚本工作地图
 
 Label: wayfinder:map
-Status: open
-Updated: 2026-10-07 Asia/Taipei
+Status: resolved
+Updated: 2026-10-08 Asia/Taipei
 
 ## Destination
 
@@ -26,12 +26,14 @@ Updated: 2026-10-07 Asia/Taipei
 
 ## Decisions so far
 
-尚未关闭决策票。本轮的用户输入保存在对应子议题 Comments 中，不冒充已验证的数据或已交付实现。
+- [01 数据证据契约](issues/01-data-evidence-contract.md)：resolved，当前范围由最终规格与实现覆盖；账户和持仓分支不纳入完成声明。
+- [02 账户与持仓结论](issues/02-account-selection-contract.md)：wontfix，用户明确移出范围。
+- [03 报告原型](issues/03-report-behavior-prototype.md)：resolved，后续正式交付与行为验证覆盖当前报告设计，不宣称补做了独立原型访谈。
+- [04 脚本实现](issues/04-readonly-opportunity-screening.md)：resolved，含分类新鲜度、盘口诊断、连接复用及榜外对照异常展示修复。
 
 ## Not yet specified
 
-- Opportunity 数据契约核查后可能暴露的特殊抵押品或合约报价关系，待其实际形态明确后再判断是否需要新增决策票。
-- 报告原型反馈可能暴露的阅读和解释需求，待原型讨论后再细化。
+- 当前确认范围没有未决事项。新发现的数据源问题或额外报告需求另建票，不将范围外账户分析视为未完成项。
 
 ## Out of scope
 
@@ -40,5 +42,15 @@ Updated: 2026-10-07 Asia/Taipei
 - 用固定安全 APR 或统一保证金倍数自动决定仓位分配。
 - 将候选榜当成必须买满五个的投资组合，或宣称模型保证收益。
 - 重写服务端已有收益计算、直接连接交易所另建采集系统。
-- 首版修改终端 API 或新增证据字段；缺口仅记录并降级。
+- 除 Opportunity 分类新鲜度、现有盘口失败诊断及 2026-10-08 本次 review 修复的机器告警元数据外，修改终端 API 或新增证据字段仍不在范围内。此前规格只列分类新鲜度，与本地图及实施票记录不一致；本次显式对齐，不反推历史授权。
 - 原子展期完整执行准备评估；已有独立 [原子展期风险监控地图](../rollover-risk-monitoring/map.md)，筛选只引用能够核验的证据，不替代该工作。
+
+## Delivered
+
+- 2026-10-08：按用户要求同步关闭工单状态。01、03 以最终收窄范围标为 resolved，02 维持 wontfix，04 维持 resolved。原问题和早期阶段记录保留为历史，以本节及上述当前状态为准。脚本现有 27 项合成测试通过；只读扫描 `20261008T005518-f47dbc261379` 为 VALID。盘口诊断/连接池修复及榜外 roll 异常报告修复均已提交到 `codex/opportunity-screening`；不执行交易，也不修改历史运行报告。
+
+- 2026-10-07 后续授权：Opportunity 响应新增行情/静态分类 observedAt/stale，脚本按 180/600 秒分别检查，close/roll 偏差只比较行情时刻。缓存频率、收益模型及旧聚合元数据保持不变；不重启终端服务。
+
+- 2026-10-07：[实施票 04](issues/04-readonly-opportunity-screening.md) resolved；交付单次只读 CLI、18 个公开运行边界离线测试及合成双格式示例。用法见 [说明](../../docs/OPPORTUNITY-SCREENING.zh-CN.md)。历史决策票 01/03 保留历史，不代表已完成访谈或原型；02 维持范围外。当时双轴审查记录为 Standards 无发现、Spec 两项 P2 已修复；该结论仅为当时审查记录，不是当前分支无问题的证明，已由 2026-10-08 复核补充。全仓离线验证和生产构建当时通过；未查询实盘。
+
+- 2026-10-08 review 跟进：确认并修复英文 warning 模板耦合及报告时间命名歧义，同步规格遗漏的诊断范围。签名连接复用属于[独立待办](../signed-order-connection-reuse/issues/01-gate-signed-connection-reuse.md)，不属于本地图已交付内容。完整逐项结论及验证见[复核记录](evidence/review-followup.md)。

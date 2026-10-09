@@ -137,7 +137,12 @@ export function riskEvidenceRoutes(deps: AppDeps) {
       }
       const result: RiskSupplement = { scope, metrics, baseline, fundingGapStartedAt, fundingGapFingerprint: fundingGapIdentity, fundingGapObservedAt, fundingGapEth,
         reason: 'Legacy/unscoped evidence is UNKNOWN. Collector completion and confirmed delivery are separate from terminal HTTP.' };
-      if (matches(state.producer_scope) && finite(state.observed_at) && state.observed_at <= now && now - state.observed_at <= 3600) {
+      // Management settings are local configuration, not collector liveness.
+      // Apply them on the first run too, while keeping runtime evidence scoped.
+      const configuredRoot = typeof config.root === 'string' ? config.root.toLowerCase() : root ?? address;
+      if (configuredRoot === address && (config.account_id ?? 0) === accountId
+        && (config.base ?? 'ETH') === 'ETH' && (config.collateral_token_id ?? 2) === 2
+        && String(config.terminal_url ?? `http://${req.headers.host}`).replace(/\/$/, '') === `http://${req.headers.host}`) {
         const thresholds: Record<string, Condition[]> = {};
         for (const [id, conditions] of Object.entries(record(config.thresholds))) {
           const rule = rules.find(r => r.id === id);
@@ -149,6 +154,12 @@ export function riskEvidenceRoutes(deps: AppDeps) {
         const recovery = config.recovery_margin_fraction ?? .03;
         result.settings = { thresholds, recoveryMarginFraction: finite(recovery) && recovery >= 0 && recovery <= 1 ? recovery : .03 };
       }
+      result.configuration = {
+        configId: producerConfigId({ ...config, thresholds: result.settings?.thresholds ?? {},
+          recovery_margin_fraction: result.settings?.recoveryMarginFraction ?? .03 }, root ?? address),
+        stateDir: path.resolve(deps.dataDir, 'risk-monitor'),
+        observationsFile: path.resolve(deps.dataDir, 'risk-monitor', 'observations.json'),
+      };
       return reply.ok(result);
     });
   };

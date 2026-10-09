@@ -40,6 +40,7 @@ import { versionRoutes } from './routes/version';
 import { tradesRoutes } from './routes/trades';
 import { credentialIdentity } from './readScope';
 import { riskEvidenceRoutes } from './routes/riskEvidence';
+import { riskReportRoutes } from './routes/riskReport';
 import type { BotClient } from './telegram/botClient';
 import type { TelegramLink } from './telegram/link';
 import type { TelegramStatus } from './telegram/status';
@@ -219,6 +220,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     disclaimerRoutes,
     accountRoutes,
     riskEvidenceRoutes,
+    riskReportRoutes,
     feesRoutes,
     positionsRoutes,
     ordersRoutes,

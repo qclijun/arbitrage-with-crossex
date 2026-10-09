@@ -1,0 +1,122 @@
+{
+  "runId": "synthetic-unknown",
+  "timeTaipei": "2026-10-07T20:00:00+08:00",
+  "status": "UNKNOWN",
+  "assumptions": {
+    "notionalUsd": 10000,
+    "top": 10,
+    "entryMode": "maker-hedge",
+    "borosEntry": "market",
+    "primaryExitMode": "close",
+    "maxAgeSeconds": 180,
+    "maxSkewSeconds": 120,
+    "clientRebatesAdded": false,
+    "feeEvidence": "UNKNOWN",
+    "maxMarketAgeSeconds": 180,
+    "maxStaticAgeSeconds": 600,
+    "skewBasis": "marketData",
+    "maxFriction": 0.4,
+    "minProfitRatio": 0.001,
+    "minProfitUsd": 10.0
+  },
+  "evidence": {
+    "closeObservedAtMs": 1791374400000,
+    "rollObservedAtMs": 1791374400000,
+    "close": {
+      "marketData": {
+        "observedAtMs": 1791374400000,
+        "ageSeconds": 0.0,
+        "maxAgeSeconds": 180,
+        "status": "VALID",
+        "reasons": []
+      },
+      "staticData": {
+        "observedAtMs": 1791374400000,
+        "ageSeconds": 0.0,
+        "maxAgeSeconds": 600,
+        "status": "VALID",
+        "reasons": []
+      },
+      "venueBookFailures": []
+    },
+    "roll": {
+      "marketData": {
+        "observedAtMs": 1791374400000,
+        "ageSeconds": 0.0,
+        "maxAgeSeconds": 180,
+        "status": "VALID",
+        "reasons": []
+      },
+      "staticData": {
+        "observedAtMs": 1791374400000,
+        "ageSeconds": 0.0,
+        "maxAgeSeconds": 600,
+        "status": "VALID",
+        "reasons": []
+      },
+      "venueBookFailures": []
+    },
+    "closeMarketObservedAtMs": 1791374400000,
+    "rollMarketObservedAtMs": 1791374400000
+  },
+  "candidates": [],
+  "excluded": [
+    {
+      "status": "UNKNOWN",
+      "reasons": [
+        "assumed fee schedule: reference only"
+      ],
+      "invalidFields": [],
+      "underlying": "ETH",
+      "collateral": "USDT",
+      "maturity": 1794528000,
+      "shortLeg": {
+        "venue": "OKX",
+        "crossexVenue": "okx",
+        "crossexSymbol": "OKX_ETH_USDT",
+        "marketId": 1
+      },
+      "longLeg": {
+        "venue": "BINANCE",
+        "crossexVenue": "binance",
+        "crossexSymbol": "BINANCE_ETH_USDT",
+        "marketId": 2
+      },
+      "reference": {
+        "values": {
+          "grossSpreadApr": 0.08,
+          "execSpreadApr": 0.06,
+          "borosImpactApr": 0.02,
+          "capitalUsd": 400,
+          "netFixedApr": 0.05,
+          "netFixedAprOnCapital": 1.25,
+          "effectiveLeverage": 25,
+          "estProfitUsd": 50,
+          "secondsToMaturity": 3153600
+        },
+        "costs": {
+          "borosTakerFeeUsd": 2,
+          "borosSettleFeeUsd": 2,
+          "perpEntryFeesUsd": 2,
+          "perpEntrySlippageUsd": 2,
+          "perpExitFeesUsd": 2,
+          "perpExitSlippageUsd": 2,
+          "totalUsd": 12,
+          "annualizedApr": 0.01
+        }
+      }
+    }
+  ],
+  "dataReasons": [
+    "assumed fee schedule: reference only"
+  ],
+  "limitations": [
+    "Maker entry and modeled maker exit assume a fill at mid; resting orders are not guaranteed to fill.",
+    "Model capital is the return denominator, not account funds or a safe budget.",
+    "Book ok does not prove four-leg fills; OI is only market-size context.",
+    "No client rebates added. Gas, borrowing interest and other unmodelled costs are excluded.",
+    "Boros price impact is already in execution APR and is not deducted again.",
+    "Roll avoids this period's perpetual exit costs; final exit can still cost money and future opportunities are not guaranteed."
+  ],
+  "comparisonIssues": []
+}

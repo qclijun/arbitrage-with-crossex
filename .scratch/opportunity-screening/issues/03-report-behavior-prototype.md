@@ -4,11 +4,11 @@ Parent: ../map.md
 Label: wayfinder:prototype
 Type: prototype
 Mode: HITL
-Status: open
-Triage: needs-info
-Progress: unclaimed
-Assignee: none
-Blocked by: 01, 02
+Status: resolved
+Triage: ready-for-agent
+Progress: resolved
+Assignee: root
+Blocked by: none
 
 ## Question
 
@@ -29,3 +29,11 @@ Blocked by: 01, 02
 - 2026-10-07 用户选择：单次只读扫描；Markdown + JSON。
 - 原型只使用合成数据，不查询实盘或执行交易。资产链接应追加在本票，不在地图正文存放详细样稿。
 - 本票解决报告设计及验收范围，尚未制作原型或交付脚本。
+
+- 2026-10-08：按用户要求更新状态。后续确认的规格及正式交付取代早期原型讨论；原始内容与初始 needs-info 分诊保留为历史。01 已解决，02 的账户分析被移出范围，不再作为阻塞依赖。
+
+## Answer
+
+- 当前范围的 CLI 参数、单位、双格式报告、唯一运行目录、权限、退出码、零候选及部分结果语义均已交付，见[使用说明](../../../docs/OPPORTUNITY-SCREENING.zh-CN.md)。合成样例：[有效 Markdown](../../../docs/examples/opportunity-screening/valid.md)、[有效 JSON](../../../docs/examples/opportunity-screening/valid.json)、[降级 Markdown](../../../docs/examples/opportunity-screening/unknown.md)、[降级 JSON](../../../docs/examples/opportunity-screening/unknown.json)。
+- 27 项合成响应至报告的测试通过。后续修复保证榜外合格候选的 roll 异常也进入 `comparisonIssues` 和 Markdown，避免整体 UNKNOWN 没有可见原因；Top 数量和排序不变。
+- 持仓、保证金及换仓成本场景已移出范围，不宣称已实现账户报告或完成独立原型访谈。当前范围的报告设计已由正式实现和行为验证覆盖，关闭为 resolved。

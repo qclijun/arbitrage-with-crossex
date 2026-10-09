@@ -661,6 +661,7 @@ describe('buildOpportunities — degraded modes', () => {
     expect(group.collateralPriceUsd).toBeNull();
     expect(group.markets.every((m) => m.oiUsd === null)).toBe(true);
     expect(group.warnings.join(' ')).toMatch(/Can't price BNB collateral in USD/);
+    expect(group.warningEvidence).toEqual([{ code: 'collateral-price-unavailable' }]);
     expect(group.pairs[0].execSpreadApr).toBeNull();
     expect(group.pairs[0].reasons.join(' ')).toMatch(/Can't price BNB collateral in USD/);
   });
@@ -675,10 +676,25 @@ describe('buildOpportunities — degraded modes', () => {
     const group = out.groups[0];
     expect(group.markets).toHaveLength(3);
     expect(group.markets.find((m) => m.marketId === 190)!.crossexVenue).toBeNull();
+    expect(group.warningEvidence).toEqual([{ code: 'unsupported-perp-venue', marketId: 190 }]);
     expect(group.pairs).toHaveLength(1);
     expect(group.warnings.join(' ')).toMatch(
       /KuCoin ETH trades against KuCoin, which has no CrossEx perp venue/,
     );
+  });
+
+  it('keeps warning evidence aligned when different markets have identical display labels', () => {
+    const unsupported = { ...bnMarket, name: 'KuCoin ETH', venue: 'KuCoin', midApr: 0.07 };
+    const group = buildOpportunities(input({
+      markets: [hlMarket, bnMarket, { ...unsupported, marketId: 190 }, { ...unsupported, marketId: 191 }],
+    }), opts()).groups[0];
+    expect(group.warnings).toHaveLength(2);
+    expect(group.warnings[0]).toBe(group.warnings[1]);
+    expect(group.warningEvidence).toEqual([
+      { code: 'unsupported-perp-venue', marketId: 190 },
+      { code: 'unsupported-perp-venue', marketId: 191 },
+    ]);
+    expect(group.pairs).toHaveLength(1);
   });
 
   it('a Boros venue in lower case still finds its CrossEx perp', () => {
@@ -768,6 +784,7 @@ describe('buildOpportunities — degraded modes', () => {
     expect(group.pairs).toHaveLength(1);
     const pair = group.pairs[0];
     expect(pair.longLeg.crossexSymbol).toBeNull();
+    expect(group.warningEvidence).toContainEqual({ code: 'missing-perp-symbol', marketId: pair.longLeg.marketId });
     expect(pair.grossSpreadApr).toBeCloseTo(0.09 - 0.045, 10);
     expect(pair.execSpreadApr).toBeCloseTo(0.0899 - 0.0451, 10);
     // The BINANCE venue fee row applies even without a symbol, so fees price;

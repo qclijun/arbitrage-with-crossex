@@ -22,7 +22,11 @@ from risk_monitor_evidence import CONTRACTS, evidence_error, valid_value
 ROOT = Path(__file__).resolve().parents[1]
 RULES = ROOT / 'scripts/risk-monitor-rules.json'
 DEFAULT_CONFIG = ROOT / 'data/risk-monitor/config.json'
-SEVERITY = {'OK': 0, 'UNKNOWN': 1, 'WARNING': 2, 'CRITICAL': 3}
+SEVERITY = {'PAUSED': -1, 'OK': 0, 'UNKNOWN': 1, 'WARNING': 2, 'CRITICAL': 3}
+
+
+class ConfigurationMismatch(ValueError):
+    """The monitor must not silently use another terminal's risk settings."""
 
 
 def canonical_identity(value):
@@ -87,7 +91,8 @@ def producer_scope(config, data):
     """Approved non-secret identity for read-only terminal evidence consumers."""
     root = config.get('root') or (data.get('agent') or {}).get('root')
     user_id = (data.get('account') or {}).get('userId')
-    if not isinstance(root, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', root) or user_id is None:
+    if (not isinstance(root, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', root)
+            or not isinstance(user_id, (str, int)) or isinstance(user_id, bool) or not str(user_id).strip()):
         return None
     identity = {'account_id': config.get('account_id', 0), 'base': config.get('base', 'ETH'),
                 'collateral_token_id': config.get('collateral_token_id', 2), 'root': root.lower(),
@@ -306,6 +311,7 @@ class Collector:
             return None
 
     def collect(self):
+        """Legacy collection used only for explicit baseline acceptance."""
         agent = self.get('agent', '/boros/agent?fresh=1')
         root = self.config.get('root') or (agent or {}).get('root')
         paths = {'interest': '/account/interest?fresh=1', 'positions': '/positions?fresh=1',
@@ -329,6 +335,65 @@ class Collector:
             data['opportunities'] = self.get('opportunities', '/opportunities?borosEntry=market&exitMode=roll&notionalUsd=' + str(self.config.get('notional_usd', 10000)))
         data['account'] = (data.get('interest') or {}).get('account')
         return data
+
+    def collect_report(self, state):
+        """Use the terminal's Risk page calculations; never fall back to Python formulas."""
+        previous = {'scope': state.get('shared_scope'), 'producerScope': state.get('producer_scope'),
+                    'state': state.get('shared_risk_state') or {
+                        key: {'status': status, 'criticalMetrics': state.get('critical_metrics', {}).get(key, [])}
+                        for key, status in state.get('risk_status', {}).items()}}
+        query = {'fresh': '1', 'previous': json.dumps(previous, separators=(',', ':'))}
+        root = self.config.get('root')
+        if root:
+            if not isinstance(root, str) or not re.fullmatch(r'0x[0-9a-fA-F]{40}', root):
+                raise ValueError('Invalid Risk wallet')
+            root = root.lower()
+            query['address'] = root
+        # A composed cold read may take several upstream request timeouts.
+        obj = request_json(self.base + '/api/risk/report?' + urllib.parse.urlencode(query), self.headers,
+                           timeout=max(60, self.config.get('timeout_seconds', 15)))
+        report = obj.get('data')
+        if obj.get('ok') is not True or obj.get('meta', {}).get('stale') or not isinstance(report, dict):
+            raise RuntimeError('Risk report unavailable')
+        scope = report.get('scope') or {}
+        if (report.get('version') != 1 or not scope.get('credentialId')
+                or obj.get('meta', {}).get('credentialId') != scope.get('credentialId')
+                or not isinstance(scope.get('address'), str) or not re.fullmatch(r'0x[0-9a-f]{40}', scope['address'])
+                or scope.get('address') != (root or scope.get('address'))
+                or scope.get('accountId') != self.config.get('account_id', 0)
+                or scope.get('pool') != 'ETH-cross' or self.config.get('base', 'ETH') != 'ETH'
+                or self.config.get('collateral_token_id', 2) != 2
+                or not isinstance(report.get('checks'), list) or not isinstance(report.get('state'), dict)
+                or not isinstance(report.get('collection'), dict) or not isinstance(report.get('complete'), bool)):
+            raise RuntimeError('Risk report scope or contract mismatch')
+        stamp = number(report.get('observedAt'))
+        if stamp is None or not 0 <= time.time() - stamp <= 120:
+            raise RuntimeError('Risk report expired')
+        configuration = report.get('configuration')
+        if not isinstance(configuration, dict) or not all(isinstance(configuration.get(k), str) and configuration[k]
+                                                        for k in ('configId', 'stateDir', 'observationsFile')):
+            raise RuntimeError('Risk configuration evidence unavailable')
+        expected = producer_scope({**self.config, 'root': scope['address']}, {'account': {'userId': 'configuration-check'}})
+        if (configuration['configId'] != expected['config_id']
+                or Path(configuration['stateDir']).resolve() != Path(self.config.get('state_dir', ROOT / 'data/risk-monitor')).resolve()
+                or Path(configuration['observationsFile']).resolve() != Path(self.config.get('observations_file', ROOT / 'data/risk-monitor/observations.json')).resolve()):
+            raise ConfigurationMismatch('Monitor configuration differs from terminal Risk settings or evidence directories; '
+                                        'use the terminal configuration and matching state_dir/observations_file')
+        old_scope = state.get('shared_scope') or {}
+        old_user = (state.get('producer_scope') or {}).get('gate_user_id')
+        raw_user = (report['collection'].get('account') or {}).get('userId')
+        current_user = str(raw_user).strip() if isinstance(raw_user, (str, int)) and not isinstance(raw_user, bool) else None
+        changed_subject = old_scope and (any(old_scope.get(key) != scope.get(key) for key in ('address', 'accountId', 'pool'))
+                                         or old_user and current_user and old_user != current_user)
+        if changed_subject:
+            for key in ('pending', 'observed_status', 'notified_status', 'consecutive_status', 'notified_at',
+                        'risk_status', 'critical_metrics', 'funding_gap', 'producer_scope'):
+                state.pop(key, None)
+        state['shared_scope'] = scope
+        state['shared_risk_state'] = report['state']
+        state['risk_status'] = {key: value['status'] for key, value in report['state'].items()}
+        state['critical_metrics'] = {key: value['criticalMetrics'] for key, value in report['state'].items()}
+        return report
 
     def public_boros(self, name, path, root):
         try:
@@ -369,7 +434,7 @@ class Collector:
 
 
 def evaluate(data, config, state, rules, now, errors=None):
-    """Pure risk computation; no requests and no automatic trading actions."""
+    """Legacy offline evaluator retained for historical fixtures; not used by the service."""
     errors = errors or {}
     days = rollover_days_to_maturity(data, config, now)
     # Only a verified distant maturity can suppress risk checks. Missing data
@@ -747,6 +812,27 @@ def evaluate(data, config, state, rules, now, errors=None):
             'note': 'Management thresholds, not platform liquidation rules. UNKNOWN is not safe.'}
 
 
+def unavailable_report(state, rules, now, error):
+    """Fail closed when the shared evaluator cannot be read, preserving unresolved danger."""
+    checks = []
+    for rule in rules:
+        if (rule.get('enabled', True) is False or rule['risk'] == 8
+                or rule['id'] in ('hedge.market_identity_match', 'positions.unexpected_change_eth')):
+            continue
+        critical = state.get('critical_metrics', {}).get(rule['id'], [])
+        old = state.get('risk_status', {}).get(rule['id'])
+        status = 'CRITICAL' if critical or old == 'CRITICAL' else 'UNKNOWN'
+        checks.append({'id': rule['id'], 'risk': rule['risk'], 'label': rule['label'], 'status': status,
+                       'metrics': {key: {'value': None, 'unit': metric_unit(key), 'source': '/api/risk/report',
+                                         'observedAt': None, 'complete': False} for key in rule['metrics']},
+                       'thresholds': rule.get('conditions', []), 'coverageComplete': False,
+                       'reason': 'Shared Risk report unavailable; previous critical cannot be verified' if status == 'CRITICAL'
+                                 else 'Shared Risk report unavailable; current evidence is UNKNOWN',
+                       'recommendedAction': rule['action']})
+    return {'observedAt': now, 'checks': checks, 'errors': {'report': error}, 'complete': False,
+            'note': 'Shared Risk report unavailable. No legacy calculation fallback.'}
+
+
 def notify_report(report, state, config, env, now, sender=None, state_path=None):
     sender = sender or (lambda text: telegram(env, 'sendMessage', {
         'chat_id': env.get('MONITOR_TELEGRAM_CHAT_ID', ''), 'text': text}))
@@ -755,8 +841,14 @@ def notify_report(report, state, config, env, now, sender=None, state_path=None)
     pending = state.setdefault('pending', {})
     counts = state.setdefault('consecutive_status', {})
     reminders = state.setdefault('notified_at', {})
+    active = {check['id'] for check in report['checks'] if check['status'] != 'PAUSED'}
+    for mapping in (observed, notified, pending, counts, reminders):
+        for key in set(mapping) - active:
+            mapping.pop(key, None)
     for check in report['checks']:
         key, status = check['id'], check['status']
+        if status == 'PAUSED':
+            continue
         counts[key] = counts.get(key, 0) + 1 if observed.get(key) == status else 1
         observed[key] = status
         old = notified.get(key)
@@ -940,7 +1032,11 @@ def main():
             started = time.time()
             try:
                 collector = Collector(config)
-                data = collector.collect()
+                if args.accept_baseline:
+                    data = collector.collect()
+                else:
+                    report = collector.collect_report(state)
+                    data = report.pop('collection')
                 agent = data.get('agent') or {}
                 config['root'] = config.get('root') or agent.get('root')
                 if args.accept_baseline:
@@ -956,30 +1052,33 @@ def main():
                     save(args.config, config)
                     print('Current baseline accepted explicitly; quantities saved locally.')
                     return 0
-                report = evaluate(data, config, state, rules, started, collector.errors)
-                record_funding_gap(data, config, state, started)
-                state['producer_scope'] = producer_scope(config, data)
-                state['observed_at'] = started
+                state['service_failures'] = 0 if report['complete'] else state.get('service_failures', 0) + 1
+                if report['complete']:
+                    state['last_complete_run_at'] = report['observedAt']
+                # No incomplete or stale snapshot can extend funding-gap history.
+                if report['complete']:
+                    record_funding_gap(data, config, state, report['observedAt'])
+                else:
+                    state.pop('funding_gap', None)
+                verified_scope = producer_scope(config, data)
+                if verified_scope:
+                    state['producer_scope'] = verified_scope
+                state['observed_at'] = report['observedAt']
+            except ConfigurationMismatch as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
             except Exception as exc:
                 state.pop('funding_gap', None)
-                state['producer_scope'] = None
+                state['service_failures'] = state.get('service_failures', 0) + 1
                 state['observed_at'] = started
-                report = evaluate({}, config, state, rules, started, {'collector': type(exc).__name__})
+                report = unavailable_report(state, rules, started, type(exc).__name__)
             if args.notify:
                 env = read_env(config.get('telegram_env', folder / 'telegram.env'))
                 notify_report(report, state, config, env, started, state_path=state_path)
-                delivery = next(c for c in report['checks'] if c['id'] == 'notify.last_success_at')
-                for key, value in [('notify.last_success_at', state.get('notify_last_success')),
-                                   ('notify.pending_count', len(state.get('pending', {}))),
-                                   ('notify.failure_streak', state.get('notify_failures', 0))]:
-                    delivery['metrics'][key] = {'value': value, 'unit': metric_unit(key), 'source': 'current run Telegram results / persistent queue',
-                                                'observedAt': started, 'ageSeconds': 0, 'coverage': 'measured'}
-                failed = state.get('notify_failures', 0)
-                delivery['status'] = 'CRITICAL' if failed > 2 else 'WARNING' if failed else 'OK' if state.get('notify_last_success') else 'UNKNOWN'
-                delivery['coverageComplete'] = bool(state.get('notify_last_success'))
-                delivery['reason'] = 'Telegram failed; queued for retry' if failed else 'delivery result updated after notification'
+                # Keep this report's shared snapshot unchanged. Confirmed delivery is
+                # persisted separately and becomes evidence on the next Risk read.
             save(folder / 'latest.json', report)
-            save(folder / 'heartbeat.json', {'observedAt': started, 'complete': not report['errors'],
+            save(folder / 'heartbeat.json', {'observedAt': time.time(), 'complete': report.get('complete', False),
                                                  'lastCompleteAt': state.get('last_complete_run_at'),
                                                  'producer_scope': state.get('producer_scope')})
             save(state_path, state)
@@ -990,7 +1089,7 @@ def main():
                 for check in report['checks']:
                     print(format_check(check), flush=True)
             if not args.watch:
-                return 2 if any(c['status'] != 'OK' for c in report['checks']) else 0
+                return 2 if any(c['status'] not in ('OK', 'PAUSED') for c in report['checks']) else 0
             time.sleep(max(0, interval - (time.time() - started)))
 
 

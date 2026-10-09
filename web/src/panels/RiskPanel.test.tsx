@@ -80,7 +80,7 @@ describe('rendered Risk / shared API evidence', () => {
     expect(check('hedge.maturity_match')).not.toHaveTextContent('hedge.market_identity_match');
     for (const id of hiddenHistory) expect(document.body).not.toHaveTextContent(id);
   });
-  it('uses the asset owner’s exact query window after same-tab preference changes', async () => {
+  it('keeps complete Risk history when Positions display preferences change', async () => {
     const requests: string[] = [];
     const listener = ({ request }: { request: Request }) => { if (request.url.includes('/asset-view/')) requests.push(request.url); };
     server.events.on('request:start', listener);
@@ -89,7 +89,8 @@ describe('rendered Risk / shared API evidence', () => {
       await waitFor(() => expect(requests.length).toBeGreaterThan(0));
       await waitFor(() => expect(check('gate.im_coverage').querySelector('summary')).toHaveTextContent('CRITICAL'));
       fireEvent.click(screen.getByRole('button', { name: 'Change shared window' }));
-      await waitFor(() => expect(requests.map(url => new URL(url).searchParams.get('legSince'))).toContain('128:1800000000'));
+      expect(requests.every(url => !new URL(url).searchParams.has('legSince'))).toBe(true);
+      expect(requests.every(url => !new URL(url).searchParams.has('since'))).toBe(true);
     } finally { server.events.removeListener('request:start', listener); }
   });
   it('renders visible evidence, excludes disabled and category 8 checks from details and counts, and issues only reads', async () => {
