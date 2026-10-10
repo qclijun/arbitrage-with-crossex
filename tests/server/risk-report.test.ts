@@ -92,13 +92,13 @@ describe('read-only shared Risk report', () => {
     expect(report.complete).toBe(false);
   });
 
-  it('preserves critical recovery across a terminal restart only for the proven same Gate user and pool', async () => {
+  it.each(['localhost:6688', '127.0.0.1:6688'])('preserves critical recovery across a terminal restart for the same subject at %s', async host => {
     const f = await fixture(); f.failed.add('positions');
     const previous = { scope: { ...f.scope, credentialId: 'before-restart' },
       producerScope: { root: address, account_id: 0, base: 'ETH', collateral_token_id: 2,
         gate_user_id: 'gate-user', terminal_url: 'http://localhost:6688' },
       state: { 'hedge.perp_net_eth': { status: 'CRITICAL', criticalMetrics: ['hedge.perp_net_eth'] } } };
-    const read = async () => (await app.inject({ url: f.url + '&previous=' + encodeURIComponent(JSON.stringify(previous)), headers: HOST })).json().data;
+    const read = async () => (await app.inject({ url: f.url + '&previous=' + encodeURIComponent(JSON.stringify(previous)), headers: { ...HOST, host } })).json().data;
     expect((await read()).checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('CRITICAL');
     f.failed.add('account');
     expect((await read()).checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('CRITICAL');

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from '../app';
 import { CoreError } from '../../core/errors';
 import { credentialIdentity } from '../readScope';
+import { sameRiskTerminal } from '../riskTerminal';
 import { evaluateRisk, rules, scopeKey, visibleRiskChecks, type RiskScope, type RiskState } from '../../core/risk';
 import { riskMeasurements, type RiskInputs, type RiskRead } from '../../../web/src/lib/riskSources';
 import type { ReadEvidence } from '../../../web/src/api/client';
@@ -79,7 +80,7 @@ export function riskReportRoutes(_deps: AppDeps) {
       const sameLegacy = legacy && legacy.root === address && legacy.account_id === accountId && legacy.base === 'ETH'
         && legacy.collateral_token_id === 2 && typeof legacy.gate_user_id === 'string' && legacy.gate_user_id.trim()
         && (verifiedUser === null || legacy.gate_user_id === verifiedUser)
-        && legacy.terminal_url === `http://${headers.host}`;
+        && sameRiskTerminal(legacy.terminal_url, `http://${headers.host}`);
       // Credential IDs rotate on a terminal restart. A verified stable Gate
       // user + wallet/subaccount identity preserves recovery state across it.
       const sameSubject = !previous?.scope || previous.scope.address === address

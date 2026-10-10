@@ -7,6 +7,7 @@ import { CoreError } from '../../core/errors';
 import { resolveBorosFetch } from '../../core/boros/client';
 import { readAgentApproval } from '../borosAgentApproval';
 import { credentialIdentity } from '../readScope';
+import { sameRiskTerminal } from '../riskTerminal';
 import { canonicalRiskIdentity, contracts, rules, validMetric, type Condition, type MetricEvidence, type RiskScope, type RiskBaseline, type RiskSupplement } from '../../core/risk';
 
 export interface ProducerScope {
@@ -74,7 +75,7 @@ export function riskEvidenceRoutes(deps: AppDeps) {
         return Boolean(userId !== undefined && userId !== null && String(userId) !== ''
           && s.gate_user_id === String(userId) && s.root === address && s.account_id === accountId
           && s.base === 'ETH' && s.collateral_token_id === 2
-          && s.terminal_url === `http://${req.headers.host}`
+          && sameRiskTerminal(s.terminal_url, `http://${req.headers.host}`)
           && typeof s.config_id === 'string' && s.config_id !== ''
           && s.config_id === expectedId && producerConfigId({ ...s,
             thresholds: config.thresholds ?? {}, recovery_margin_fraction: config.recovery_margin_fraction ?? .03 }, address) === expectedId);
@@ -119,9 +120,12 @@ export function riskEvidenceRoutes(deps: AppDeps) {
         put('notify.pending_count', state.pending && typeof state.pending === 'object' && !Array.isArray(state.pending)
           ? Object.keys(state.pending as object).length : null, observed, 'Independent notification queue', 'scoped persistent queue count');
         put('notify.failure_streak', state.notify_failures, observed, 'Confirmed notification results', 'persistent failure counter');
-        const confirmed = finite(state.notify_last_message_id) && Number.isInteger(state.notify_last_message_id) && state.notify_last_message_id > 0;
-        put('notify.last_success_at', confirmed ? state.notify_last_success : null, confirmed && finite(state.notify_last_success) ? state.notify_last_success : null,
-          'Telegram confirmed message_id', 'producer confirmed delivery');
+        const confirmed = finite(state.notify_last_message_id) && Number.isInteger(state.notify_last_message_id) && state.notify_last_message_id > 0
+          && finite(state.notify_last_success) && state.notify_last_success > 0 && state.notify_last_success <= observed;
+        // Re-observe persisted delivery history alongside the current queue/failures.
+        // The value remains the real send time; this is not a current channel probe.
+        put('notify.last_success_at', confirmed ? state.notify_last_success : null, confirmed ? observed : null,
+          'Persisted Telegram confirmed delivery history (not a current channel probe)', 'producer message_id and original send time');
         const gap = record(state.funding_gap);
         if (now - observed <= 3600 && finite(gap.observed_at) && gap.observed_at === observed
           && finite(gap.started_at) && gap.started_at > 0 && gap.started_at <= observed && typeof gap.fingerprint === 'string'
@@ -142,7 +146,7 @@ export function riskEvidenceRoutes(deps: AppDeps) {
       const configuredRoot = typeof config.root === 'string' ? config.root.toLowerCase() : root ?? address;
       if (configuredRoot === address && (config.account_id ?? 0) === accountId
         && (config.base ?? 'ETH') === 'ETH' && (config.collateral_token_id ?? 2) === 2
-        && String(config.terminal_url ?? `http://${req.headers.host}`).replace(/\/$/, '') === `http://${req.headers.host}`) {
+        && sameRiskTerminal(config.terminal_url ?? `http://${req.headers.host}`, `http://${req.headers.host}`)) {
         const thresholds: Record<string, Condition[]> = {};
         for (const [id, conditions] of Object.entries(record(config.thresholds))) {
           const rule = rules.find(r => r.id === id);
