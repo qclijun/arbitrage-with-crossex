@@ -1,0 +1,3 @@
+interface:
+  display_name: "持仓风险检查"
+  short_description: "只读检查本项目持仓风险指标，生成带时间戳和证据缺口的中文总结"
