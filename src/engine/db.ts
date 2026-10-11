@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS pair (
   target_qty TEXT NOT NULL,
   limit_price TEXT,
   price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch','best')),
+  auto_price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (auto_price_policy IN ('touch','best')),
   deadline_at INTEGER,
   maker_not_before INTEGER NOT NULL DEFAULT 0,
   hedge_not_before INTEGER NOT NULL DEFAULT 0,
@@ -94,6 +95,7 @@ interface PairDbRow {
   target_qty: string;
   limit_price: string | null;
   price_policy: string;
+  auto_price_policy: string;
   deadline_at: number | null;
   maker_not_before: number;
   hedge_not_before: number;
@@ -148,6 +150,11 @@ function toPair(r: PairDbRow): PairRow {
     targetQty: r.target_qty,
     limitPrice: r.limit_price,
     pricePolicy: r.price_policy as PairRow['pricePolicy'],
+    // `SELECT *` on a row written before the column existed yields `undefined`.
+    // Falling back to `pricePolicy` would be wrong (a pinned legacy deal reads
+    // 'fixed', which is not a valid family): 'touch' is the historical default,
+    // and every pre-'best' deal was in fact a 'touch'-family deal.
+    autoPricePolicy: (r.auto_price_policy as PairRow['autoPricePolicy']) ?? 'touch',
     deadlineAt: r.deadline_at,
     makerNotBefore: r.maker_not_before,
     hedgeNotBefore: r.hedge_not_before,
@@ -215,6 +222,7 @@ export interface PairPatch {
   mode?: PairMode;
   limitPrice?: string | null;
   pricePolicy?: PairRow['pricePolicy'];
+  autoPricePolicy?: PairRow['autoPricePolicy'];
   deadlineAt?: number | null;
   makerNotBefore?: number;
   hedgeNotBefore?: number;
@@ -245,6 +253,7 @@ const PAIR_COLS: Record<keyof PairPatch, string> = {
   mode: 'mode',
   limitPrice: 'limit_price',
   pricePolicy: 'price_policy',
+  autoPricePolicy: 'auto_price_policy',
   deadlineAt: 'deadline_at',
   makerNotBefore: 'maker_not_before',
   hedgeNotBefore: 'hedge_not_before',
@@ -312,6 +321,9 @@ export class Store {
       ['reprice_count', `INTEGER NOT NULL DEFAULT 0`],
       ['last_maker_placement_at', `INTEGER NOT NULL DEFAULT 0`],
       ['post_only_rejects', `INTEGER NOT NULL DEFAULT 0`],
+      // A pre-'best' database has no family policy. 'touch' is the historical
+      // default and is correct for every such row (no old deal was 'best').
+      ['auto_price_policy', `TEXT NOT NULL DEFAULT 'touch'`],
       ['book_outage_started_at', `INTEGER NOT NULL DEFAULT 0`],
     ];
     for (const [name, decl] of missing) {
@@ -371,6 +383,7 @@ export class Store {
         target_qty TEXT NOT NULL,
         limit_price TEXT,
         price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch','best')),
+        auto_price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (auto_price_policy IN ('touch','best')),
         deadline_at INTEGER,
         maker_not_before INTEGER NOT NULL DEFAULT 0,
         hedge_not_before INTEGER NOT NULL DEFAULT 0,
@@ -420,18 +433,18 @@ export class Store {
         `INSERT INTO pair (id, mode,
            a_contract, a_side, a_lot, a_min_size, a_min_notional, a_tick, a_reduce_only,
            b_contract, b_side, b_lot, b_min_size, b_min_notional, b_tick, b_reduce_only,
-           target_qty, limit_price, price_policy, deadline_at,
+           target_qty, limit_price, price_policy, auto_price_policy, deadline_at,
            maker_not_before, hedge_not_before, poc_rejects, hedge_reject_streak,
            reprice_count, last_maker_placement_at, post_only_rejects, book_outage_started_at,
            max_clip, clip_band_bp, halt_reason, report_json, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         p.id, p.mode,
         p.a.contract, p.a.side, p.a.lot, p.a.minSize, p.a.minNotional, p.a.tick, p.a.reduceOnly ? 1 : 0,
         p.b?.contract ?? null, p.b?.side ?? null, p.b?.lot ?? null,
         p.b?.minSize ?? null, p.b?.minNotional ?? null, p.b?.tick ?? null, p.b?.reduceOnly ? 1 : 0,
-        p.targetQty, p.limitPrice, p.pricePolicy, p.deadlineAt,
+        p.targetQty, p.limitPrice, p.pricePolicy, p.autoPricePolicy, p.deadlineAt,
         p.makerNotBefore, p.hedgeNotBefore, p.pocRejects, p.hedgeRejectStreak,
         p.repriceCount, p.lastMakerPlacementAt, p.postOnlyRejects, p.bookOutageStartedAt,
         p.maxClip, p.clipBandBp, p.haltReason, p.reportJson, p.createdAt,

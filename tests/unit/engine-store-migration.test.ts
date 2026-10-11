@@ -155,6 +155,9 @@ describe('Store migration of a pre-existing file', () => {
       // The ticket-05 post-only budget column, likewise defaulted — a legacy
       // deal must read `0`, never `undefined` (which would compare false forever).
       expect(old.postOnlyRejects).toBe(0);
+      // A pre-'best' deal's auto-follow family is 'touch' — the historical
+      // default, and correct for every legacy row (none was a four-leg deal).
+      expect(old.autoPricePolicy).toBe('touch');
       expect(old.bookOutageStartedAt).toBe(0);
 
       // The historical order is byte-for-byte what was written.
@@ -171,11 +174,17 @@ describe('Store migration of a pre-existing file', () => {
       expect(store.getPair('old-deal')!.pricePolicy).toBe('best');
 
       // ...and the new columns are writable and read back.
-      store.updatePair('old-deal', { repriceCount: 3, lastMakerPlacementAt: 999, postOnlyRejects: 12 });
+      store.updatePair('old-deal', {
+        repriceCount: 3,
+        lastMakerPlacementAt: 999,
+        postOnlyRejects: 12,
+        autoPricePolicy: 'best',
+      });
       const after = store.getPair('old-deal')!;
       expect(after.repriceCount).toBe(3);
       expect(after.lastMakerPlacementAt).toBe(999);
       expect(after.postOnlyRejects).toBe(12);
+      expect(after.autoPricePolicy).toBe('best'); // survives the rebuild + reopen
 
       // Ticket 04's outage marker: absent from the legacy row, so it reads back
       // as its documented default 0 ("no outage in progress"), NOT `undefined`.
@@ -248,6 +257,7 @@ describe('Store migration of a pre-existing file', () => {
         targetQty: '0.152',
         limitPrice: null,
         pricePolicy: 'best',
+        autoPricePolicy: 'touch',
         deadlineAt: 123,
         makerNotBefore: 0,
         hedgeNotBefore: 0,

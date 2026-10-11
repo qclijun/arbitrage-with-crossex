@@ -326,6 +326,9 @@ export function mkWorld(opts?: {
     targetQty: opts?.target ?? '0.152',
     limitPrice: opts?.limitPrice ?? '2500',
     pricePolicy: opts?.pricePolicy ?? 'fixed',
+    // Mirror create.ts: the deal's auto-follow family is 'best' for a four-leg
+    // deal, 'touch' otherwise — independent of the live policy.
+    autoPricePolicy: opts?.pricePolicy === 'best' ? 'best' : 'touch',
     deadlineAt: opts?.deadlineInMs === null ? null : clock.now() + (opts?.deadlineInMs ?? 300_000),
     makerNotBefore: 0,
     hedgeNotBefore: 0,
