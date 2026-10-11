@@ -2,6 +2,7 @@
   "name": "crossex-terminal-web",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "Arbitrage with CrossEx — monitoring + trading UI for Gate.io CrossEx",
   "license": "MIT",
   "repository": "github:pendle-finance/arbitrage-with-crossex",
