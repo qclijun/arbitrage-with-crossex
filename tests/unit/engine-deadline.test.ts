@@ -135,6 +135,7 @@ describe('the maker deadline never moves', () => {
       hedgeRejectStreak: 0,
       repriceCount: 0,
       lastMakerPlacementAt: 0,
+      postOnlyRejects: 0,
       bookOutageStartedAt: 0,
       maxClip: null,
       clipBandBp: null,

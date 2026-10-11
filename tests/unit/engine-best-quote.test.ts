@@ -245,7 +245,10 @@ describe("'best' reprice quota — monotone, capped, never consumed by non-repri
     w.venue.nextCreate = ['insta-cancel', 'ok'];
     await stepChecked(w, 2);
     expect(w.store.getPair(w.pairId)!.repriceCount).toBe(0);
-    expect(w.store.getPair(w.pairId)!.pocRejects).toBe(1); // the OLD budget, unchanged
+    // Ticket 05 moved a 'best' post-only reject onto its OWN counter (destination
+    // CONVERTING); the old shared clip budget is deliberately left at 0 here.
+    expect(w.store.getPair(w.pairId)!.pocRejects).toBe(0);
+    expect(w.store.getPair(w.pairId)!.postOnlyRejects).toBe(1);
   });
 
   it('is NOT consumed by a book-anomaly idle (no reprice while the book is invalid)', async () => {

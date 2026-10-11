@@ -487,6 +487,22 @@ export function decide(pair: PairRow, p: Projection, now: number, ctx: DecideCtx
             : 'target reached';
         return finishIfSettled(pair, p, reason, hedgeSized);
       }
+      // 'best' post-only budget: quoting AT the same-side best puts the order at
+      // the most easily-crossed position in the book, so a would-cross reject is
+      // an expected book-jitter event, not a "the price is wrong" fault. When the
+      // SEPARATE post-only budget is spent, CONVERT — cancel the quote and finish
+      // the remainder with taker — rather than stop at honest partial fill. This
+      // is the no-live-maker branch (after the target-reached check); CONVERTING
+      // never reads this counter, so post-only rejects spent during OPENING
+      // cannot cut off the conversion path. A non-'best' deal never carries the
+      // counter, so it falls straight through to the old budget below.
+      if (pair.pricePolicy === 'best' && pair.postOnlyRejects >= TUNING.MAX_POST_ONLY_REJECTS) {
+        return {
+          type: 'setMode',
+          mode: 'CONVERTING',
+          reason: `post-only quote rejected ${TUNING.MAX_POST_ONLY_REJECTS} times — completing the remainder at market`,
+        };
+      }
       if (pair.pocRejects >= TUNING.MAX_POC_REJECTS) {
         // The venue rejects a post-only order whose price would cross the book,
         // so the maker never rested. haltReason carries the cause into the

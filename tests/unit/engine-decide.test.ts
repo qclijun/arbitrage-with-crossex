@@ -24,6 +24,7 @@ function pairRow(over?: Partial<PairRow>): PairRow {
     hedgeRejectStreak: 0,
     repriceCount: 0,
     lastMakerPlacementAt: 0,
+    postOnlyRejects: 0,
     bookOutageStartedAt: 0,
         maxClip: null,
     clipBandBp: null,
@@ -383,6 +384,7 @@ describe("'best' quote mode — reprice boundaries", () => {
       pricePolicy: 'best',
       limitPrice: '2499.98',
       lastMakerPlacementAt: 0,
+      postOnlyRejects: 0,
       bookOutageStartedAt: 0,
       repriceCount: TUNING.MAX_REPRICE_CYCLES,
     });
@@ -404,6 +406,7 @@ describe("'best' quote mode — reprice boundaries", () => {
       pricePolicy: 'best',
       limitPrice: '61717',
       lastMakerPlacementAt: 0,
+      postOnlyRejects: 0,
       bookOutageStartedAt: 0,
     });
     const p = project(pair, [restingAt('61717')]); // what formatRestPrice produced

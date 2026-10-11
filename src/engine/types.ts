@@ -63,6 +63,15 @@ export interface PairRow {
    * it is NOT reset when the maker fills (unlike `pocRejects`). Defaults to 0
    * for a row written before the column existed. */
   repriceCount: number;
+  /** Consecutive post-only (would-cross) rejections on leg A, for a `'best'`
+   * deal ONLY. Kept SEPARATE from `pocRejects` because quoting at the same-side
+   * best makes a post-only rejection an expected book-jitter event, not a
+   * persistent-wrong-price fault; merging the two let one jitter stop the deal
+   * honestly instead of completing the remainder with taker. Reset on any A-leg
+   * fill — like `pocRejects`, it counts a CONSECUTIVE streak of zero-progress
+   * attempts (a reject is instant death, so N in a row means N quotes refused
+   * without resting once). Defaults to 0 for a legacy row. */
+  postOnlyRejects: number;
   /** Wall-clock ms of the last maker PLACEMENT — the 15 s minimum-interval gate.
    * A DISTINCT fact from `makerNotBefore` (the old reject backoff); using
    * "time since last reprice" instead would re-price the instant a short stall
@@ -279,6 +288,14 @@ export interface Tuning {
    * the last quote live (no taker conversion) until a fill, a manual command,
    * or the absolute deadline. */
   MAX_REPRICE_CYCLES: number;
+  /** Maximum consecutive post-only (would-cross) REJECTIONS of the `'best'`
+   * maker before the deal abandons maker acquisition and CONVERTS: it cancels
+   * the remainder and completes it with taker. Same magnitude as the reprice
+   * quota but wholly INDEPENDENT of it (and of `MAX_POC_REJECTS`, the old
+   * taker-clip budget). A `'best'` quote rests at the most easily-crossed
+   * position in the book, so this is the same order of magnitude as the number
+   * of reprices we tolerate — not the old "5 = the price is wrong" fault cap. */
+  MAX_POST_ONLY_REJECTS: number;
   /** How long a `'best'` deal's book may stay unavailable before the resting
    * maker is CANCELLED. Under it the maker is preserved (it can still fill and
    * the loop keeps observing/hedging); over it the pause becomes a cancel —
@@ -300,5 +317,6 @@ export const TUNING: Tuning = {
   REPRICE_LAG_TICKS: 2,
   REPRICE_MIN_INTERVAL_MS: 15_000,
   MAX_REPRICE_CYCLES: 20,
+  MAX_POST_ONLY_REJECTS: 20,
   BOOK_OUTAGE_CANCEL_MS: 30_000,
 };

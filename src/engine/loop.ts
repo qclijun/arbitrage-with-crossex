@@ -151,14 +151,25 @@ function applySnapshot(deps: LoopDeps, pair: PairRow, o: OrderRow, snap: OrderSn
     if (o.leg === 'A') {
       const executed = fx(patch.cumQty ?? o.cumQty);
       if (executed > 0n) {
-        // Any A-leg progress clears the failure budget (a long clip series with
-        // occasional whiffs must not accumulate into a spurious stop).
+        // Any A-leg progress clears the failure budgets (a long clip series with
+        // occasional whiffs must not accumulate into a spurious stop), and the
+        // post-only streak with it — both count CONSECUTIVE zero-progress tries.
+        // Each column resets independently, so a non-'best' deal's write is
+        // exactly the single-column update it always was.
         if (pair.pocRejects > 0) deps.store.updatePair(pair.id, { pocRejects: 0 });
+        if (pair.postOnlyRejects > 0) deps.store.updatePair(pair.id, { postOnlyRejects: 0 });
+      } else if (isPostOnlyReject(o, reason) && pair.pricePolicy === 'best') {
+        // A would-cross post-only rejection of the automatic quote. For a 'best'
+        // deal this is an expected book-jitter event, so it draws its OWN budget
+        // and never touches pocRejects — one jitter must not stop the deal
+        // honestly and cut off the taker completion the user is owed. Every
+        // other zero-progress terminal below still stops honestly.
+        bumpPostOnlyWall(deps, pair, now);
       } else if (reason === 'poc-reject' || o.kind === 'taker') {
-        // Zero-progress A-leg terminal: POC insta-reject (requote budget) or a
-        // taker clip that whiffed/was rejected post-acceptance. All draw from
-        // ONE budget — without it a banded clip on a wide spread spins one new
-        // venue order per tick forever, and a REDUCE_ONLY reject (position
+        // Zero-progress A-leg terminal for a NON-'best' deal — or, for a 'best'
+        // deal, a taker clip that whiffed/was rejected post-acceptance. All draw
+        // from ONE budget — without it a banded clip on a wide spread spins one
+        // new venue order per tick forever, and a REDUCE_ONLY reject (position
         // vanished) never terminates the deal.
         bumpClipWall(deps, pair, now);
       }
@@ -179,9 +190,25 @@ function applySnapshot(deps: LoopDeps, pair: PairRow, o: OrderRow, snap: OrderSn
   }
 }
 
-/** Count a zero-progress A-leg attempt (POC reject, clip reject, clip whiff)
- * toward the shared failure budget: backoff + a standing alert at the cap
- * (decide() then stops the deal honestly instead of retrying forever). */
+/** True when a leg-A terminal was a post-only (would-cross) rejection — the
+ * venue ACCEPTED then instantly killed the order because its price crossed the
+ * book. The loop encodes that shape as `reason === 'poc-reject'` (see
+ * `closeReasonOf`); a definitively REJECTED create carries the venue's own
+ * label instead, so callers match that label against `POC_REASON` themselves. */
+function isPostOnlyReject(o: OrderRow, reason: string): boolean {
+  return o.kind === 'maker' && reason === 'poc-reject';
+}
+
+/** Count a zero-progress A-leg attempt toward the failure budget — the OLD
+ * shared budget (`pocRejects`, cap `MAX_POC_REJECTS`) for everything that means
+ * "we could not eat the remainder", with backoff + a standing alert at the cap
+ * (decide() then stops the deal honestly instead of retrying forever).
+ *
+ * `'best'` post-only rejects do NOT come here: quoting at the same-side best
+ * makes a would-cross reject an expected book-jitter event, and it draws the
+ * SEPARATE `postOnlyRejects` budget instead (see `bumpPostOnlyWall`), whose
+ * destination is CONVERTING. Keeping them off `pocRejects` is what makes the
+ * conversion path survive a jittery book. */
 function bumpClipWall(deps: LoopDeps, pair: PairRow, now: number): void {
   const n = pair.pocRejects + 1;
   deps.store.updatePair(pair.id, {
@@ -193,6 +220,27 @@ function bumpClipWall(deps: LoopDeps, pair: PairRow, now: number): void {
       'error',
       pair.id,
       'A-leg wall: repeated order failures (rejects/whiffs) — the deal is stopping with whatever filled',
+      now,
+    );
+  }
+}
+
+/** Count ONE post-only (would-cross) rejection of an automatic `'best'` quote
+ * toward its OWN budget: same backoff as a clip wall, a loud standing alert at
+ * the cap, and — unlike `bumpClipWall` — it does NOT touch `pocRejects`.
+ * decide() converts to taker once the budget is spent, so the alert is worded
+ * for "completing the remainder at market", not "giving up". */
+function bumpPostOnlyWall(deps: LoopDeps, pair: PairRow, now: number): void {
+  const n = pair.postOnlyRejects + 1;
+  deps.store.updatePair(pair.id, {
+    postOnlyRejects: n,
+    makerNotBefore: now + tuning(deps).POC_BACKOFF_MS,
+  });
+  if (n >= tuning(deps).MAX_POST_ONLY_REJECTS) {
+    deps.store.alert(
+      'warn',
+      pair.id,
+      'post-only wall: the venue kept refusing the maker quote as would-cross — completing the remainder at market',
       now,
     );
   }
@@ -382,10 +430,19 @@ async function performPlace(
       resolvedAt: deps.clock.now(),
     });
     if (a.leg === 'A') {
-      // Every definitive A-leg create rejection draws the SAME failure budget —
-      // POC would-cross (requote), REDUCE_ONLY (position vanished), margin/size
-      // walls on clips. decide() stops the deal honestly when it runs out.
-      bumpClipWall(deps, pair, deps.clock.now());
+      // A create-time would-cross post-only reject on a 'best' quote is the
+      // SAME book-jitter event as the observed insta-cancel above — it must draw
+      // the separate post-only budget, or a jittery book would exhaust the old
+      // budget in 5 tries and stop the deal honestly instead of converting.
+      if (a.kind === 'maker' && pair.pricePolicy === 'best' && POC_REASON.test(out.label)) {
+        bumpPostOnlyWall(deps, pair, deps.clock.now());
+      } else {
+        // Every OTHER definitive A-leg create rejection draws the SAME failure
+        // budget — POC would-cross on a non-'best' deal, REDUCE_ONLY (position
+        // vanished), margin/size walls on clips. decide() stops the deal
+        // honestly when it runs out.
+        bumpClipWall(deps, pair, deps.clock.now());
+      }
     } else {
       bumpHedgeWall(deps, pair, deps.clock.now());
     }

@@ -183,6 +183,7 @@ const createDeal = (store: Store): void => {
     hedgeRejectStreak: 0,
     repriceCount: 0,
     lastMakerPlacementAt: 0,
+    postOnlyRejects: 0,
     bookOutageStartedAt: 0,
         maxClip: null,
     clipBandBp: null,
