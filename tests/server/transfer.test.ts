@@ -197,6 +197,7 @@ function createWorkingDeal(store: Store): void {
     hedgeRejectStreak: 0,
     repriceCount: 0,
     lastMakerPlacementAt: 0,
+    bookOutageStartedAt: 0,
         maxClip: null,
     clipBandBp: null,
     haltReason: null,

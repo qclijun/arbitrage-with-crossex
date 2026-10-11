@@ -68,6 +68,13 @@ export interface PairRow {
    * "time since last reprice" instead would re-price the instant a short stall
    * ends and produce jitter. 0 means "never placed". */
   lastMakerPlacementAt: number;
+  /** Wall-clock ms at which the CURRENT book outage began (0 = the book is
+   * quotable, or has recovered). The 30 s pause grading is measured from here,
+   * so it survives a restart and can never be reset by a tick that happens to
+   * succeed. A DISTINCT fact from `lastMakerPlacementAt`: that one is the last
+   * time the book was known GOOD, and is used only to invalidate a stale
+   * outage marker, never to measure the outage itself. */
+  bookOutageStartedAt: number;
   /** Max A-leg clip size during CONVERTING (null = uncapped). */
   maxClip: string | null;
   /** A-clip marketable-limit band in BASIS POINTS (null = pure MARKET IOC).
@@ -272,6 +279,12 @@ export interface Tuning {
    * the last quote live (no taker conversion) until a fill, a manual command,
    * or the absolute deadline. */
   MAX_REPRICE_CYCLES: number;
+  /** How long a `'best'` deal's book may stay unavailable before the resting
+   * maker is CANCELLED. Under it the maker is preserved (it can still fill and
+   * the loop keeps observing/hedging); over it the pause becomes a cancel —
+   * but only while ORDER status reads still work, because the cancel needs no
+   * book price, only order state. A fixed default, not a user setting. */
+  BOOK_OUTAGE_CANCEL_MS: number;
 }
 
 export const TUNING: Tuning = {
@@ -287,4 +300,5 @@ export const TUNING: Tuning = {
   REPRICE_LAG_TICKS: 2,
   REPRICE_MIN_INTERVAL_MS: 15_000,
   MAX_REPRICE_CYCLES: 20,
+  BOOK_OUTAGE_CANCEL_MS: 30_000,
 };

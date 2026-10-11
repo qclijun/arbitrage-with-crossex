@@ -333,6 +333,7 @@ export function mkWorld(opts?: {
     hedgeRejectStreak: 0,
     repriceCount: 0,
     lastMakerPlacementAt: 0,
+    bookOutageStartedAt: 0,
         maxClip: opts?.maxClip ?? null,
     clipBandBp: opts?.clipBandBp ?? null,
     haltReason: null,
