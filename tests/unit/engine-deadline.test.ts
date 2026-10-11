@@ -34,15 +34,9 @@ import {
 /** The four-leg window, as `resolveDeal` persists it. */
 const FOUR_LEG_WINDOW_MS = 30 * 60 * 1000;
 
-/**
- * The quote mode here is deliberately an EXISTING, persistable one, not `'best'`.
- * The invariant exercised is quote-mode-independent — the deadline's absolute-
- * ness is a property of the row, not of how it is quoted — and `'best'` is still
- * rejected by the pair-table CHECK until ticket 01's migration lands. The four-
- * leg default this ticket adds is covered at the creation seam
- * (`tests/unit/engine-create.test.ts`) instead.
- */
-const POLICY = 'touch' as const;
+/** The four-leg quote mode: the deal these properties are about is a four-leg
+ * deal, so exercise it with the flow's real marker. */
+const POLICY = 'best' as const;
 
 async function stepChecked(w: World, n = 1): Promise<void> {
   for (let i = 0; i < n; i++) {
@@ -139,6 +133,8 @@ describe('the maker deadline never moves', () => {
       hedgeNotBefore: 0,
       pocRejects: 0,
       hedgeRejectStreak: 0,
+      repriceCount: 0,
+      lastMakerPlacementAt: 0,
       maxClip: null,
       clipBandBp: null,
       haltReason: null,
