@@ -46,7 +46,7 @@ export interface PairRow {
   /** Current maker price intent. Placement writes the price it actually used back
    * here, so "maker price ≠ intent" is exactly "a re-peg was requested". */
   limitPrice: string | null;
-  pricePolicy: 'fixed' | 'touch';
+  pricePolicy: 'fixed' | 'touch' | 'best';
   deadlineAt: number | null;
   makerNotBefore: number; // anti-flap backoff after a POC/clip reject
   hedgeNotBefore: number; // anti-flap backoff after a hedge reject

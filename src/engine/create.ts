@@ -32,10 +32,11 @@ export interface DealRequest {
   execution: 'maker' | 'taker';
   /** Maker limit price (required for maker execution; tick-snapped here). */
   price?: string;
-  pricePolicy?: 'fixed' | 'touch';
-  /** Maker PAIRS convert to taker after this many seconds (clamped [30, 3600],
-   * default 300). Single-leg maker deals rest with NO deadline (a plain resting
-   * post-only order — the user cancels or it fills). */
+  pricePolicy?: 'fixed' | 'touch' | 'best';
+  /** Maker PAIRS convert to taker after this many seconds (clamped [30, 3600]).
+   * The default is flow-specific: a four-leg deal (`pricePolicy: 'best'`) waits
+   * 30 minutes, an ordinary maker pair 300s. Single-leg maker deals rest with
+   * NO deadline (a plain resting post-only order — the user cancels or it fills). */
   timeoutSec?: number;
   /** Max A-clip size during CONVERTING (bounds peak unhedged exposure). */
   maxClip?: string;
@@ -47,6 +48,10 @@ export interface DealRequest {
 
 const ID_RE = /^[a-zA-Z0-9-]{6,40}$/;
 const TIMEOUT_DEFAULT_S = 300;
+/** The four-leg workflow's perpetual hedge deal (`pricePolicy: 'best'`) gets a
+ * longer maker window — 30 minutes — so a maker fill has more opportunity. It
+ * sits inside the unchanged [TIMEOUT_MIN_S, TIMEOUT_MAX_S] clamp. */
+const TIMEOUT_DEFAULT_BEST_S = 1_800;
 const TIMEOUT_MIN_S = 30;
 const TIMEOUT_MAX_S = 3_600;
 
@@ -276,9 +281,12 @@ export async function resolveDeal(
   const b = bRule && req.b ? legSpecOf(bRule, { ...req.b, symbol: bRule.symbol }) : null;
 
   // Deadline: maker PAIRS must bound unhedged time; single maker deals rest.
+  // The DEFAULT is the only flow-specific value; the [30, 3600] clamp is global
+  // and unchanged — 1800 passes through it untouched.
   let deadlineAt: number | null = null;
   if (req.execution === 'maker' && b) {
-    const t = Number.isFinite(Number(req.timeoutSec)) && Number(req.timeoutSec) > 0 ? Number(req.timeoutSec) : TIMEOUT_DEFAULT_S;
+    const defaultS = req.pricePolicy === 'best' ? TIMEOUT_DEFAULT_BEST_S : TIMEOUT_DEFAULT_S;
+    const t = Number.isFinite(Number(req.timeoutSec)) && Number(req.timeoutSec) > 0 ? Number(req.timeoutSec) : defaultS;
     deadlineAt = now + Math.min(TIMEOUT_MAX_S, Math.max(TIMEOUT_MIN_S, t)) * 1000;
   }
 

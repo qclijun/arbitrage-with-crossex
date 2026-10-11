@@ -48,7 +48,9 @@ export function dealFromActions(
       qty: maker.preview.qty,
       execution: 'maker',
       price: maker.preview.price,
-      pricePolicy: maker.action.pegToTouch ? 'touch' : 'fixed',
+      // bestQuote alone selects the four-leg 'best' quote mode (it applies even
+      // with a pinned price); pegToTouch is the ordinary tracking mode.
+      pricePolicy: maker.action.bestQuote ? 'best' : maker.action.pegToTouch ? 'touch' : 'fixed',
       timeoutSec: maker.action.makerTimeoutSec,
       leverage: { a: levOf(maker.action), b: levOf(hedge.action) },
     };
