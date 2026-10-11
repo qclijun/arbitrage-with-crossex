@@ -97,6 +97,28 @@ describe('ExecuteControl', () => {
     expect(calls[0]).toMatchObject({ execution: 'maker', price: '2500', qty: '0.4' });
   });
 
+  // The four-leg quote mode is a DECORATION the four-leg ticket injects; an
+  // ordinary ticket's confirm path never emits it. This is the scope-isolation
+  // seam for the deal request — same host, only the decorator differs.
+  it('an ordinary maker intent cannot emit the four-leg "best" quote mode', async () => {
+    const calls: DealRequest[] = [];
+    const makerAction: ActionInput = {
+      kind: 'open-limit',
+      symbol: 'GATE_FUTURE_ETH_USDT',
+      side: 'BUY',
+      notional: '1000',
+      price: '2500',
+      tif: 'POC',
+    };
+    server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls));
+    renderWithClient(
+      <ExecuteControl scope="t" actions={[makerAction]} label="Execute" holdMs={50} />,
+    );
+    await hold();
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].pricePolicy).not.toBe('best');
+  });
+
   it('reuses the SAME deal id across an error-retry (idempotent resend)', async () => {
     const calls: DealRequest[] = [];
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls, true));

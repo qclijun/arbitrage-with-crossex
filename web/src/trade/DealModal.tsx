@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { useAckAlert, useAlerts, useDealCommand, useDealView } from '../api/queries';
-import type { DealOrder, DealPair, DealReport, Side } from '../api/types';
+import type { DealOrder, DealPair, DealPause, DealReport, Side } from '../api/types';
 import { Modal } from '../components/Modal';
 import { Spinner } from '../components/Spinner';
 import { fmtPct, parseSymbol, prettyVenue, sig, signedClass } from '../lib/fmt';
@@ -56,6 +56,20 @@ function fmtCountdown(ms: number): string {
   if (ms <= 0) return 'now';
   const s = Math.round(ms / 1000);
   return s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${s}s`;
+}
+
+/** Why automated quoting is not advancing, in the user's words. Deliberately
+ * says nothing about the SOURCE book's age: the local standard does not verify
+ * the venue's timestamp, so a successful fetch is not proof of freshness. */
+function pauseText(pause: DealPause): string {
+  switch (pause.kind) {
+    case 'book-unavailable':
+      return 'book unavailable — quoting paused, keeping the resting maker';
+    case 'reprice-cap':
+      return 'reprice limit reached — keeping the last quote';
+    case 'maker-backoff':
+      return 'backing off before the next quote';
+  }
 }
 
 /** target − done as a positive plain-decimal string, else null — the size of
@@ -138,6 +152,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
 
   const pair = view.data?.pair;
   const proj = view.data?.projection;
+  const progress = view.data?.progress;
   const orders = view.data?.orders ?? [];
   const opening = pair?.mode === 'OPENING';
   const dealAlerts = (alerts.data ?? []).filter((a) => a.pairId === dealId);
@@ -212,6 +227,43 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
               <div className="text-[11px] text-amber-300">
                 <Spinner className="inline h-3 w-3" /> resolving an order's fate on the venue — nothing new
                 is placed until it is confirmed
+              </div>
+            )}
+
+            {/* Automated-quoting progress: usage from the engine's persisted
+                fact, why a chase is paused, and whether the deal still
+                auto-follows. The last is what makes a manual price pin legible —
+                without it a pinned deal looks like it is still chasing. Reject
+                budgets are NOT shown (they are not progress). */}
+            {progress && (
+              <div
+                data-testid="deal-progress"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-400"
+              >
+                <span>
+                  reprices{' '}
+                  <span data-testid="reprice-usage" className="num text-ink-200">
+                    {progress.reprice.used} / {progress.reprice.limit}
+                  </span>
+                </span>
+                <span
+                  data-testid="auto-follow"
+                  className={progress.autoFollow.following ? 'text-cyan-300' : 'text-amber-300'}
+                  title={
+                    progress.autoFollow.following
+                      ? undefined
+                      : 'a price is pinned — the deal is NOT chasing the book until you restore auto-follow'
+                  }
+                >
+                  {progress.autoFollow.following
+                    ? `auto-following ${progress.autoFollow.family}`
+                    : `not auto-following — price pinned (would follow ${progress.autoFollow.family})`}
+                </span>
+                {progress.pause && (
+                  <span data-testid="pause-reason" className="text-amber-300">
+                    {pauseText(progress.pause)}
+                  </span>
+                )}
               </div>
             )}
 

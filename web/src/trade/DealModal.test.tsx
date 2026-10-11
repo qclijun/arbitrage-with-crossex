@@ -1,8 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import type { ActionInput, DealOrder } from '../api/types';
-import { baseHandlers, makeDealView, previewFor } from '../test/fixtures';
+import type { ActionInput, DealOrder, DealProgress } from '../api/types';
+import { baseHandlers, makeDealView, makeFourLegDealView, previewFor } from '../test/fixtures';
 import { env, server } from '../test/server';
 import { renderWithClient } from '../test/utils';
 import { DealModal } from './DealModal';
@@ -442,5 +442,111 @@ describe('DealModal', () => {
     expect(await screen.findByText('Report')).toBeInTheDocument();
     expect(screen.queryByText('maker')).not.toBeInTheDocument();
     expect(screen.queryByText('slippage')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The explainable progress readout (ticket 07)
+// ---------------------------------------------------------------------------
+
+describe('DealModal progress', () => {
+  it('shows reprice usage out of the cap, read from the engine’s persisted fact', async () => {
+    renderModal(
+      makeFourLegDealView({
+        pair: { mode: 'OPENING', deadlineAt: Date.now() + 120_000 },
+        progress: { reprice: { used: 3, limit: 20 } },
+      }),
+    );
+    const p = within(await screen.findByTestId('deal-progress'));
+    expect(p.getByTestId('reprice-usage')).toHaveTextContent('3 / 20');
+    expect(p.getByTestId('auto-follow')).toHaveTextContent(/auto-following/i);
+    // Reject budgets are not progress — nothing here may name them.
+    expect(p.queryByText(/reject/i)).toBeNull();
+  });
+
+  it('names each pause reason the engine can report', async () => {
+    const cases: Array<[DealProgress['pause'], RegExp]> = [
+      [{ kind: 'book-unavailable', since: Date.now() - 5_000 }, /book unavailable/i],
+      [{ kind: 'reprice-cap' }, /reprice limit reached/i],
+      [{ kind: 'maker-backoff', until: Date.now() + 2_000 }, /backing off/i],
+    ];
+    for (const [pause, rx] of cases) {
+      const { unmount } = renderModal(makeFourLegDealView({ progress: { pause } }));
+      expect(await screen.findByText(rx)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('clears the pause reason as the phase advances — no stale value is left behind', async () => {
+    /** The engine's own view of the deal, advanced between polls: a capped
+     * OPENING deal converts. The progress readout re-reads the server view, so
+     * the old reason must vanish rather than freeze on screen. */
+    let current = makeFourLegDealView({
+      pair: { mode: 'OPENING', deadlineAt: Date.now() + 120_000 },
+      progress: { pause: { kind: 'reprice-cap' } },
+    });
+    server.use(
+      http.get('/api/deals/:id', () => HttpResponse.json(env(current))),
+      http.post('/api/deals/:id/:cmd', () => {
+        current = makeFourLegDealView({ pair: { mode: 'CONVERTING' }, progress: { pause: null } });
+        return HttpResponse.json(env({ id: 'd1' }));
+      }),
+      ...baseHandlers(),
+    );
+    renderWithClient(
+      <TradeFlowProvider>
+        <DealModal dealId="d1" onClose={() => {}} />
+      </TradeFlowProvider>,
+    );
+    expect(await screen.findByText(/reprice limit reached/i)).toBeInTheDocument();
+
+    // The command's own invalidation drives the phase-advancing refetch.
+    fireEvent.click(screen.getByRole('button', { name: 'Convert now' }));
+    expect(await screen.findByText(/executing at market/)).toBeInTheDocument();
+    expect(screen.queryByText(/reprice limit reached/i)).toBeNull();
+    expect(screen.queryByTestId('pause-reason')).toBeNull();
+  });
+
+  it('marks a manually pinned deal as no longer auto-following its family', async () => {
+    renderModal(
+      makeFourLegDealView({
+        pair: { pricePolicy: 'fixed' }, // pinned — the family stays 'best'
+        progress: { autoFollow: { following: false, family: 'best' } },
+      }),
+    );
+    const p = within(await screen.findByTestId('deal-progress'));
+    expect(p.getByTestId('auto-follow')).toHaveTextContent(/not auto-following/i);
+    // Honest about what a restore would do, without claiming the book's age.
+    expect(p.getByTestId('auto-follow')).toHaveTextContent(/best/i);
+    expect(p.queryByText(/fresh|source book|up to date/i)).toBeNull();
+  });
+
+  it('renders the readout for an ordinary perpetual deal with no new strategy claim', async () => {
+    renderModal(makeDealView({ pair: { mode: 'OPENING', deadlineAt: Date.now() + 60_000 } }));
+    const p = within(await screen.findByTestId('deal-progress'));
+    expect(p.getByTestId('auto-follow')).toHaveTextContent(/auto-following/i);
+    expect(p.queryByText(/best bid|same-side best|four-leg/i)).toBeNull();
+  });
+
+  it('makes no source-book-freshness claim in any state it can render', async () => {
+    /** The local standard does not verify the venue's source timestamp, so a
+     * successful fetch must never read as "the exchange's book is fresh". The
+     * copy is checked for the claims it may NOT make, across each progress
+     * shape — including the one that names the book. */
+    const views = [
+      makeFourLegDealView({ progress: { pause: { kind: 'book-unavailable', since: Date.now() - 1_000 } } }),
+      makeFourLegDealView({
+        pair: { pricePolicy: 'fixed' },
+        progress: { autoFollow: { following: false, family: 'best' } },
+      }),
+      makeFourLegDealView({ progress: { reprice: { used: 20, limit: 20 }, pause: { kind: 'reprice-cap' } } }),
+    ];
+    for (const view of views) {
+      const { unmount } = renderModal(view);
+      const p = within(await screen.findByTestId('deal-progress'));
+      // Nothing about the source book's age, staleness, or verification.
+      expect(p.queryByText(/fresh|stale|up[- ]to[- ]date|verified|verified book|source book/i)).toBeNull();
+      unmount();
+    }
   });
 });

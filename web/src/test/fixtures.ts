@@ -14,6 +14,7 @@ import type {
   CredentialsInfo,
   DealOrder,
   DealPair,
+  DealProgress,
   DealProjection,
   DealView,
   CrossexAccount,
@@ -147,11 +148,13 @@ export function previewFor(input: ActionInput, overrides: Partial<PreviewResult>
   };
 }
 
-/** A deal view (pair + orders + projection) — tests spell only the fields under test. */
+/** A deal view (pair + orders + projection + progress) — tests spell only the
+ * fields under test. */
 export function makeDealView(overrides?: {
   pair?: Partial<DealPair>;
   orders?: DealOrder[];
   projection?: Partial<DealProjection>;
+  progress?: Partial<DealProgress>;
 }): DealView {
   const pair: DealPair = {
     id: 'd1',
@@ -161,11 +164,16 @@ export function makeDealView(overrides?: {
     targetQty: '0.05',
     limitPrice: '2500',
     pricePolicy: 'fixed',
+    autoPricePolicy: 'touch',
     deadlineAt: null,
     makerNotBefore: 0,
     hedgeNotBefore: 0,
     pocRejects: 0,
     hedgeRejectStreak: 0,
+    repriceCount: 0,
+    postOnlyRejects: 0,
+    lastMakerPlacementAt: 0,
+    bookOutageStartedAt: 0,
     maxClip: null,
     clipBandBp: null,
     haltReason: null,
@@ -189,7 +197,32 @@ export function makeDealView(overrides?: {
       allSettled: true,
       ...overrides?.projection,
     },
+    // An ordinary deal's shape: no 'best' family. A four-leg deal is
+    // `makeFourLegDealView`.
+    progress: {
+      reprice: { used: 0, limit: 20 },
+      pause: null,
+      autoFollow: { following: true, family: 'touch' },
+      ...overrides?.progress,
+    },
   };
+}
+
+/** A four-leg (scope-isolated) deal view: `pricePolicy`/family `'best'`.
+ * Overrides merge over BOTH the pair and the progress defaults, so a test can
+ * flip `pricePolicy: 'fixed'` (a manually pinned four-leg deal) while the
+ * family stays `'best'`. */
+export function makeFourLegDealView(overrides?: {
+  pair?: Partial<DealPair>;
+  orders?: DealOrder[];
+  projection?: Partial<DealProjection>;
+  progress?: Partial<DealProgress>;
+}): DealView {
+  return makeDealView({
+    ...overrides,
+    pair: { pricePolicy: 'best', autoPricePolicy: 'best', ...overrides?.pair },
+    progress: { autoFollow: { following: true, family: 'best' }, ...overrides?.progress },
+  });
 }
 
 /** GET /api/symbols (the whole rules list) + GET /api/symbols/:symbol (rule + leverage cap). */

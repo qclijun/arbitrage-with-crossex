@@ -13,6 +13,7 @@ import nock from 'nock';
 import { afterEach, describe, expect, it } from 'vitest';
 import { tickPair, type LoopDeps } from '../../src/engine/loop';
 import { Store } from '../../src/engine/db';
+import { TUNING } from '../../src/engine/types';
 import { TTL, TtlCache } from '../../src/server/cache';
 import { JobFile, newJob, newTransferJob, TransferFile } from '../../src/server/rebalanceJob';
 import { A_CONTRACT, B_CONTRACT, FakeVenue, VirtualClock } from '../unit/engine-sim';
@@ -1104,5 +1105,110 @@ describe('deal commands + alerts', () => {
     w.store.updatePair(w.id, { mode: 'DONE' });
     const after = (await app.inject({ method: 'GET', url: '/api/deals?active=1', headers: HOST })).json().data;
     expect(after).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The explainable progress the deal view reports (ticket 07)
+// ---------------------------------------------------------------------------
+
+describe('deal view progress (ticket 07)', () => {
+  async function mkBest(): Promise<ReturnType<typeof mkApp> & { id: string }> {
+    const w = mkApp();
+    app = w.app;
+    mockGateGet('/rule/symbols', { body: simRules() });
+    mockGateGet('/accounts', { fixture: 'account.json' });
+    await app.inject({
+      method: 'POST',
+      url: '/api/deals',
+      headers: HOST,
+      payload: makerPayload({ pricePolicy: 'best' }),
+    });
+    return { ...w, id: 'deal-000001' };
+  }
+
+  const viewOf = async (id: string) =>
+    (await app.inject({ method: 'GET', url: `/api/deals/${id}`, headers: HOST })).json().data;
+
+  it('reports reprice usage as consumed/limit straight from the persisted counter', async () => {
+    const w = await mkBest();
+    // The engine's own fact — not a front-end tally. Written directly so the
+    // assertion cannot be satisfied by anything the view layer invents.
+    w.store.updatePair(w.id, { repriceCount: 3 });
+    const view = await viewOf(w.id);
+    expect(view.progress.reprice).toMatchObject({ used: 3, limit: TUNING.MAX_REPRICE_CYCLES });
+  });
+
+  it('reports no pause while the book is healthy, and A pause once it goes unquotable', async () => {
+    const w = await mkBest();
+    await tickPair(w.loop, w.id); // maker resting at the best
+    let view = await viewOf(w.id);
+    expect(view.progress.pause).toBeNull();
+
+    // Book gone (endpoint-level failure) → the engine persists the outage start.
+    w.venue.bookReadsFail = true;
+    await tickPair(w.loop, w.id);
+    view = await viewOf(w.id);
+    expect(w.store.getPair(w.id)!.bookOutageStartedAt).toBeGreaterThan(0);
+    expect(view.progress.pause).toMatchObject({ kind: 'book-unavailable' });
+    expect(view.progress.pause.since).toBe(w.store.getPair(w.id)!.bookOutageStartedAt);
+  });
+
+  it('reflects a reprice the driven loop actually consumed, not a value the view invents', async () => {
+    const w = await mkBest();
+    w.venue.books.set(A_CONTRACT, { bid: '2500', ask: '2500.2' });
+    await tickPair(w.loop, w.id); // posts at the bare best
+    expect((await viewOf(w.id)).progress.reprice).toMatchObject({ used: 0 });
+
+    // The book moves two ticks; after the 15 s placement gate the loop reprices.
+    w.venue.books.set(A_CONTRACT, { bid: '2500.2', ask: '2500.4' });
+    w.clock.advance(15_000);
+    for (let i = 0; i < 4; i++) {
+      await tickPair(w.loop, w.id);
+      w.clock.advance(1000);
+    }
+    expect(w.store.getPair(w.id)!.repriceCount).toBe(1);
+    expect((await viewOf(w.id)).progress.reprice).toMatchObject({ used: 1 });
+  });
+
+  it('reports a reprice-quota pause once the cap is reached, distinct from the post-only budget', async () => {
+    const w = await mkBest();
+    await tickPair(w.loop, w.id);
+    // Cap consumed, book healthy: the deal keeps its last maker and stops chasing.
+    w.store.updatePair(w.id, { repriceCount: TUNING.MAX_REPRICE_CYCLES });
+    const view = await viewOf(w.id);
+    expect(view.progress.pause).toMatchObject({ kind: 'reprice-cap' });
+    // The reject-class budgets are progress-invisible (spec: not exposed).
+    expect(JSON.stringify(view.progress)).not.toMatch(/postOnly|pocRejects|reject/i);
+  });
+
+  it('reports no pause once the phase has advanced past quoting, even with a stale outage marker', async () => {
+    const w = await mkBest();
+    await tickPair(w.loop, w.id);
+    // A book outage began, then the user converted before the next tick could
+    // clear the marker. There is no quoting left to be paused, so the view must
+    // not report one — the pause belongs to the OPENING phase alone.
+    w.store.updatePair(w.id, { bookOutageStartedAt: w.clock.now() - 5_000, mode: 'CONVERTING' });
+    const view = await viewOf(w.id);
+    expect(view.pair.mode).toBe('CONVERTING');
+    expect(view.progress.pause).toBeNull();
+  });
+
+  it('reports auto-following for a live best deal and NOT for a manually pinned one', async () => {
+    const w = await mkBest();
+    await tickPair(w.loop, w.id);
+    let view = await viewOf(w.id);
+    expect(view.progress.autoFollow).toMatchObject({ following: true, family: 'best' });
+
+    // The user pins a price: the family stays 'best' but quoting stops following.
+    await app.inject({
+      method: 'POST',
+      url: `/api/deals/${w.id}/repeg`,
+      headers: HOST,
+      payload: { price: '2499' },
+    });
+    view = await viewOf(w.id);
+    expect(view.pair.pricePolicy).toBe('fixed');
+    expect(view.progress.autoFollow).toMatchObject({ following: false, family: 'best' });
   });
 });
