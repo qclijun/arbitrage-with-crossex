@@ -473,6 +473,7 @@ describe('DealModal progress', () => {
     for (const [pause, rx] of cases) {
       const { unmount } = renderModal(makeFourLegDealView({ progress: { pause } }));
       expect(await screen.findByText(rx)).toBeInTheDocument();
+      if (pause?.kind === 'book-unavailable') expect(screen.queryByText(/keeping the resting maker/i)).toBeNull();
       unmount();
     }
   });

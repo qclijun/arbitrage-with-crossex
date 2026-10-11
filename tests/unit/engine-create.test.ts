@@ -50,6 +50,23 @@ const makerPair = (over?: Partial<DealRequest>): DealRequest => ({
 });
 
 describe('maker-pair deadline default', () => {
+  it.each([
+    { pricePolicy: 'touch' }, { execution: 'taker' }, { b: null },
+    { a: { symbol: A_CONTRACT, side: 'BUY', reduceOnly: true } },
+    { b: { symbol: B_CONTRACT, side: 'SELL', reduceOnly: true } },
+  ] as Partial<DealRequest>[])('rejects an inapplicable automatic policy on a pinned request: %j', async (over) => {
+    await expect(resolveDeal(clients, makerPair({ pricePolicy: 'fixed', autoPricePolicy: 'best', ...over }), NOW))
+      .rejects.toThrow('autoPricePolicy is only supported');
+  });
+
+  it('preserves an initially pinned four-leg price and its automatic policy', async () => {
+    const row = await resolveDeal(clients, makerPair({ pricePolicy: 'fixed', autoPricePolicy: 'best', price: '2480' }), NOW);
+    expect(row.pricePolicy).toBe('fixed');
+    expect(row.autoPricePolicy).toBe('best');
+    expect(row.limitPrice).toBe('2480');
+    expect(row.deadlineAt).toBe(NOW + 30 * 60 * 1000);
+  });
+
   it('waits thirty minutes for a four-leg deal (quote mode "best")', async () => {
     const row = await resolveDeal(clients, makerPair({ pricePolicy: 'best' }), NOW);
     expect(row.deadlineAt).toBe(NOW + 30 * 60 * 1000);

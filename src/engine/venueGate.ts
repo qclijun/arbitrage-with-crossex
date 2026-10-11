@@ -10,7 +10,7 @@ import { CrossexOrderRequest } from 'gate-api';
 import type { Clients } from '../core/clients';
 import { fetchVenueBook } from '../core/estimate/books';
 import { formatRestPrice, parseSymbol } from '../core/numbers';
-import { bestQuotePrice, topOf } from './bookQuality';
+import { bestQuotePrice, isQuotableBook, topOf } from './bookQuality';
 import type {
   CancelOutcome,
   CreateOutcome,
@@ -253,11 +253,15 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       });
     },
 
-    async refPrice(contract: string): Promise<string | null> {
-      return cachedPrice(`ref:${contract}`, async () => {
+    async refPrice(contract: string, requireQuotableBook = false): Promise<string | null> {
+      return cachedPrice(`${requireQuotableBook ? 'quotable-ref' : 'ref'}:${contract}`, async () => {
       try {
         const { exchange, base, quote } = parseSymbol(contract);
         const book = await fetchVenueBook(exchange, base, quote);
+        if (requireQuotableBook) {
+          const top = topOf(book?.bids?.[0]?.[0], book?.asks?.[0]?.[0]);
+          return isQuotableBook(top) ? numToDec((top.bid + top.ask) / 2) : null;
+        }
         const bid = book?.bids?.[0]?.[0];
         const ask = book?.asks?.[0]?.[0];
         if (Number.isFinite(bid) && Number.isFinite(ask)) {

@@ -64,7 +64,7 @@ function fmtCountdown(ms: number): string {
 function pauseText(pause: DealPause): string {
   switch (pause.kind) {
     case 'book-unavailable':
-      return 'book unavailable — quoting paused, keeping the resting maker';
+      return 'book unavailable — quoting paused';
     case 'reprice-cap':
       return 'reprice limit reached — keeping the last quote';
     case 'maker-backoff':

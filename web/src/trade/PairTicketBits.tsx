@@ -418,7 +418,7 @@ export function MakerHedgeControls({
   touchIsFallback: boolean;
   /** User typed a price — pin it. */
   onPriceInput: (v: string) => void;
-  /** Un-pin and resume tracking the book (one gap behind the touch). */
+  /** Un-pin and resume the ticket's automatic book quote. */
   onTrackTouch: () => void;
   timeoutSec: TimeoutChoice;
   onTimeout: (v: TimeoutChoice) => void;
@@ -452,7 +452,7 @@ export function MakerHedgeControls({
           <FieldLabel htmlFor="pair-maker-price">Maker price</FieldLabel>
           <span
             className="text-[11px] text-ink-400"
-            title="Defaults to one bid–ask gap behind the touch and follows the book until you type a price."
+            title="Follows the maker venue's book until you type a price."
           >
             {pricePinned ? (
               <>
@@ -521,7 +521,7 @@ function LegRow({ label, tone, p }: { label: string; tone: 'green' | 'red'; p: P
               {parseSymbol(p.symbol).exchange}
             </Chip>
             {isMaker && (
-              <Chip sm tone="cyan" title="Rests post-only one bid–ask gap behind the same-side touch; the other leg auto-hedges as it fills">
+              <Chip sm tone="cyan" title="Rests post-only; the other leg auto-hedges as it fills">
                 maker
               </Chip>
             )}

@@ -125,6 +125,26 @@ describe('POST /api/deals', () => {
     expect(w.store.getPair('deal-000001')!.pricePolicy).toBe('best');
   });
 
+  it('creates an initially pinned four-leg deal and restores its best quoting with the existing command', async () => {
+    const w = mkApp();
+    app = w.app;
+    mockGateGet('/rule/symbols', { body: simRules() });
+    mockGateGet('/accounts', { fixture: 'account.json' });
+    w.venue.books.set(A_CONTRACT, { bid: '2500', ask: '2500.2' });
+    const res = await app.inject({ method: 'POST', url: '/api/deals', headers: HOST,
+      payload: makerPayload({ pricePolicy: 'fixed', autoPricePolicy: 'best', price: '2480' }) });
+    expect(res.statusCode, res.body).toBe(202);
+    await tickPair(w.loop, 'deal-000001');
+    expect(w.venue.liveOrder(A_CONTRACT)!.price).toBe('2480');
+    expect(w.store.getPair('deal-000001')!.autoPricePolicy).toBe('best');
+    const restore = await app.inject({ method: 'POST', url: '/api/deals/deal-000001/repeg', headers: HOST, payload: {} });
+    expect(restore.statusCode, restore.body).toBe(200);
+    await tickPair(w.loop, 'deal-000001');
+    await tickPair(w.loop, 'deal-000001');
+    expect(w.venue.liveOrder(A_CONTRACT)!.price).toBe('2500');
+    expect(w.store.getPair('deal-000001')!.repriceCount).toBe(0); // manual re-peg
+  });
+
   it("an API-created 'best' deal posts at the same-side best and reprices through the driven loop", async () => {
     const w = mkApp();
     app = w.app;

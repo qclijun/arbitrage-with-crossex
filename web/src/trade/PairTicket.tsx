@@ -157,7 +157,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
     // prefill on the same mount resets it.
     const isFourLeg = prefill.strategy === 'four-leg';
     setFourLeg(isFourLeg);
-    if (isFourLeg) setTimeoutSec('1800');
+    setTimeoutSec(isFourLeg ? '1800' : '300');
     // Same invariant as the manual mode toggle: a mode switch un-pins the price
     // so the maker leg resumes tracking the touch.
     if (prefill.mode) {
@@ -282,10 +282,9 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
     setPreviewLegs({ legLong, legShort });
   }, [legLong, legShort]);
 
-  // Auto-track the maker price to ONE bid–ask gap BEHIND the venue's touch —
-  // a BUY rests at bid − (ask − bid), a SELL at ask + (ask − bid) — until the
-  // user pins a price (the engine's t=submit peg applies the same formula
-  // server-side). Fallback chain when the maker venue's book is unavailable:
+  // Four-leg quotes track the same-side best; ordinary quotes stay one bid–ask
+  // gap behind it. Typing a price pins either policy. The engine recomputes an
+  // automatic quote at submission. Fallback chain for the displayed seed:
   // the maker leg's own mid (market-mode estimate) → the HEDGE leg's mid
   // (cross-venue, within bps — a usable starting price beats an empty input
   // that blocks the whole ticket).
@@ -293,7 +292,9 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
   const hedgePreviewLeg = makerLegPick === 'long' ? legShort : legLong;
   const makerSideIsBuy = makerLegPick === 'long';
   const touchPx = makerPreviewLeg?.restEstimate
-    ? restOffsetPrice(makerPreviewLeg.restEstimate, makerSideIsBuy)
+    ? fourLeg
+      ? (makerSideIsBuy ? makerPreviewLeg.restEstimate.bestBid : makerPreviewLeg.restEstimate.bestAsk)
+      : restOffsetPrice(makerPreviewLeg.restEstimate, makerSideIsBuy)
     : (makerPreviewLeg?.fillEstimate?.midPrice ?? hedgePreviewLeg?.fillEstimate?.midPrice);
   const touchIsFallback = Boolean(touchPx !== undefined && !makerPreviewLeg?.restEstimate);
   useEffect(() => {
@@ -322,12 +323,9 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
     return (allTaker - chosen) * usdNotional;
   }, [legLong?.fees, legShort?.fees, legLong?.estNotional, legShort?.estNotional, makerLegPick, notionalOk, notionalNum, sizeUnit]);
 
-  // Inject the engine-side peg ONLY at confirm and ONLY while auto-tracking: the
-  // maker rests at the fresh book-offset price computed at t=submit (same
-  // one-gap-behind-the-touch formula), not the client price. Four-leg: (1) mark
-  // the quote mode (bestQuote), which rides even when pinned — the deal is
-  // created with the 'best' policy either way; (2) peg the initial price, but
-  // only while tracking.
+  // Decorate only the confirmed intent: automatic quotes are recomputed at
+  // submission, while pinned quotes keep the typed price. The four-leg marker
+  // retains the 'best' policy for a later restore even when initially pinned.
   const trackingMaker = mode === 'maker' && !pricePinned;
   const decorate = (acts: ActionInput[]): ActionInput[] =>
     acts.map((a) =>
@@ -583,6 +581,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
           notionalStr,
           sizeUnit,
           mode,
+          fourLeg,
           makerLegPick,
           timeoutSec,
           pricePinned ? makerPriceStr : 'track',

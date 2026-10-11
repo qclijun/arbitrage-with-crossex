@@ -48,9 +48,10 @@ export function dealFromActions(
       qty: maker.preview.qty,
       execution: 'maker',
       price: maker.preview.price,
-      // bestQuote alone selects the four-leg 'best' quote mode (it applies even
-      // with a pinned price); pegToTouch is the ordinary tracking mode.
-      pricePolicy: maker.action.bestQuote ? 'best' : maker.action.pegToTouch ? 'touch' : 'fixed',
+      // Pinning controls the live quote; the automatic policy is retained so
+      // the existing re-peg command can restore this deal's same-side best.
+      pricePolicy: maker.action.pegToTouch ? (maker.action.bestQuote ? 'best' : 'touch') : 'fixed',
+      ...(maker.action.bestQuote && !maker.action.pegToTouch ? { autoPricePolicy: 'best' as const } : {}),
       timeoutSec: maker.action.makerTimeoutSec,
       leverage: { a: levOf(maker.action), b: levOf(hedge.action) },
     };

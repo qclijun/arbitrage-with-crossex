@@ -472,6 +472,25 @@ export class Store {
     this.db.prepare(`UPDATE pair SET ${sets} WHERE id = ?`).run(...keys.map((k) => patch[k] as never), id);
   }
 
+  /** One initiated reprice cycle: cancel provenance and quota must survive
+   * together. A retry of this order can never charge another cycle. */
+  recordRepriceCancel(o: OrderRow): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const marked = this.db.prepare(
+        'UPDATE orders SET cancel_requested = 1 WHERE pair_id = ? AND leg = ? AND seq = ? AND cancel_requested = 0',
+      ).run(o.pairId, o.leg, o.seq);
+      if (marked.changes > 0) {
+        const pair = this.getPair(o.pairId)!;
+        this.updatePair(o.pairId, { repriceCount: pair.repriceCount + 1 });
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /** Allocate the next seq and insert a PENDING order in ONE transaction —
    * the write-ahead reservation. Returns the inserted row.
    *

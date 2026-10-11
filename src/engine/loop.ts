@@ -30,7 +30,9 @@ export interface LoopDeps {
    * write-ahead PENDING commit and before the wire call — the crash-between-
    * commit-and-send window. (Crash after send is simulated by the venue's
    * 'unknown' outcomes; the loop itself keeps no in-memory state, so any other
-   * crash point is just "a fresh tick".) */
+   * crash point is just "a fresh tick".) Reprice cancels use this hook after
+   * wire initiation and their atomic provenance/quota commit, before consuming
+   * the outcome. */
   crashAfterCommit?: () => boolean;
   onFinish?: (pairId: string) => void;
 }
@@ -402,7 +404,7 @@ async function performPlace(
   if (a.kind === 'maker' && a.price !== undefined) {
     deps.store.updatePair(pair.id, {
       limitPrice: a.price,
-      ...(pair.pricePolicy === 'best' ? { lastMakerPlacementAt: now } : {}),
+      ...(pair.autoPricePolicy === 'best' ? { lastMakerPlacementAt: now } : {}),
     });
   }
   if (deps.crashAfterCommit?.()) return; // simulated crash between commit and wire
@@ -453,28 +455,27 @@ async function performPlace(
 }
 
 async function performCancel(deps: LoopDeps, pair: PairRow, o: OrderRow, reprice = false): Promise<void> {
-  // A cancel already initiated for this order must not consume a second reprice
-  // unit when it is RETRIED (an unconfirmed cancel re-sent by a later tick, or a
-  // restart that re-observes the still-OPEN order). `cancelRequested` is the
-  // durable fingerprint of "this cycle's cancel was already initiated".
-  const firstAttempt = !o.cancelRequested;
-  deps.store.updateOrder(o.pairId, o.leg, o.seq, { cancelRequested: 1 });
-  // Consume ONE reprice unit for an automatic reprice cycle — AFTER the cancel is
-  // initiated (the `cancelRequested` commit) and BEFORE its outcome is knowable.
-  // Writing it before initiating would record, in a crash window, a reprice that
-  // never happened; writing it after the outcome would let a retried/unknown
-  // cancel double-count. The counter is monotone and is never reset by a fill.
-  if (reprice && firstAttempt) {
-    deps.store.updatePair(o.pairId, { repriceCount: pair.repriceCount + 1 });
+  const ref = { venueOrderId: o.venueOrderId ?? undefined, clientText: o.clientId };
+  let request: ReturnType<VenuePort['cancel']>;
+  if (reprice && !o.cancelRequested) {
+    // Initiate the wire request first, then commit BOTH facts before awaiting
+    // its outcome. There is no pre-send quota charge and no partial DB commit.
+    // A crash before this commit leaves no provenance: observation stops the
+    // deal honestly if the venue canceled, rather than replacing it uncounted.
+    request = deps.venue.cancel(ref);
+    // A failed DB commit or simulated crash can abandon this outcome.
+    void request.catch(() => undefined);
+    deps.store.recordRepriceCancel(o);
+    if (deps.crashAfterCommit?.()) return;
+  } else {
+    deps.store.updateOrder(o.pairId, o.leg, o.seq, { cancelRequested: 1 });
+    if (deps.crashAfterCommit?.()) return;
+    request = deps.venue.cancel(ref);
   }
-  if (deps.crashAfterCommit?.()) return; // simulated crash between the commit (quota + cancel-requested) and the wire call
   // Cancel needs no state machine: "not found / already finished" is success
   // (no further fills can land), an unknown outcome is irrelevant — the loop
   // keeps observing the order until the venue reports a terminal cum.
-  const outcome = await deps.venue.cancel({
-    venueOrderId: o.venueOrderId ?? undefined,
-    clientText: o.clientId,
-  });
+  const outcome = await request;
 
   // THE WAY OUT OF A QUARANTINE. An unclassifiable status freezes the pair, and
   // quarantine only clears when a LATER read returns a status we know — which a
@@ -642,8 +643,8 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
     bestA: needBest ? await deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick) : null,
     bookOutageObservedAt: outageObservedAt,
     // '0' (unused) when no hedge is owed; a real fetch only when one is.
-    refB: needRefB ? await deps.venue.refPrice(pair.b!.contract) : '0',
-    refA: needRefA ? await deps.venue.refPrice(pair.a.contract) : '0',
+    refB: needRefB ? await deps.venue.refPrice(pair.b!.contract, pair.autoPricePolicy === 'best') : '0',
+    refA: needRefA ? await deps.venue.refPrice(pair.a.contract, pair.autoPricePolicy === 'best') : '0',
     maxClip: pair.maxClip ?? tuning(deps).MAX_CLIP,
   };
   // The book answered with a valid two-sided top: the outage, if any, is OVER.

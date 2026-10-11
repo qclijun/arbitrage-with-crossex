@@ -216,8 +216,9 @@ export interface VenuePort {
    * OR degenerate (one-sided, crossed, non-positive levels) — the caller then
    * places nothing rather than quoting off a broken book. */
   bestQuote(contract: string, side: Side, tick: string): Promise<string | null>;
-  /** Reference price for min-notional checks; null when unavailable. */
-  refPrice(contract: string): Promise<string | null>;
+  /** Reference price for min-notional checks; null when unavailable. Four-leg
+   * deals require a valid positive, uncrossed two-sided book. */
+  refPrice(contract: string, requireQuotableBook?: boolean): Promise<string | null>;
 }
 
 export interface Clock {

@@ -4,7 +4,7 @@
  * against VENUE TRUTH (not the engine's own books — that's the point).
  */
 import { strict as assert } from 'node:assert';
-import { bestQuotePrice, topOf } from '../../src/engine/bookQuality';
+import { bestQuotePrice, isQuotableBook, topOf } from '../../src/engine/bookQuality';
 import { Store } from '../../src/engine/db';
 import { fx, fxMin, fxStr, type Fx } from '../../src/engine/fx';
 import { tickPair, type LoopDeps } from '../../src/engine/loop';
@@ -203,7 +203,11 @@ export class FakeVenue implements VenuePort {
     return bestQuotePrice(topOf(b.bid, b.ask), side, contract, tick);
   }
 
-  async refPrice(contract: string): Promise<string | null> {
+  async refPrice(contract: string, requireQuotableBook = false): Promise<string | null> {
+    if (requireQuotableBook) {
+      const book = this.books.get(contract);
+      if (this.bookReadsFail || !book || !isQuotableBook(topOf(book.bid, book.ask))) return null;
+    }
     return this.readsFail ? null : (this.refPrices.get(contract) ?? null);
   }
 

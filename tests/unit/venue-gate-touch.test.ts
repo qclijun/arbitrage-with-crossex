@@ -5,7 +5,7 @@ import { gateVenue } from '../../src/engine/venueGate';
 
 vi.mock('../../src/core/estimate/books', () => ({ fetchVenueBook: vi.fn() }));
 
-const book = (bid: string, ask: string) =>
+const book = (bid: string | number, ask: string | number) =>
   ({ bids: [[bid, '1']], asks: [[ask, '1']] }) as unknown as Awaited<ReturnType<typeof fetchVenueBook>>;
 
 describe('gateVenue.touch', () => {
@@ -62,5 +62,26 @@ describe('gateVenue.bestQuote', () => {
     vi.mocked(fetchVenueBook).mockResolvedValueOnce(book('61717.85', '61717.9'));
     const venue = gateVenue(() => ({}) as Clients);
     expect(await venue.bestQuote('HYPERLIQUID_FUTURE_ETH_USDC', 'BUY', '0.01')).toBe('61717');
+  });
+});
+
+describe('gateVenue reference-book validation', () => {
+  it('rejects a crossed reference for four-leg sizing while preserving ordinary behavior', async () => {
+    vi.mocked(fetchVenueBook).mockResolvedValue(book(100.05, 100.01));
+    const venue = gateVenue(() => ({}) as Clients);
+    expect(await venue.refPrice('BINANCE_FUTURE_ETH_USDT', true)).toBeNull();
+    expect(await venue.refPrice('BINANCE_FUTURE_ETH_USDT')).toBe('100.03');
+  });
+
+  it.each([['0', '100'], ['100', '100'], ['NaN', '101']])('rejects invalid reference levels %s/%s', async (bid, ask) => {
+    vi.mocked(fetchVenueBook).mockResolvedValue(book(bid, ask));
+    const venue = gateVenue(() => ({}) as Clients);
+    expect(await venue.refPrice('BINANCE_FUTURE_ETH_USDT', true)).toBeNull();
+  });
+
+  it('returns a valid reference midpoint from parsed decimal levels', async () => {
+    vi.mocked(fetchVenueBook).mockResolvedValue(book('100', '102'));
+    const venue = gateVenue(() => ({}) as Clients);
+    expect(await venue.refPrice('BINANCE_FUTURE_ETH_USDT', true)).toBe('101');
   });
 });

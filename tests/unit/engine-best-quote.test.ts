@@ -16,7 +16,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Store } from '../../src/engine/db';
 import { TUNING } from '../../src/engine/types';
 import { fx } from '../../src/engine/fx';
 import { A_CONTRACT, B_CONTRACT, mkWorld, assertInvariants, type World } from './engine-sim';
@@ -331,23 +332,91 @@ describe("'best' reprice facts survive a restart", () => {
 });
 
 describe("'best' crash-injection at the cancel commit boundary", () => {
+  it('reconciles cancel-race fills and stops safely when the post-send transaction fails', async () => {
+    const file = path.join(tempDir(), 'deals.sqlite');
+    const w = bestWorld({ storePath: file });
+    setBook(w, '2500', '2500.2');
+    await stepChecked(w);
+    setBook(w, '2500.2', '2500.4');
+    w.clock.advance(15_000);
+    w.venue.nextCancelRace.push(0.5);
+    const update = w.store.updatePair.bind(w.store);
+    const failure = vi.spyOn(w.store, 'updatePair').mockImplementation((id, patch) => {
+      if (patch.repriceCount !== undefined) throw new Error('sim: persistence failure');
+      update(id, patch);
+    });
+    await expect(w.step()).rejects.toThrow('sim: persistence failure');
+    failure.mockRestore();
+    w.store.close();
+    w.store = new Store(file);
+    w.deps.store = w.store;
+    await stepChecked(w, 5);
+    expect(w.store.getPair(w.pairId)!.mode).toBe('DONE');
+    expect(w.store.getPair(w.pairId)!.repriceCount).toBe(0);
+    expect(w.venue.createCalls).toHaveLength(2); // original maker + one final hedge
+    expect(w.venue.truth().aTrue).toBe(fx('0.076'));
+    expect(w.venue.truth().bTrue).toBe(w.venue.truth().aTrue);
+    w.store.close();
+  });
+
+  it('starts the cancel before charging it, and rolls back both facts if persistence fails', async () => {
+    const file = path.join(tempDir(), 'deals.sqlite');
+    const w = bestWorld({ storePath: file });
+    setBook(w, '2500', '2500.2');
+    await stepChecked(w);
+    const first = w.venue.liveOrder(A_CONTRACT)!.clientText;
+    setBook(w, '2500.2', '2500.4');
+    w.clock.advance(15_000);
+    const cancel = w.venue.cancel.bind(w.venue);
+    w.venue.cancelsFail = true;
+    const wire = vi.spyOn(w.venue, 'cancel').mockImplementation((ref) => {
+      expect(w.store.getPair(w.pairId)!.repriceCount).toBe(0);
+      return cancel(ref);
+    });
+    const update = w.store.updatePair.bind(w.store);
+    const failure = vi.spyOn(w.store, 'updatePair').mockImplementation((id, patch) => {
+      if (patch.repriceCount !== undefined) throw new Error('sim: persistence failure');
+      update(id, patch);
+    });
+    await expect(w.step()).rejects.toThrow('sim: persistence failure');
+    expect(wire).toHaveBeenCalledTimes(1);
+    failure.mockRestore();
+    wire.mockRestore();
+    w.store.close();
+    w.store = new Store(file);
+    w.deps.store = w.store;
+    expect(w.store.getPair(w.pairId)!.repriceCount).toBe(0);
+    expect(w.store.listOrders(w.pairId).find((o) => o.clientId === first)!.cancelRequested).toBe(0);
+    w.venue.cancelsFail = false;
+    await stepChecked(w, 4);
+    expect(w.store.getPair(w.pairId)!.repriceCount).toBe(1);
+    expect(w.venue.liveOrder(A_CONTRACT)!.clientText).not.toBe(first);
+    w.store.close();
+  });
+
   it('consumes exactly ONE quota unit when a crash aborts the tick right after the reprice commit', async () => {
     let crashNext = false;
-    const w = bestWorld({ crashAfterCommit: () => crashNext });
+    const file = path.join(tempDir(), 'deals.sqlite');
+    const w = bestWorld({ storePath: file, crashAfterCommit: () => crashNext });
     setBook(w, '2500', '2500.2');
     await stepChecked(w); // place
     const first = w.venue.liveOrder(A_CONTRACT)!.clientText;
     setBook(w, '2500.2', '2500.4');
     w.clock.advance(15_000);
 
-    crashNext = true; // the NEXT act crashes between commit and wire
-    await w.step(1); // decide → reprice cancel → commit (quota + cancelRequested) → CRASH
+    w.venue.cancelsFail = true;
+    crashNext = true; // abort after initiation + commit, before processing the unknown outcome
+    await w.step(1);
     crashNext = false;
     const mid = w.store.getPair(w.pairId)!;
     expect(mid.repriceCount).toBe(1); // consumed at the commit boundary
     const order = w.store.listOrders(w.pairId).find((o) => o.clientId === first)!;
     expect(order.cancelRequested).toBe(1);
-    expect(w.venue.orders.get(first)!.rawStatus).toBe('NEW'); // never reached the venue
+    expect(w.venue.orders.get(first)!.rawStatus).toBe('NEW'); // initiated, outcome unknown
+    w.store.close();
+    w.store = new Store(file);
+    w.deps.store = w.store;
+    w.venue.cancelsFail = false;
 
     // Recovery: the next tick re-sends the cancel idempotently WITHOUT a second
     // quota unit, then re-places once the order is terminal.
@@ -356,6 +425,49 @@ describe("'best' crash-injection at the cancel commit boundary", () => {
     expect(w.venue.liveOrder(A_CONTRACT)).toBeDefined();
     expect(w.venue.liveOrder(A_CONTRACT)!.clientText).not.toBe(first);
     assertInvariants(w);
+    w.store.close();
+  });
+});
+
+describe('four-leg reference-book safety', () => {
+  it('cancels acquisition and hedges no fill on a crossed B reference, then catches up after recovery', async () => {
+    const w = bestWorld({ b: { minNotional: '5' } });
+    await stepChecked(w);
+    w.venue.fill(w.venue.liveOrder(A_CONTRACT)!.clientText, '0.076');
+    w.venue.books.set(B_CONTRACT, { bid: '2501', ask: '2499' });
+    await stepChecked(w, 2);
+    expect(w.venue.truth().bTrue).toBe(0n);
+    expect(w.venue.liveOrder(A_CONTRACT)).toBeUndefined();
+    expect(w.store.getPair(w.pairId)!.hedgeRejectStreak).toBeGreaterThan(0);
+    w.venue.books.set(B_CONTRACT, { bid: '2499', ask: '2501' });
+    w.clock.advance(TUNING.HEDGE_BACKOFF_MS);
+    await stepChecked(w);
+    expect(w.venue.truth().bTrue).toBe(w.venue.truth().aTrue);
+  });
+
+  it('does not acquire converting clips using an invalid A reference', async () => {
+    const w = bestWorld({ mode: 'CONVERTING', a: { minNotional: '5' } });
+    w.venue.books.set(A_CONTRACT, { bid: '2501', ask: '2499' });
+    await stepChecked(w, 2);
+    expect(w.venue.createCalls).toHaveLength(0);
+    expect(w.store.getPair(w.pairId)!.mode).toBe('CONVERTING');
+    w.venue.books.set(A_CONTRACT, { bid: '2499', ask: '2501' });
+    await stepChecked(w, 4);
+    expect(w.store.getPair(w.pairId)!.mode).toBe('DONE');
+    expect(w.venue.truth().aTrue).toBe(w.venue.truth().bTrue);
+  });
+
+  it('does not lose the placement interval when restoring an initially fixed quote', async () => {
+    const w = bestWorld();
+    w.store.updatePair(w.pairId, { pricePolicy: 'fixed' });
+    await stepChecked(w);
+    expect(w.store.getPair(w.pairId)!.lastMakerPlacementAt).toBeGreaterThan(0);
+    w.store.updatePair(w.pairId, { pricePolicy: 'best' });
+    setBook(w, '2500', '2500.2');
+    await stepChecked(w);
+    setBook(w, '2500.2', '2500.4');
+    await stepChecked(w);
+    expect(w.store.getPair(w.pairId)!.repriceCount).toBe(0);
   });
 });
 

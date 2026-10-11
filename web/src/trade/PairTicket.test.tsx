@@ -792,6 +792,42 @@ describe('PairTicket — the size unit follows the coin', () => {
 // ---------------------------------------------------------------------------
 
 describe('PairTicket maker wait window', () => {
+  it.each(['pin', 'ordinary'] as const)('preserves the displayed intent when a four-leg ticket changes to %s', async (change) => {
+    const dealCalls: DealRequest[] = [];
+    server.use(
+      ...baseHandlers(), ...ethSymbolHandlers(), previewHandler({ calls: [] }),
+      http.post('/api/deals', async ({ request }) => {
+        dealCalls.push((await request.json()) as DealRequest);
+        return HttpResponse.json(env({ id: dealCalls[0].id }), { status: 202 });
+      }),
+    );
+    renderWithClient(<PrefillHarness prefills={[
+      { base: 'ETH', longVenue: 'GATE', shortVenue: 'OKX', notionalUsd: 1000, mode: 'maker', strategy: 'four-leg' },
+      { base: 'ETH', longVenue: 'GATE', shortVenue: 'OKX', notionalUsd: 1000, mode: 'maker' },
+    ]} />);
+    await userEvent.click(screen.getByRole('button', { name: 'fire-0' }));
+    await waitForFirstPreview();
+    await waitFor(() => expect(screen.getByLabelText(/Maker price/)).toHaveValue('2499'), { timeout: 4000 });
+    if (change === 'pin') {
+      const input = screen.getByLabelText(/Maker price/);
+      await userEvent.clear(input);
+      await userEvent.type(input, '2480');
+      expect(screen.getByText(/pinned —/)).toBeInTheDocument();
+    } else {
+      await userEvent.click(screen.getByRole('button', { name: 'fire-1' }));
+      const group = screen.getByRole('radiogroup', { name: 'Maker timeout' });
+      await waitFor(() => expect(within(group).getByRole('radio', { name: '5m' })).toHaveAttribute('aria-checked', 'true'));
+      expect(within(group).queryByRole('radio', { name: '30m' })).toBeNull();
+    }
+    const btn = screen.getByRole('button', { name: 'Execute pair' });
+    await waitFor(() => expect(btn).toBeEnabled(), { timeout: 4000 });
+    fireEvent.pointerDown(btn);
+    await waitFor(() => expect(dealCalls).toHaveLength(1), { timeout: 2000 });
+    expect(dealCalls[0]).toMatchObject(change === 'pin'
+      ? { price: '2480', pricePolicy: 'fixed', autoPricePolicy: 'best', timeoutSec: 1800 }
+      : { pricePolicy: 'touch', timeoutSec: 300 });
+  });
+
   it('a four-leg prefill defaults the wait to 30m and sends it WITH the strategy marker', async () => {
     /**
      * The ticket the wizard arms IS the four-leg hedge ticket, and it must show

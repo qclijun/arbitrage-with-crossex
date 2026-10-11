@@ -35,6 +35,8 @@ export interface DealRequest {
   /** Maker quote mode; unknown/absent ⇒ 'touch' (the historical default).
    *  'best' is the four-leg same-side-best policy. */
   pricePolicy?: 'fixed' | 'touch' | 'best';
+  /** Automatic policy to restore for a four-leg maker pair pinned at creation. */
+  autoPricePolicy?: 'best';
   /** Maker PAIRS convert to taker after this many seconds (clamped [30, 3600]).
    * The default is flow-specific: a four-leg deal (`pricePolicy: 'best'`) waits
    * 30 minutes, an ordinary maker pair 300s. Single-leg maker deals rest with
@@ -91,6 +93,13 @@ export async function resolveDeal(
   if (req.execution !== 'maker' && req.execution !== 'taker') {
     throw new CoreError(`execution must be 'maker' or 'taker'`);
   }
+  if (req.autoPricePolicy !== undefined && (
+    req.autoPricePolicy !== 'best' || req.pricePolicy !== 'fixed' || req.execution !== 'maker' || !req.b ||
+    req.a.reduceOnly || req.b.reduceOnly
+  )) {
+    throw new CoreError('autoPricePolicy is only supported for an initially fixed four-leg maker pair', 'validation');
+  }
+  const autoPricePolicy = req.pricePolicy === 'best' || req.autoPricePolicy === 'best' ? 'best' : 'touch';
 
   const symbols = [req.a.symbol.toUpperCase(), ...(req.b ? [req.b.symbol.toUpperCase()] : [])];
   const { body: ruleList } = await clients.crossEx.listCrossexRuleSymbols({ symbols: symbols.join(',') });
@@ -287,7 +296,7 @@ export async function resolveDeal(
   // and unchanged — 1800 passes through it untouched.
   let deadlineAt: number | null = null;
   if (req.execution === 'maker' && b) {
-    const defaultS = req.pricePolicy === 'best' ? TIMEOUT_DEFAULT_BEST_S : TIMEOUT_DEFAULT_S;
+    const defaultS = autoPricePolicy === 'best' ? TIMEOUT_DEFAULT_BEST_S : TIMEOUT_DEFAULT_S;
     const t = Number.isFinite(Number(req.timeoutSec)) && Number(req.timeoutSec) > 0 ? Number(req.timeoutSec) : defaultS;
     deadlineAt = now + Math.min(TIMEOUT_MAX_S, Math.max(TIMEOUT_MIN_S, t)) * 1000;
   }
@@ -302,10 +311,9 @@ export async function resolveDeal(
     pricePolicy:
       req.pricePolicy === 'fixed' ? 'fixed' : req.pricePolicy === 'best' ? 'best' : 'touch',
     // The deal's OWN auto-follow policy, remembered independently of the live
-    // value (see PairRow.autoPricePolicy). A four-leg deal is `'best'`; anything
-    // else falls back to the historical `'touch'`, which is also what a plain
-    // pinned deal restores to. A request never sets this directly.
-    autoPricePolicy: req.pricePolicy === 'best' ? 'best' : 'touch',
+    // value (see PairRow.autoPricePolicy). A four-leg deal is `'best'`, including
+    // one pinned at creation; anything else restores the historical `'touch'`.
+    autoPricePolicy,
     deadlineAt,
     makerNotBefore: 0,
     hedgeNotBefore: 0,

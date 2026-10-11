@@ -1047,6 +1047,7 @@ export interface DealRequest {
   execution: 'maker' | 'taker';
   price?: string;
   pricePolicy?: 'fixed' | 'touch' | 'best';
+  autoPricePolicy?: 'best';
   timeoutSec?: number;
   maxClip?: string;
   clipBandPct?: number;
