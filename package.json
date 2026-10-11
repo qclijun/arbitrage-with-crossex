@@ -20,6 +20,7 @@
     "server": "tsx src/server/index.ts",
     "dev": "concurrently -n server,web -c blue,magenta \"tsx watch src/server/index.ts\" \"yarn --cwd web dev\"",
     "start": "yarn --cwd web build && tsx src/server/index.ts",
+    "stop": "bash scripts/stop.sh",
     "verify": "tsc --noEmit && yarn test && yarn --cwd web typecheck && yarn --cwd web test"
   },
   "dependencies": {

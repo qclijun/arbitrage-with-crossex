@@ -8,14 +8,14 @@ this file — keep everything here so there is one place to update.
 - `src/core/` contains exchange and domain logic; `src/engine/` owns the reconcile loop and SQLite state; `src/server/` contains the Fastify API and routes.
 - `web/src/` is the React/Vite interface. `tests/unit/`, `tests/server/`, and `tests/live/` hold unit, API, and live-account tests; shared fixtures and helpers live under `tests/fixtures/` and `tests/helpers/`.
 - `docs/` contains user and design documentation. Read `docs/MAKER-HEDGE.md` before changing trade execution or recovery behavior.
-- `scripts/` holds standalone Python tools (standard library only, read-only): `risk_monitor*.py` and `opportunity_screening.py`. They are independent of the Node app and are not covered by `yarn verify`.
+- `scripts/` holds standalone Python tools (standard library only, read-only): `risk_monitor*.py` and `opportunity_screening.py`. They are independent of the Node app and are not covered by `yarn verify`. `scripts/stop.sh` stops the running server (`yarn stop`).
 - `install.sh` / `install.ps1` are the user-facing installers. They download a private Node runtime and register a LaunchAgent / Scheduled Task; user data lives outside the app dir because updates wipe it.
 
 ## Build, Test, and Development Commands
 
 Use Node.js 22.13 or newer and Yarn 1.22.22. The root and `web/` are separate packages; install both with `yarn install --frozen-lockfile` and `yarn --cwd web install --frozen-lockfile`.
 
-- `yarn dev` runs the server and Vite development server together; `yarn start` builds the web app and starts the server.
+- `yarn dev` runs the server and Vite development server together; `yarn start` builds the web app and starts the server; `yarn stop` stops the server (and, under `yarn dev`, the Vite dev server too).
 - `yarn typecheck` checks server and shared TypeScript. `yarn test` runs unit and server tests; `yarn test:web` runs UI tests.
 - `yarn verify` runs typechecking and offline tests. Run `yarn --cwd web build` to validate the production web bundle, as CI does.
 
