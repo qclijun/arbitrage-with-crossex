@@ -6,7 +6,7 @@ import { TUNING, type OrderRow, type PairRow } from '../../src/engine/types';
 import type { DecideCtx } from '../../src/engine/decide';
 import { legSpec, A_CONTRACT, B_CONTRACT } from './engine-sim';
 
-const ctx: DecideCtx = { touchA: '2500', bestA: '2500', refB: '2500', refA: '2500', maxClip: '1000000' };
+const ctx: DecideCtx = { touchA: '2500', bestA: '2500', bookOutageObservedAt: null, refB: '2500', refA: '2500', maxClip: '1000000' };
 
 function pairRow(over?: Partial<PairRow>): PairRow {
   return {
@@ -24,6 +24,7 @@ function pairRow(over?: Partial<PairRow>): PairRow {
     hedgeRejectStreak: 0,
     repriceCount: 0,
     lastMakerPlacementAt: 0,
+    bookOutageStartedAt: 0,
         maxClip: null,
     clipBandBp: null,
     haltReason: null,
@@ -382,6 +383,7 @@ describe("'best' quote mode — reprice boundaries", () => {
       pricePolicy: 'best',
       limitPrice: '2499.98',
       lastMakerPlacementAt: 0,
+      bookOutageStartedAt: 0,
       repriceCount: TUNING.MAX_REPRICE_CYCLES,
     });
     const p = project(pair, [restingAt('2499.98')]);
@@ -402,8 +404,55 @@ describe("'best' quote mode — reprice boundaries", () => {
       pricePolicy: 'best',
       limitPrice: '61717',
       lastMakerPlacementAt: 0,
+      bookOutageStartedAt: 0,
     });
     const p = project(pair, [restingAt('61717')]); // what formatRestPrice produced
     expect(decide(pair, p, 60_000, { ...ctx, bestA: '61717' })).toEqual({ type: 'idle', reason: 'maker resting' });
+  });
+
+  it('book outage: under BOOK_OUTAGE_CANCEL_MS the maker is preserved (idle, explainable)', () => {
+    const start = 100_000;
+    const pair = pairRow({ pricePolicy: 'best', bookOutageStartedAt: start, lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2500')]);
+    const a = decide(pair, p, start + TUNING.BOOK_OUTAGE_CANCEL_MS - 1, {
+      ...ctx,
+      bestA: null,
+      bookOutageObservedAt: start + TUNING.BOOK_OUTAGE_CANCEL_MS - 1,
+    });
+    expect(a.type).toBe('idle');
+    expect((a as { reason: string }).reason).toMatch(/book unavailable/i);
+  });
+
+  it('book outage: at BOOK_OUTAGE_CANCEL_MS the maker cancel is requested', () => {
+    const start = 100_000;
+    const pair = pairRow({ pricePolicy: 'best', bookOutageStartedAt: start, lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2500')]);
+    const a = decide(pair, p, start + TUNING.BOOK_OUTAGE_CANCEL_MS, {
+      ...ctx,
+      bestA: null,
+      bookOutageObservedAt: start + TUNING.BOOK_OUTAGE_CANCEL_MS,
+    });
+    // Not a reprice: a pause cancel must NOT draw the reprice quota (spec).
+    expect(a).toMatchObject({ type: 'cancel' });
+    expect((a as { reprice?: boolean }).reprice).toBeUndefined();
+  });
+
+  it('book outage: NO cancel is possible when the whole venue is unreachable (no observable)', () => {
+    const start = 100_000;
+    const pair = pairRow({ pricePolicy: 'best', bookOutageStartedAt: start, lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2500')]);
+    // bookOutageObservedAt null is the loop's certification that order-status
+    // reads FAILED this tick: the cancel's own outcome would be unknown, so the
+    // one correct action is none — never a guess, never a resend.
+    const a = decide(pair, p, start + 10 * TUNING.BOOK_OUTAGE_CANCEL_MS, { ...ctx, bestA: null });
+    expect(a).toEqual({ type: 'idle', reason: 'maker resting' });
+  });
+
+  it('book outage: an already-initiated cancel is re-confirmed idempotently', () => {
+    const start = 100_000;
+    const pair = pairRow({ pricePolicy: 'best', bookOutageStartedAt: start, lastMakerPlacementAt: 0 });
+    const p = project(pair, [order({ state: 'OPEN', price: '2500', cancelRequested: 1 })]);
+    const a = decide(pair, p, start + 1_000, { ...ctx, bestA: null, bookOutageObservedAt: start + 1_000 });
+    expect(a).toMatchObject({ type: 'cancel' }); // retried, not swallowed by the pause
   });
 });

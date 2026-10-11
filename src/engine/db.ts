@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS pair (
   hedge_reject_streak INTEGER NOT NULL DEFAULT 0,
   reprice_count INTEGER NOT NULL DEFAULT 0,
   last_maker_placement_at INTEGER NOT NULL DEFAULT 0,
+  book_outage_started_at INTEGER NOT NULL DEFAULT 0,
   max_clip TEXT,
   clip_band_bp INTEGER,
   halt_reason TEXT,
@@ -99,6 +100,7 @@ interface PairDbRow {
   hedge_reject_streak: number;
   reprice_count: number;
   last_maker_placement_at: number;
+  book_outage_started_at: number;
   max_clip: string | null;
   clip_band_bp: number | null;
   halt_reason: string | null;
@@ -154,6 +156,7 @@ function toPair(r: PairDbRow): PairRow {
     // `undefined >= cap` is false, which would silently disable the reprice cap.
     repriceCount: r.reprice_count ?? 0,
     lastMakerPlacementAt: r.last_maker_placement_at ?? 0,
+    bookOutageStartedAt: r.book_outage_started_at ?? 0,
     maxClip: r.max_clip,
     clipBandBp: r.clip_band_bp,
     haltReason: r.halt_reason,
@@ -216,6 +219,7 @@ export interface PairPatch {
   hedgeRejectStreak?: number;
   repriceCount?: number;
   lastMakerPlacementAt?: number;
+  bookOutageStartedAt?: number;
   haltReason?: string | null;
   reportJson?: string | null;
 }
@@ -244,6 +248,7 @@ const PAIR_COLS: Record<keyof PairPatch, string> = {
   hedgeRejectStreak: 'hedge_reject_streak',
   repriceCount: 'reprice_count',
   lastMakerPlacementAt: 'last_maker_placement_at',
+  bookOutageStartedAt: 'book_outage_started_at',
   haltReason: 'halt_reason',
   reportJson: 'report_json',
 };
@@ -301,6 +306,7 @@ export class Store {
     const missing: Array<[string, string]> = [
       ['reprice_count', `INTEGER NOT NULL DEFAULT 0`],
       ['last_maker_placement_at', `INTEGER NOT NULL DEFAULT 0`],
+      ['book_outage_started_at', `INTEGER NOT NULL DEFAULT 0`],
     ];
     for (const [name, decl] of missing) {
       if (!pairCols.some((c) => c.name === name)) {
@@ -366,6 +372,7 @@ export class Store {
         hedge_reject_streak INTEGER NOT NULL DEFAULT 0,
         reprice_count INTEGER NOT NULL DEFAULT 0,
         last_maker_placement_at INTEGER NOT NULL DEFAULT 0,
+        book_outage_started_at INTEGER NOT NULL DEFAULT 0,
         max_clip TEXT,
         clip_band_bp INTEGER,
         halt_reason TEXT,
@@ -408,9 +415,9 @@ export class Store {
            b_contract, b_side, b_lot, b_min_size, b_min_notional, b_tick, b_reduce_only,
            target_qty, limit_price, price_policy, deadline_at,
            maker_not_before, hedge_not_before, poc_rejects, hedge_reject_streak,
-           reprice_count, last_maker_placement_at,
+           reprice_count, last_maker_placement_at, book_outage_started_at,
            max_clip, clip_band_bp, halt_reason, report_json, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         p.id, p.mode,
@@ -419,7 +426,7 @@ export class Store {
         p.b?.minSize ?? null, p.b?.minNotional ?? null, p.b?.tick ?? null, p.b?.reduceOnly ? 1 : 0,
         p.targetQty, p.limitPrice, p.pricePolicy, p.deadlineAt,
         p.makerNotBefore, p.hedgeNotBefore, p.pocRejects, p.hedgeRejectStreak,
-        p.repriceCount, p.lastMakerPlacementAt,
+        p.repriceCount, p.lastMakerPlacementAt, p.bookOutageStartedAt,
         p.maxClip, p.clipBandBp, p.haltReason, p.reportJson, p.createdAt,
       );
   }
