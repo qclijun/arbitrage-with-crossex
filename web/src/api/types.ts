@@ -926,7 +926,7 @@ export interface DealPair {
   b: DealLegSpec | null;
   targetQty: string;
   limitPrice: string | null;
-  pricePolicy: 'fixed' | 'touch';
+  pricePolicy: 'fixed' | 'touch' | 'best';
   deadlineAt: number | null;
   makerNotBefore: number;
   hedgeNotBefore: number;
@@ -1009,7 +1009,7 @@ export interface DealRequest {
   qty: string;
   execution: 'maker' | 'taker';
   price?: string;
-  pricePolicy?: 'fixed' | 'touch';
+  pricePolicy?: 'fixed' | 'touch' | 'best';
   timeoutSec?: number;
   maxClip?: string;
   clipBandPct?: number;
