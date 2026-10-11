@@ -188,6 +188,9 @@ function WizardBody({
       longVenue: w.crossexLongVenue,
       shortVenue: w.crossexShortVenue,
       notionalUsd,
+      // This IS the four-leg hedge ticket: the wizard exists to open the full
+      // strategy, so its perp step carries the four-leg marker.
+      strategy: 'four-leg',
       ...(sizeBase !== undefined && sizeBase > 0 ? { sizeUnit: 'base' as const, sizeBase } : {}),
       ...(w.perpMode ? { mode: w.perpMode } : {}),
     });
