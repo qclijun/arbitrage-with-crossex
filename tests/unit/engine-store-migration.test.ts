@@ -127,6 +127,48 @@ function seedOldDb(file: string, opts?: { extraOrder?: boolean }): void {
 }
 
 describe('Store migration of a pre-existing file', () => {
+  it.each(['legacy-scope', 'best'])('preserves account_scope with default %s when widening a legacy pair CHECK', (scopeDefault) => {
+    const file = path.join(tempDir(), 'deals.sqlite');
+    seedOldDb(file, { extraOrder: true });
+    const legacy = new DatabaseSync(file);
+    legacy.exec(`ALTER TABLE pair ADD COLUMN account_scope TEXT NOT NULL DEFAULT '${scopeDefault}'`);
+    legacy.exec(`ALTER TABLE pair ADD COLUMN "legacy note" TEXT DEFAULT 'retained'`);
+    legacy.exec('CREATE UNIQUE INDEX pair_account_scope_id ON pair(account_scope, id)');
+    legacy.exec("CREATE TRIGGER pair_scope_guard BEFORE UPDATE OF account_scope ON pair WHEN NEW.account_scope = 'forbidden' BEGIN SELECT RAISE(ABORT, 'scope guard'); END");
+    legacy.prepare('UPDATE pair SET account_scope = ? WHERE id = ?').run('test-scope', 'old-deal');
+    legacy.close();
+
+    const store = new Store(file);
+    try {
+      expect(store.getPair('old-deal')!.deadlineAt).toBe(1770000000000);
+      expect(store.listOrders('old-deal')).toHaveLength(2);
+      store.updatePair('old-deal', { pricePolicy: 'best' });
+    } finally {
+      store.close();
+    }
+    const migrated = new DatabaseSync(file);
+    try {
+      expect(migrated.prepare('SELECT account_scope FROM pair WHERE id = ?').get('old-deal'))
+        .toEqual({ account_scope: 'test-scope' });
+      const scope = migrated.prepare('PRAGMA table_info(pair)').all().find((column) => column.name === 'account_scope');
+      expect(scope).toMatchObject({ type: 'TEXT', notnull: 1, dflt_value: `'${scopeDefault}'` });
+      expect(migrated.prepare('SELECT "legacy note" FROM pair WHERE id = ?').get('old-deal'))
+        .toEqual({ 'legacy note': 'retained' });
+      expect(migrated.prepare("SELECT name FROM sqlite_master WHERE name IN ('pair_account_scope_id', 'pair_scope_guard') ORDER BY name").all())
+        .toEqual([{ name: 'pair_account_scope_id' }, { name: 'pair_scope_guard' }]);
+      expect(() => migrated.prepare('UPDATE pair SET account_scope = ? WHERE id = ?').run('forbidden', 'old-deal'))
+        .toThrow('scope guard');
+      expect(() => migrated.prepare("UPDATE pair SET price_policy = 'invalid' WHERE id = 'old-deal'").run())
+        .toThrow('CHECK constraint failed');
+      expect(migrated.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      migrated.close();
+    }
+    const again = new Store(file);
+    expect(again.getPair('old-deal')!.pricePolicy).toBe('best');
+    again.close();
+  });
+
   it("adds the pair columns with defaults and widens the CHECK so a legacy deal can take 'best'", () => {
     const file = path.join(tempDir(), 'deals.sqlite');
     seedOldDb(file);

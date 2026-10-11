@@ -22,6 +22,8 @@ function fnv1a36(s: string): string {
   return (h >>> 0).toString(36).padStart(7, '0');
 }
 
+const PRICE_POLICY_CHECK = /(CHECK\s*\(\s*(?:price_policy|"price_policy"|`price_policy`|\[price_policy\])\s+IN\s*\()([^)]*)(\)\s*\))/i;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS pair (
   id TEXT PRIMARY KEY,
@@ -348,10 +350,16 @@ export class Store {
    * CHECK. The stored DDL in sqlite_master is the only place a CHECK is
    * observable — PRAGMA table_info does not report them. */
   private pairCheckAdmits(value: string): boolean {
+    const values = this.pairSchema().match(PRICE_POLICY_CHECK)?.[2];
+    return values?.split(',').some((entry) => entry.trim() === `'${value}'`) ?? false;
+  }
+
+  private pairSchema(): string {
     const row = this.db
       .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pair'`)
       .get() as unknown as { sql: string } | undefined;
-    return !!row && row.sql.includes(`'${value}'`);
+    if (!row) throw new Error('pair schema is missing');
+    return row.sql;
   }
 
   /**
@@ -367,39 +375,25 @@ export class Store {
    * OUTSIDE the BEGIN. This runs only in the migration, never on `orders`.
    */
   private rebuildPairWithWidenedCheck(): void {
-    // Every column that physically exists right now, so a column the old table
-    // carries can never be silently dropped by the copy.
+    // Preserve the actual installed schema, including columns introduced by
+    // other versions. Only widen this one CHECK; a canonical field list cannot
+    // safely recreate an installation that also carries e.g. account_scope.
     const existing = this.pairColumns().map((c) => c.name);
-    const target = `
-      CREATE TABLE pair_rebuild (
-        id TEXT PRIMARY KEY,
-        mode TEXT NOT NULL CHECK (mode IN ('OPENING','CONVERTING','STOPPING','HALTED','DONE')),
-        a_contract TEXT NOT NULL, a_side TEXT NOT NULL, a_lot TEXT NOT NULL,
-        a_min_size TEXT NOT NULL, a_min_notional TEXT NOT NULL,
-        a_tick TEXT NOT NULL DEFAULT '0.0001', a_reduce_only INTEGER NOT NULL DEFAULT 0,
-        b_contract TEXT, b_side TEXT, b_lot TEXT,
-        b_min_size TEXT, b_min_notional TEXT,
-        b_tick TEXT, b_reduce_only INTEGER NOT NULL DEFAULT 0,
-        target_qty TEXT NOT NULL,
-        limit_price TEXT,
-        price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch','best')),
-        auto_price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (auto_price_policy IN ('touch','best')),
-        deadline_at INTEGER,
-        maker_not_before INTEGER NOT NULL DEFAULT 0,
-        hedge_not_before INTEGER NOT NULL DEFAULT 0,
-        poc_rejects INTEGER NOT NULL DEFAULT 0,
-        hedge_reject_streak INTEGER NOT NULL DEFAULT 0,
-        reprice_count INTEGER NOT NULL DEFAULT 0,
-        last_maker_placement_at INTEGER NOT NULL DEFAULT 0,
-        post_only_rejects INTEGER NOT NULL DEFAULT 0,
-        book_outage_started_at INTEGER NOT NULL DEFAULT 0,
-        max_clip TEXT,
-        clip_band_bp INTEGER,
-        halt_reason TEXT,
-        report_json TEXT,
-        created_at INTEGER NOT NULL
-      )`;
-    const cols = existing.join(', ');
+    const schema = this.pairSchema();
+    if (!PRICE_POLICY_CHECK.test(schema)) throw new Error('cannot recognize pair price_policy CHECK; ledger left intact');
+    const widened = schema.replace(PRICE_POLICY_CHECK, (_match, prefix: string, values: string, suffix: string) =>
+      `${prefix}${values},'best'${suffix}`,
+    );
+    const target = widened.replace(
+      /^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:pair|"pair"|'pair'|`pair`|\[pair\])(?=\s*\()/i,
+      'CREATE TABLE pair_rebuild',
+    );
+    if (target === widened) throw new Error('cannot recognize pair table declaration; ledger left intact');
+    const objects = this.db.prepare(
+      "SELECT sql FROM sqlite_master WHERE tbl_name = 'pair' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type, name",
+    ).all() as unknown as { sql: string }[];
+    // table_info excludes generated columns, which are recomputed by SQLite.
+    const cols = existing.map((name) => `"${name.replaceAll('"', '""')}"`).join(', ');
     this.db.exec('PRAGMA foreign_keys = OFF');
     try {
       this.db.exec('BEGIN IMMEDIATE');
@@ -409,6 +403,7 @@ export class Store {
         this.db.exec(`INSERT INTO pair_rebuild (${cols}) SELECT ${cols} FROM pair`);
         this.db.exec('DROP TABLE pair');
         this.db.exec('ALTER TABLE pair_rebuild RENAME TO pair');
+        for (const object of objects) this.db.exec(object.sql);
         const violations = this.db.prepare('PRAGMA foreign_key_check').all();
         if (violations.length) {
           throw new Error(`pair rebuild left ${violations.length} foreign-key violation(s)`);
