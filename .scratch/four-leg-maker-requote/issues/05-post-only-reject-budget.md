@@ -89,6 +89,6 @@ Post-only 拒绝从既有共享预算中**拆出**，落到一个**新增的持�
 
 独立 post-only 20 次预算、耗尽转换、taker 原预算、范围隔离与诚实报告：engine-post-only-budget.test.ts。验收第 4 项存在笔误：按 spec.md 的明确约定，盘口异常撤单不消耗改价额度；真正的自动改价周期消耗一次，重试不重复消耗。原文保留，此处记录核查口径。
 
-核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck--2026-10-11)。
 
 此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

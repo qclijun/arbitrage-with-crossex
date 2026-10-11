@@ -83,6 +83,6 @@ Status: resolved
 
 初始同侧最优价、精度、2 tick / 15 秒边界、20 次上限、撤单成交竞态、原子计数与重启：engine-best-quote.test.ts、book-quality.test.ts、venue-gate-touch.test.ts。最终修复使用 recordRepriceCancel 原子提交撤单标记与计数，已取代 Answer 中的两个提交方案。
 
-核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck--2026-10-11)。
 
 此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

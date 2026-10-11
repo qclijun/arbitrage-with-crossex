@@ -63,6 +63,6 @@ Status: resolved
 
 30m 默认、可调整窗口、普通票据隔离、期限不变与到期优先：engine-create.test.ts、engine-deadline.test.ts、engine-loop.test.ts、PairTicket.test.tsx、StrategyWizard.test.tsx。
 
-核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck--2026-10-11)。
 
 此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。
