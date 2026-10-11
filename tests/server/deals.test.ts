@@ -124,6 +124,44 @@ describe('POST /api/deals', () => {
     expect(w.store.getPair('deal-000001')!.pricePolicy).toBe('best');
   });
 
+  it("an API-created 'best' deal posts at the same-side best and reprices through the driven loop", async () => {
+    const w = mkApp();
+    app = w.app;
+    mockGateGet('/rule/symbols', { body: simRules() });
+    mockGateGet('/accounts', { fixture: 'account.json' });
+    // A real two-sided book on the maker contract, on a 5-sig-fig-clean grid so
+    // the tick math is exact (leg A ticks at 0.01 but 'best' caps HL at 5 sig figs).
+    w.venue.books.set(A_CONTRACT, { bid: '2500', ask: '2500.2' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/deals',
+      headers: HOST,
+      // create still requires a positive maker price (unchanged validation); for
+      // 'best' it is only the initial limitPrice SEED — the engine ignores it and
+      // quotes off the book.
+      payload: makerPayload({ pricePolicy: 'best', price: '2500' }),
+    });
+    expect(res.statusCode, res.body).toBe(202);
+
+    // Drive the loop: the maker posts post-only at the bare best bid.
+    await tickPair(w.loop, 'deal-000001');
+    const maker = w.venue.liveOrder(A_CONTRACT)!;
+    expect(maker.tif).toBe('poc');
+    expect(maker.price).toBe('2500');
+
+    // The book moves two ticks; after the 15s placement gate the loop reprices.
+    w.venue.books.set(A_CONTRACT, { bid: '2500.2', ask: '2500.4' });
+    w.clock.advance(15_000);
+    for (let i = 0; i < 4; i++) {
+      await tickPair(w.loop, 'deal-000001');
+      w.clock.advance(1000);
+    }
+    expect(w.store.getPair('deal-000001')!.repriceCount).toBe(1);
+    expect(w.venue.liveOrder(A_CONTRACT)!.price).toBe('2500.2');
+    expect(w.venue.liveOrder(A_CONTRACT)!.clientText).not.toBe(maker.clientText);
+  });
+
   it('refuses to start or resume a deal while a rebalance is running, and not while one is halted', async () => {
     const jobs = new JobFile(mkdtempSync(path.join(tmpdir(), 'rebalance-')));
     const store = new Store(':memory:');

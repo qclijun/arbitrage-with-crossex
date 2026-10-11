@@ -4,6 +4,7 @@
  * against VENUE TRUTH (not the engine's own books — that's the point).
  */
 import { strict as assert } from 'node:assert';
+import { bestQuotePrice, topOf } from '../../src/engine/bookQuality';
 import { Store } from '../../src/engine/db';
 import { fx, fxMin, fxStr, type Fx } from '../../src/engine/fx';
 import { tickPair, type LoopDeps } from '../../src/engine/loop';
@@ -46,6 +47,9 @@ interface SimOrder {
 export class FakeVenue implements VenuePort {
   orders = new Map<string, SimOrder>(); // by clientText
   createCalls: string[] = []; // every create() call's clientText, in order
+  /** Every `bestQuote` call's contract, in order — lets a test assert the new
+   * quote source is consulted ONLY by a 'best' deal (scope isolation). */
+  bestQuoteCalls: string[] = [];
   nextCreate: CreateDirective[] = []; // consumed per create; default 'ok'
   /** Fill ratio applied to the next IOC creates (1 = full fill, 0 = whiff). */
   nextIocFill: number[] = [];
@@ -53,6 +57,21 @@ export class FakeVenue implements VenuePort {
   sweepCoverage = true;
   touchA: string | null = '2500';
   refPrices = new Map<string, string>([[A_CONTRACT, '2500'], [B_CONTRACT, '2500']]);
+  /**
+   * A REAL two-sided book per contract, as `[bid, ask]` decimal strings. Absent
+   * = no book at all (a total book failure). Either side may be `null` to model
+   * a one-sided book; ask ≤ bid models a crossed/equal book. `bestQuote` reads
+   * THIS (through the shared availability predicate), so the fake can now express
+   * every shape the spec distinguishes. `touchA`/`refPrices` are LEFT ALONE so
+   * existing tests keep their exact meaning.
+   */
+  books = new Map<string, { bid: string | null; ask: string | null }>([
+    [A_CONTRACT, { bid: '2499.99', ask: '2500.01' }],
+    [B_CONTRACT, { bid: '2499.99', ask: '2500.01' }],
+  ]);
+  /** Kill BOOK reads only (touch/bestQuote/refPrice) while ORDER reads still
+   * succeed. Distinct from `readsFail`, which is the whole-venue outage. */
+  bookReadsFail = false;
   private nextId = 1;
 
   private mkOrder(req: {
@@ -176,6 +195,14 @@ export class FakeVenue implements VenuePort {
     return this.readsFail ? null : this.touchA;
   }
 
+  async bestQuote(contract: string, side: Side, tick: string): Promise<string | null> {
+    this.bestQuoteCalls.push(contract);
+    if (this.readsFail || this.bookReadsFail) return null;
+    const b = this.books.get(contract);
+    if (!b) return null;
+    return bestQuotePrice(topOf(b.bid, b.ask), side, contract, tick);
+  }
+
   async refPrice(contract: string): Promise<string | null> {
     return this.readsFail ? null : (this.refPrices.get(contract) ?? null);
   }
@@ -256,11 +283,41 @@ export function mkWorld(opts?: {
   maxClip?: string;
   clipBandBp?: number;
   crashAfterCommit?: () => boolean;
+  /** A real SQLite FILE path — for restart tests. Defaults to ':memory:'. */
+  storePath?: string;
+  /** Reopen an EXISTING pair (skip createPair) — a process restart reading the
+   * same on-disk deal. */
+  reopen?: boolean;
+  pairId?: string;
 }): World {
-  const store = new Store(':memory:');
+  const store = new Store(opts?.storePath ?? ':memory:');
   const venue = new FakeVenue();
   const clock = new VirtualClock();
-  const pairId = 'p1';
+  const pairId = opts?.pairId ?? 'p1';
+  if (opts?.reopen) {
+    const existing = store.getPair(pairId);
+    if (!existing) throw new Error(`sim: reopen requested but pair ${pairId} does not exist`);
+    const deps: LoopDeps = {
+      store,
+      venue,
+      clock,
+      crashAfterCommit: opts?.crashAfterCommit,
+    };
+    return {
+      store,
+      venue,
+      clock,
+      deps,
+      pairId,
+      async step(n = 1): Promise<void> {
+        for (let i = 0; i < n; i++) {
+          await tickPair(deps, pairId);
+          clock.advance(TUNING.TICK_MS);
+        }
+      },
+    };
+  }
+
   const pair: PairRow = {
     id: pairId,
     mode: opts?.mode ?? 'OPENING',

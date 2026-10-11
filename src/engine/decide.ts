@@ -14,6 +14,7 @@ import {
   type PairRow,
   type Projection,
   type Report,
+  type Side,
 } from './types';
 
 /** A close reason counts as a post-only rejection (requote), not a user STOP. */
@@ -95,13 +96,38 @@ export function sizeFor(raw: Fx, leg: LegSpec, refPrice: string | null): Fx | nu
 
 export interface DecideCtx {
   /** Fresh maker peg price on the maker contract — one bid–ask gap behind the
-   * same-side touch (null = book unavailable). */
+   * same-side touch (null = book unavailable). The OLD `'touch'` policy. */
   touchA: string | null;
+  /** Fresh BARE same-side best price on the maker contract for a `'best'` quote
+   * (best bid for BUY, best ask for SELL); null = book unavailable OR degenerate
+   * (one-sided, crossed, non-positive). There is deliberately NO fallback to a
+   * stored price: a `'best'` deal with no fresh, valid best places NOTHING. */
+  bestA: string | null;
   /** Reference price on the hedge contract for min-notional sizing (null = unavailable). */
   refB: string | null;
   /** Reference price on the maker contract for min-notional sizing of convert clips. */
   refA: string | null;
   maxClip: string;
+}
+
+/**
+ * How many whole TICKS a resting quote has fallen BEHIND the current same-side
+ * best — the `'best'` lag metric. BUY lags when its price is below the best bid,
+ * SELL when above the best ask; a quote AT the best or more aggressive is 0.
+ * The difference is floored to whole ticks so "at least two ticks" is exact.
+ *
+ * BOTH inputs MUST already be FORMATTED prices in the same tick grid. Comparing
+ * a raw book price against a formatted resting price is the trap this metric
+ * exists to avoid: Hyperliquid's five-significant-figure truncation can give up
+ * several ticks at large magnitudes, so an unformatted best would leave a
+ * correctly-quoted maker permanently "behind" — an infinite re-place loop.
+ */
+export function lagTicks(resting: string, best: string, tick: string, side: Side): number {
+  const step = fx(tick);
+  if (step <= 0n) return 0;
+  const diff = side === 'BUY' ? fx(best) - fx(resting) : fx(resting) - fx(best);
+  if (diff <= 0n) return 0; // at the best, or more aggressive — never chase
+  return Number(diff / step);
 }
 
 /** Marketable-limit price for a banded clip: ref·(1 ± bandBp/10000),
@@ -361,10 +387,53 @@ export function decide(pair: PairRow, p: Projection, now: number, ctx: DecideCtx
         if (pair.limitPrice !== null && m.price !== pair.limitPrice) {
           return { type: 'cancel', order: m };
         }
+        // 'best' auto-reprice: a resting quote that has fallen at least
+        // REPRICE_LAG_TICKS behind the CURRENT same-side best is canceled and
+        // replaced, throttled by (a) at least REPRICE_MIN_INTERVAL_MS since the
+        // last maker PLACEMENT and (b) remaining quota. Reached only AFTER the
+        // hedge-first gates above, so a quote held back for the hedge is never
+        // mistaken for a chase. Gated on a FRESH, VALID best: with no quotable
+        // book there is nothing to chase, and a quote at/more aggressive than the
+        // best (lag 0) is never canceled merely to follow the book. The cancel is
+        // flagged `reprice` so the loop consumes exactly one quota unit at the
+        // cancel-initiation boundary.
+        if (pair.pricePolicy === 'best') {
+          if (m.cancelRequested) {
+            // Mid-cycle: the cancel was already initiated (its quota unit
+            // consumed in performCancel) but the order is still live — an unknown
+            // cancel outcome, or a crash between the quota commit and the wire
+            // call. Re-send the cancel idempotently WITHOUT a second unit; a
+            // fresh cycle begins only once this order goes terminal and the
+            // remainder is re-placed.
+            return { type: 'cancel', order: m };
+          }
+          if (m.price !== null && ctx.bestA !== null) {
+            const lag = lagTicks(m.price, ctx.bestA, pair.a.tick, pair.a.side);
+            if (
+              lag >= TUNING.REPRICE_LAG_TICKS &&
+              now - pair.lastMakerPlacementAt >= TUNING.REPRICE_MIN_INTERVAL_MS &&
+              pair.repriceCount < TUNING.MAX_REPRICE_CYCLES
+            ) {
+              return { type: 'cancel', order: m, reprice: true };
+            }
+          }
+        }
         return { type: 'idle', reason: 'maker resting' };
       }
       // No live maker (fresh pair, POC reject, insta-cancel, or post-repeg-cancel).
-      const price = pair.pricePolicy === 'touch' ? (ctx.touchA ?? pair.limitPrice) : pair.limitPrice;
+      // 'best' takes the fresh bare same-side best and NOTHING else: unlike
+      // 'touch' there is no `?? pair.limitPrice` fallback, because a 'best' deal
+      // that has placed once always has a non-empty retained price, so a fallback
+      // would make "no quotable book → place nothing" unreachable and re-seed the
+      // book with a stale intent price. A 'best' deal must never be auto-quoted
+      // from a retained 'fixed' price either (spec: auto-reprice never overrides
+      // a user's explicit fixed price — that is handled by pricePolicy).
+      const price =
+        pair.pricePolicy === 'best'
+          ? ctx.bestA
+          : pair.pricePolicy === 'touch'
+            ? (ctx.touchA ?? pair.limitPrice)
+            : pair.limitPrice;
       // Maker is a LIMIT order: its min-notional is checked at the placement price.
       const residual = price !== null ? sizeFor(fx(p.residualA), pair.a, price) : null;
       if (residual !== null && residual <= FX_ZERO) {

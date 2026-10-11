@@ -180,8 +180,17 @@ export interface VenuePort {
   sweepForOrder(contract: string, clientText: string, fromMs: number): Promise<SweepResult>;
   /** Best same-side touch price for a resting maker, formatted for the venue
    * (tick-snapped + Hyperliquid 5-sig-fig cap — `tick` is the leg's tick size);
-   * null when the book is unavailable. */
+   * null when the book is unavailable. NOTE: this is the OLD `'touch'` semantics
+   * — the price rests ONE bid–ask gap BEHIND the same-side touch. It is NOT the
+   * `'best'` price; see `bestQuote`. */
   touch(contract: string, side: Side, tick: string): Promise<string | null>;
+  /** Best same-side price for a `'best'` quote — the BARE best bid (BUY) / best
+   * ask (SELL), with no spread offset, formatted through `formatRestPrice` so
+   * the directional tick snap and the Hyperliquid 5-sig-fig cap both apply in
+   * the safe direction (BUY down, SELL up). null when the book is unavailable
+   * OR degenerate (one-sided, crossed, non-positive levels) — the caller then
+   * places nothing rather than quoting off a broken book. */
+  bestQuote(contract: string, side: Side, tick: string): Promise<string | null>;
   /** Reference price for min-notional checks; null when unavailable. */
   refPrice(contract: string): Promise<string | null>;
 }
@@ -230,7 +239,7 @@ export type Action =
   | { type: 'idle'; reason?: string }
   | { type: 'setMode'; mode: PairMode; reason: string; haltReason?: string }
   | { type: 'place'; leg: Leg; kind: 'maker' | 'taker'; tif: 'poc' | 'ioc'; qty: string; price?: string }
-  | { type: 'cancel'; order: OrderRow }
+  | { type: 'cancel'; order: OrderRow; reprice?: boolean }
   | { type: 'finish'; report: Report };
 
 export interface Tuning {
@@ -252,6 +261,17 @@ export interface Tuning {
    * cannot read is filling untracked, so this is deliberately small — but not 1,
    * which would fire on any transient blip. */
   READ_FAIL_ALERT: number;
+  /** How far a resting `'best'` quote must fall behind the current same-side
+   * best, in that contract's ticks, before it is automatically repriced. */
+  REPRICE_LAG_TICKS: number;
+  /** Minimum wall-clock ms between a maker PLACEMENT and an automatic reprice
+   * (measured from `lastMakerPlacementAt`, NOT from the last reprice — see the
+   * spec: "time since last reprice" produces jitter after a brief stall). */
+  REPRICE_MIN_INTERVAL_MS: number;
+  /** Maximum automatic reprice cycles for one deal. Monotone: reaching it keeps
+   * the last quote live (no taker conversion) until a fill, a manual command,
+   * or the absolute deadline. */
+  MAX_REPRICE_CYCLES: number;
 }
 
 export const TUNING: Tuning = {
@@ -264,4 +284,7 @@ export const TUNING: Tuning = {
   HEDGE_REJECT_HALT: 3,
   MAX_CLIP: '1000000000', // effectively uncapped by default; pairs may be created with less
   READ_FAIL_ALERT: 5,
+  REPRICE_LAG_TICKS: 2,
+  REPRICE_MIN_INTERVAL_MS: 15_000,
+  MAX_REPRICE_CYCLES: 20,
 };

@@ -10,6 +10,7 @@ import { CrossexOrderRequest } from 'gate-api';
 import type { Clients } from '../core/clients';
 import { fetchVenueBook } from '../core/estimate/books';
 import { formatRestPrice, parseSymbol } from '../core/numbers';
+import { bestQuotePrice, topOf } from './bookQuality';
 import type {
   CancelOutcome,
   CreateOutcome,
@@ -227,6 +228,25 @@ export function gateVenue(getClients: () => Clients): VenuePort {
         // would-cross — and with pricePolicy 'fixed' the same price is re-placed
         // every retry until the POC budget kills the deal.
         return formatRestPrice(px, side, contract, tick);
+      } catch {
+        return null;
+      }
+      });
+    },
+
+    async bestQuote(contract: string, side: Side, tick: string): Promise<string | null> {
+      // Deliberately a SEPARATE cache key from `touch`: same raw levels, but the
+      // 'best' price is the bare best (no one-gap offset), and the two policies
+      // may coexist on the same contract across deals.
+      return cachedPrice(`best:${contract}:${side}:${tick}`, async () => {
+      try {
+        const { exchange, base, quote } = parseSymbol(contract);
+        const book = await fetchVenueBook(exchange, base, quote);
+        // The shared availability predicate: both sides present, both positive
+        // finite, and ask > bid. A degenerate book (one-sided, crossed) is NOT
+        // quotable — return null so the loop places/replaces nothing rather than
+        // reading a broken book as a price.
+        return bestQuotePrice(topOf(book?.bids?.[0]?.[0], book?.asks?.[0]?.[0]), side, contract, tick);
       } catch {
         return null;
       }
