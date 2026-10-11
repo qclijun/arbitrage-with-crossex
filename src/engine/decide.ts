@@ -103,6 +103,13 @@ export interface DecideCtx {
    * (one-sided, crossed, non-positive). There is deliberately NO fallback to a
    * stored price: a `'best'` deal with no fresh, valid best places NOTHING. */
   bestA: string | null;
+  /** Wall-clock ms at which a `'best'` deal's CURTAILED quote lookup for THIS
+   * tick was issued (the loop samples it BEFORE the slow book fetch). Also
+   * passed as `now`, so `bookOutageObservedAt - now` is exactly the local cost
+   * of the curtailed lookup. Combined with the persisted
+   * `pair.bookOutageStartedAt` it gives decide() the outage DURATION without a
+   * clock or IO of its own. null when this tick has no curtailed lookup. */
+  bookOutageObservedAt: number | null;
   /** Reference price on the hedge contract for min-notional sizing (null = unavailable). */
   refB: string | null;
   /** Reference price on the maker contract for min-notional sizing of convert clips. */
@@ -386,6 +393,42 @@ export function decide(pair: PairRow, p: Projection, now: number, ctx: DecideCtx
         // Re-peg is an intent edit: live maker price ≠ intent price → converge.
         if (pair.limitPrice !== null && m.price !== pair.limitPrice) {
           return { type: 'cancel', order: m };
+        }
+        // ---- book-outage pause (ticket 04) --------------------------------
+        // A 'best' deal whose book is CURTAILED neither places nor reprices.
+        // How long the outage has lasted — and nothing else — decides the rest:
+        //   - under BOOK_OUTAGE_CANCEL_MS: PRESERVE the resting maker. It can
+        //     still fill, and the loop keeps observing it and hedging confirmed
+        //     fills; a market-data blip alone must not discard its queue slot.
+        //   - at/over the threshold: REQUEST its cancellation — but only where
+        //     that is a safe, executable action, which is exactly what a
+        //     non-null `ctx.bookOutageObservedAt` certifies. The loop sets it
+        //     only when this tick issued a curtailed book lookup after its
+        //     ORDER-status reads succeeded; if those reads failed, the WHOLE
+        //     venue is unreachable, the cancel's own outcome would be unknown,
+        //     and the freeze rules above own the tick — so nothing is emitted,
+        //     guessed, or resent.
+        // Duration grading is deliberately blind to the reprice cycle: this
+        // branch sits ahead of the reprice block, so an outage beginning inside
+        // a reprice cycle behaves identically to one beginning between cycles.
+        const outageAt = ctx.bookOutageObservedAt;
+        if (pair.pricePolicy === 'best' && ctx.bestA === null && outageAt !== null) {
+          // A cancel ALREADY initiated (an in-flight reprice cycle whose outcome
+          // is unknown, or a crash between the commit and the wire call) is
+          // confirmed before anything else: the ticket's "outage after a cancel
+          // was requested" case — confirm the cancel, honour the hedges, and only
+          // then look for a valid quote. The retry is idempotent and consumes no
+          // second quota unit (performCancel keys that off `cancelRequested`).
+          if (m.cancelRequested) return { type: 'cancel', order: m };
+          const startedAt = pair.bookOutageStartedAt > 0 ? pair.bookOutageStartedAt : outageAt;
+          const outageMs = outageAt - startedAt;
+          if (outageMs >= TUNING.BOOK_OUTAGE_CANCEL_MS) {
+            return { type: 'cancel', order: m };
+          }
+          return {
+            type: 'idle',
+            reason: `book unavailable — quoting paused (${Math.floor(outageMs / 1000)}s)`,
+          };
         }
         // 'best' auto-reprice: a resting quote that has fallen at least
         // REPRICE_LAG_TICKS behind the CURRENT same-side best is canceled and

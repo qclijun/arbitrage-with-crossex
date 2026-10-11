@@ -823,6 +823,7 @@ describe('cutover-review regressions', () => {
         repriceCount: 0,
         lastMakerPlacementAt: 0,
         postOnlyRejects: 0,
+        bookOutageStartedAt: 0,
                 maxClip: null,
         clipBandBp: null,
         haltReason: null,
@@ -868,6 +869,7 @@ describe('cutover-review regressions', () => {
       repriceCount: 0,
       lastMakerPlacementAt: 0,
       postOnlyRejects: 0,
+      bookOutageStartedAt: 0,
             maxClip: null, clipBandBp: null, haltReason: null, reportJson: null, createdAt: 0,
     });
     const filled = (leg: 'A' | 'B', side: 'BUY' | 'SELL', cum: string, avg: string) => {
@@ -900,6 +902,7 @@ describe('cutover-review regressions', () => {
       repriceCount: 0,
       lastMakerPlacementAt: 0,
       postOnlyRejects: 0,
+      bookOutageStartedAt: 0,
             maxClip: null, clipBandBp: null, haltReason: null,
     };
     const report = JSON.stringify({ aFilled: '1', bFilled: '1', unhedged: '0', reason: 'target reached', aAvgFill: '100.5', bAvgFill: '100.6' });

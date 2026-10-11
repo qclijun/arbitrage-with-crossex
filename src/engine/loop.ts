@@ -611,14 +611,48 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
     pair.mode === 'CONVERTING' &&
     fx(proj.residualA) > 0n &&
     (fx(pair.a.minNotional) > 0n || pair.clipBandBp !== null);
+
+  // ---- book-outage pause (ticket 04) -------------------------------------
+  // Sample the observable BEFORE the (possibly slow) book fetch: a book call
+  // that HANGS must not understate the outage's age. `bookOutageStartedAt` is a
+  // persisted fact, so the 30 s grading survives a restart and can never be
+  // reset by a tick that merely succeeds. It is cleared the instant a FRESH
+  // valid book is observed, which is also exactly when a stale marker (one
+  // older than the last successful placement) is discarded: recovering and
+  // later failing again starts a NEW window, and the pause always grades from
+  // the CURRENT outage.
+  let outageObservedAt = needBest ? deps.clock.now() : null;
+  // "The book endpoint is down" and "the whole venue is unreachable" are
+  // DIFFERENT states, and only the first makes a cancel a safe action. A failed
+  // ORDER read on any order means we cannot even confirm what the venue holds —
+  // the cancel's own outcome would be unknown — so the observable is withdrawn
+  // and decide() falls through to the existing freeze/quarantine rules instead
+  // of emitting a cancel. (An unconfirmed cancel is never guessed or resent.)
+  if (orders.some((o) => o.readFailStreak > 0)) outageObservedAt = null;
+  const carriedStart =
+    pair.bookOutageStartedAt > 0 && pair.bookOutageStartedAt >= pair.lastMakerPlacementAt
+      ? pair.bookOutageStartedAt
+      : 0;
+  const outageStart = !needBest ? 0 : carriedStart > 0 ? carriedStart : (outageObservedAt ?? deps.clock.now());
+  if (outageStart !== pair.bookOutageStartedAt) {
+    deps.store.updatePair(pairId, { bookOutageStartedAt: outageStart });
+  }
   const ctx: DecideCtx = {
     touchA: needTouch ? await deps.venue.touch(pair.a.contract, pair.a.side, pair.a.tick) : null,
     bestA: needBest ? await deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick) : null,
+    bookOutageObservedAt: outageObservedAt,
     // '0' (unused) when no hedge is owed; a real fetch only when one is.
     refB: needRefB ? await deps.venue.refPrice(pair.b!.contract) : '0',
     refA: needRefA ? await deps.venue.refPrice(pair.a.contract) : '0',
     maxClip: pair.maxClip ?? tuning(deps).MAX_CLIP,
   };
+  // The book answered with a valid two-sided top: the outage, if any, is OVER.
+  // Every consumer of `ctx.bestA` treats a non-null value as a fresh valid book
+  // (decide only ever reprices off one), so this is the correct recovery edge.
+  const bookRecovered = needBest && ctx.bestA !== null;
+  if (bookRecovered && outageStart !== 0) {
+    deps.store.updatePair(pairId, { bookOutageStartedAt: 0 });
+  }
   // A hedge that cannot be SIZED is a hedge wall like any other. refPrice()
   // returns null on any failure — unsupported venue, a wrong native symbol, a
   // venue outage, a book slower than the 2.5s timeout — and with a positive
@@ -670,7 +704,11 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
   ) {
     return { type: 'idle', reason: 'intent changed mid-tick — deferring to a fresh tick' };
   }
-  const action = decide(pair, proj, deps.clock.now(), ctx);
+  // Decide against the outage marker THIS tick established, not the pre-update
+  // snapshot: `outageStart` is the committed start (or 0 on the recovery tick),
+  // and decide() must grade the pause from exactly that.
+  const pairForDecide: PairRow = { ...pair, bookOutageStartedAt: bookRecovered ? 0 : outageStart };
+  const action = decide(pairForDecide, proj, deps.clock.now(), ctx);
 
   // ---- ACT (≤ 1 wire mutation) ----
   await perform(deps, pair, action);

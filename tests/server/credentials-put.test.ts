@@ -126,6 +126,7 @@ describe('PUT /api/credentials', () => {
       repriceCount: 0,
       lastMakerPlacementAt: 0,
       postOnlyRejects: 0,
+      bookOutageStartedAt: 0,
             maxClip: null,
       clipBandBp: null,
       haltReason: null,

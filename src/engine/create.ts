@@ -309,6 +309,7 @@ export async function resolveDeal(
     repriceCount: 0,
     lastMakerPlacementAt: 0,
     postOnlyRejects: 0,
+    bookOutageStartedAt: 0,
     maxClip,
     clipBandBp,
     haltReason: null,

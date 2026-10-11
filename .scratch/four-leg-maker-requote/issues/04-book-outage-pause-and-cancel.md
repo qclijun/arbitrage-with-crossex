@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 
 # 04：盘口不可用时的报价暂停与三十秒撤销
 
@@ -7,7 +7,7 @@ Status: ready-for-agent
 
 **Blocked by：** 02（挂同侧最优价并按落后 tick 有限自动改价）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -27,3 +27,41 @@ Status: ready-for-agent
 - [ ] 数据恢复且未到期时继续原 deal 并重新计算报价；已到期时进入转换，不重新开启 maker 窗口；撤销后的暂停期间持续无有效行情直至到期时直接进入转换，不得在价格未知的情况下补齐。
 - [ ] 该暂停不覆盖订单状态不确定、对冲失败、手动停止／转换、对冲墙等现有必须撤单的安全条件。
 - [ ] 不将缺失值当成零、不把退化盘口当作可用、也不用旧价格进行新的自动报价；成功请求或本地解析时间不得被描述为「源盘口一定新鲜」。
+
+## Answer
+
+**已落地。** 提交 `536078d`（基于集成 tip `5281ed0`；该 tip 未移动，无需合并）。
+
+### 改了什么
+
+- **新持久化事实 `pair.book_outage_started_at`**（`src/engine/types.ts` 的 `PairRow`、`db.ts` 的 SCHEMA/`PairDbRow`/`toPair`/`PairPatch`/`PAIR_COLS`/`createPair` INSERT/迁移探测/重建表，`create.ts` 的创建路径）。30 秒分级由「`(now, 持久化起点)`」算出，因此**跨进程重启存活**，且不会被一次恰好成功的 tick 重置。缺失列经 `?? 0` 兜底（迁移测试已断言，避免 `undefined` 参与比较而静默失效）。
+- **`decide.ts` 保持纯粹**：新增纯入参 `ctx.bookOutageObservedAt: number | null`。**没有时钟、没有 IO**。暂停分支置于 `OPENING` 的 resting-maker 块内、`deadline`(240 行)与 maker-cancel 块**之下**，因此到期、显式 stop/halt/convert、pending/quarantine、hedge wall 全部保有原优先级。时长分级**只看时长**，不看故障落在改价周期的位置。
+- **`loop.ts` 接线**（`tickPair`）：在**慢速盘口抓取之前**采样观测点（`outageObservedAt`），并在**任一订单读失败时撤回该观测**——「盘口端点故障」与「整个交易所不可用」由此成为两件事；仅在 `pricePolicy==='best'` 时武装/维护该事实，拿到有效双边盘口的那一 tick 立即清零；`decide` 用本 tick 已提交的起点（崩溃窗口内）判定。
+- **`TUNING.BOOK_OUTAGE_CANCEL_MS = 30_000`**（固定默认，非用户可调）。
+
+### 验证（合并后重跑）
+
+- `yarn typecheck`：通过。
+- `yarn test`：**120 文件 / 2777 通过 / 8 跳过**（基线 119/2752/8；新增 1 文件 `tests/unit/engine-book-outage.test.ts` 21 例）。
+- `yarn --cwd web typecheck`：通过；`yarn --cwd web test`：**100 文件 / 1460 通过**。（未改 web；仅为门禁而跑。）
+- 未运行 `test:live`。
+
+### 覆盖到的验收点
+
+单边与交叉盘口均判为不可报价、且暂停**消耗同一共享判定**（`isQuotableBook`，未重写第二份）；不可报价时既不新增 maker 也不改价，并给出可解释暂停原因（`book unavailable — quoting paused (Ns)`）；显式反证**不回退到留存挂单价**重挂（`limitPrice` 非空仍不挂）；对冲参考价取不到时**不以任何本地留存价对冲**，走既有 freeze/backoff/halt 规则；故障不超过 30 秒**保留原 maker**且循环继续观察并**对冲已确认成交**；超过 30 秒且**订单状态可读**时请求撤销；**订单状态也失败时不发撤单、不猜测、不重发**，按未知结果/冻结规则处理（read fail streak 可见、无 cancelRequested）；「落在改价周期内」与「落在两次改价之间」两种时序**行为一致**（同一断言集：暂停期间零新增报价、零额度消耗、零模式变更）；**已发起撤单后**发生盘口异常：不复活原单、幂等确认撤单、等有效报价再重挂；恢复且未到期**继续原 deal 并重算报价**；到期在暂停中仍进入转换、不重开 maker 窗口；暂停期间持续无有效行情至到期**直接转换**；暂停不覆盖 stop/convert/pending freeze/HALTED；文件库**重启保留** `bookOutageStartedAt`；`'fixed'`/`'touch'` 从不武装暂停（范围隔离）；暂停文案**不断言源盘口新鲜**（只说我方查询不可用）。
+
+### 判断取舍（工单未完全钉死，列出请评审）
+
+1. **观测点的语义**：`ctx.bookOutageObservedAt` 是「本 tick 被裁剪掉的盘口查询的发起时刻」，由 loop 在慢抓取前采样、并在任一订单读失败时置 null。`decide` 因此能不看时钟就得到「已不可用多久」。`outageMs = observedAt − startedAt` 是本 tick 起点的**下界**（对慢盘口端点略保守 1–2 秒），阈值只要求「不小于 30 秒」，故安全。
+2. **暂停的取消不消费改价额度**（`Action.reprice` 未置位），`performCancel` 只在 `reprice===true` 时计数——符合规格「盘口异常撤单不消耗额度」。
+3. **`bookReadsFail` 与 `readsFail` 是两个独立开关**（02 已建），本工单两个方向都断言：仅盘口失败 → 30 秒后撤单；整所失败 → 不发撤单。
+4. **原 maker 被暂停撤掉后，若在盘口仍不可用期间重新放下一次**：在本实现里不会——`createCalls` 保持 1。若未来想让「已撤单 + 盘口恢复」更快重挂，属于现有 reprice 路径，未改。
+5. **暂停原因字符串无稳定枚举**：本工单只要求「可解释」；工单 07 若要展示，可将其规范化（当前格式为英文短语）。
+
+### 未满足 / 前提修正
+
+- **工单 03 的「30 分钟默认」目前只由 `create.ts` 的 `TIMEOUT_DEFAULT_BEST_S` 提供**，而 03 已并入 tip（`engine-create.test.ts`／`engine-deadline.test.ts` 已断言）；本工单未触碰。
+- **未实现工单 07 的进度展示**（暂停原因/时长/额度未进入 deal view API）；本工单只保证引擎侧可解释。
+- **工单 05 的 post-only 独立预算、06 的手动优先级语义未改动**；仅断言现有安全状态仍优先于暂停。
+- **「已发起撤单后盘口异常」的一处引擎语义**：`performCancel` 的 quarantine 强解只对 STOPPING/HALTED 生效（既有行为，未改），OPENING 下的未知撤单按既有 override 保持 OPEN，故暂停不会把 OPENING 的未知撤单误判为已终结——已在测试中按此断言。
+- 规格「源盘口时间戳不校验」：本实现**不新增**任何源时间戳协议；暂停文案只说本地查询不可用，未声称源盘口新鲜。

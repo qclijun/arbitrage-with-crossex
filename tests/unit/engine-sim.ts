@@ -334,6 +334,7 @@ export function mkWorld(opts?: {
     repriceCount: 0,
     lastMakerPlacementAt: 0,
     postOnlyRejects: 0,
+    bookOutageStartedAt: 0,
     maxClip: opts?.maxClip ?? null,
     clipBandBp: opts?.clipBandBp ?? null,
     haltReason: null,
