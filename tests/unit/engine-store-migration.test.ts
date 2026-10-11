@@ -155,6 +155,7 @@ describe('Store migration of a pre-existing file', () => {
       // A pre-'best' deal's auto-follow family is 'touch' — the historical
       // default, and correct for every legacy row (none was a four-leg deal).
       expect(old.autoPricePolicy).toBe('touch');
+      expect(old.bookOutageStartedAt).toBe(0);
 
       // The historical order is byte-for-byte what was written.
       const orders = store.listOrders('old-deal');
@@ -175,6 +176,14 @@ describe('Store migration of a pre-existing file', () => {
       expect(after.repriceCount).toBe(3);
       expect(after.lastMakerPlacementAt).toBe(999);
       expect(after.autoPricePolicy).toBe('best'); // survives the rebuild + reopen
+
+      // Ticket 04's outage marker: absent from the legacy row, so it reads back
+      // as its documented default 0 ("no outage in progress"), NOT `undefined`.
+      // An `undefined` start would make `observedAt - startedAt` NaN and the
+      // thirty-second grading would silently never fire.
+      expect(after.bookOutageStartedAt).toBe(0);
+      store.updatePair('old-deal', { bookOutageStartedAt: 123_456 });
+      expect(store.getPair('old-deal')!.bookOutageStartedAt).toBe(123_456);
     } finally {
       store.close();
     }
@@ -247,6 +256,7 @@ describe('Store migration of a pre-existing file', () => {
         hedgeRejectStreak: 0,
         repriceCount: 7,
         lastMakerPlacementAt: 555,
+        bookOutageStartedAt: 0,
         maxClip: null,
         clipBandBp: null,
         haltReason: null,
