@@ -34,12 +34,14 @@ CREATE TABLE IF NOT EXISTS pair (
   b_tick TEXT, b_reduce_only INTEGER NOT NULL DEFAULT 0,
   target_qty TEXT NOT NULL,
   limit_price TEXT,
-  price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch')),
+  price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch','best')),
   deadline_at INTEGER,
   maker_not_before INTEGER NOT NULL DEFAULT 0,
   hedge_not_before INTEGER NOT NULL DEFAULT 0,
   poc_rejects INTEGER NOT NULL DEFAULT 0,
   hedge_reject_streak INTEGER NOT NULL DEFAULT 0,
+  reprice_count INTEGER NOT NULL DEFAULT 0,
+  last_maker_placement_at INTEGER NOT NULL DEFAULT 0,
   max_clip TEXT,
   clip_band_bp INTEGER,
   halt_reason TEXT,
@@ -95,6 +97,8 @@ interface PairDbRow {
   hedge_not_before: number;
   poc_rejects: number;
   hedge_reject_streak: number;
+  reprice_count: number;
+  last_maker_placement_at: number;
   max_clip: string | null;
   clip_band_bp: number | null;
   halt_reason: string | null;
@@ -145,6 +149,11 @@ function toPair(r: PairDbRow): PairRow {
     hedgeNotBefore: r.hedge_not_before,
     pocRejects: r.poc_rejects,
     hedgeRejectStreak: r.hedge_reject_streak,
+    // `SELECT *` on a row written before these columns existed yields
+    // `undefined`. The defaults are load-bearing: `undefined + 1` is NaN and
+    // `undefined >= cap` is false, which would silently disable the reprice cap.
+    repriceCount: r.reprice_count ?? 0,
+    lastMakerPlacementAt: r.last_maker_placement_at ?? 0,
     maxClip: r.max_clip,
     clipBandBp: r.clip_band_bp,
     haltReason: r.halt_reason,
@@ -205,6 +214,8 @@ export interface PairPatch {
   hedgeNotBefore?: number;
   pocRejects?: number;
   hedgeRejectStreak?: number;
+  repriceCount?: number;
+  lastMakerPlacementAt?: number;
   haltReason?: string | null;
   reportJson?: string | null;
 }
@@ -231,6 +242,8 @@ const PAIR_COLS: Record<keyof PairPatch, string> = {
   hedgeNotBefore: 'hedge_not_before',
   pocRejects: 'poc_rejects',
   hedgeRejectStreak: 'hedge_reject_streak',
+  repriceCount: 'reprice_count',
+  lastMakerPlacementAt: 'last_maker_placement_at',
   haltReason: 'halt_reason',
   reportJson: 'report_json',
 };
@@ -269,6 +282,7 @@ export class Store {
    * SQLite has no "ADD COLUMN IF NOT EXISTS", so probe table_info and add when
    * missing. Additive-only: existing rows keep their data. */
   private migrate(): void {
+    // --- orders: the original column-probe branch (unchanged) ---------------
     const cols = this.db.prepare(`PRAGMA table_info(orders)`).all() as unknown as { name: string }[];
     if (!cols.some((c) => c.name === 'avg_fill_price')) {
       this.db.exec(`ALTER TABLE orders ADD COLUMN avg_fill_price TEXT NOT NULL DEFAULT '0'`);
@@ -278,6 +292,107 @@ export class Store {
     }
     if (!cols.some((c) => c.name === 'read_fail_streak')) {
       this.db.exec(`ALTER TABLE orders ADD COLUMN read_fail_streak INTEGER NOT NULL DEFAULT 0`);
+    }
+
+    // --- pair: new columns, then the price_policy CHECK --------------------
+    // The SCHEMA's `CREATE TABLE IF NOT EXISTS` is a no-op on an existing file,
+    // so a column added only there never reaches a live install. Probe and add.
+    const pairCols = this.pairColumns();
+    const missing: Array<[string, string]> = [
+      ['reprice_count', `INTEGER NOT NULL DEFAULT 0`],
+      ['last_maker_placement_at', `INTEGER NOT NULL DEFAULT 0`],
+    ];
+    for (const [name, decl] of missing) {
+      if (!pairCols.some((c) => c.name === name)) {
+        this.db.exec(`ALTER TABLE pair ADD COLUMN ${name} ${decl}`);
+      }
+    }
+
+    // `ALTER TABLE ADD COLUMN` can NEVER widen an existing CHECK, so a database
+    // built before `'best'` would open fine and then throw the first time a
+    // deal stored it. The only SQLite path that changes a CHECK is a table
+    // rebuild (create → copy → drop → rename), run once, guarded by a probe so
+    // a fresh install (already widened by SCHEMA) skips it entirely.
+    if (!this.pairCheckAdmits('best')) this.rebuildPairWithWidenedCheck();
+  }
+
+  private pairColumns(): { name: string }[] {
+    return this.db.prepare(`PRAGMA table_info(pair)`).all() as unknown as { name: string }[];
+  }
+
+  /** True when the LIVE `pair` DDL already admits `value` in its price_policy
+   * CHECK. The stored DDL in sqlite_master is the only place a CHECK is
+   * observable — PRAGMA table_info does not report them. */
+  private pairCheckAdmits(value: string): boolean {
+    const row = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pair'`)
+      .get() as unknown as { sql: string } | undefined;
+    return !!row && row.sql.includes(`'${value}'`);
+  }
+
+  /**
+   * Rebuild `pair` with `CHECK (price_policy IN ('fixed','touch','best'))`,
+   * preserving every column and every row.
+   *
+   * `orders.pair_id REFERENCES pair(id)` and PRAGMA foreign_keys is ON, so a
+   * bare `DROP TABLE pair` fails ("FOREIGN KEY constraint failed") — and with
+   * `defer_foreign_keys` it still fails, because DROP is immediate. The
+   * documented SQLite recipe applies: disable FK enforcement, rebuild inside
+   * ONE transaction, verify with `foreign_key_check`, then re-enable.
+   * `PRAGMA foreign_keys` is a no-op inside a transaction, so it is toggled
+   * OUTSIDE the BEGIN. This runs only in the migration, never on `orders`.
+   */
+  private rebuildPairWithWidenedCheck(): void {
+    // Every column that physically exists right now, so a column the old table
+    // carries can never be silently dropped by the copy.
+    const existing = this.pairColumns().map((c) => c.name);
+    const target = `
+      CREATE TABLE pair_rebuild (
+        id TEXT PRIMARY KEY,
+        mode TEXT NOT NULL CHECK (mode IN ('OPENING','CONVERTING','STOPPING','HALTED','DONE')),
+        a_contract TEXT NOT NULL, a_side TEXT NOT NULL, a_lot TEXT NOT NULL,
+        a_min_size TEXT NOT NULL, a_min_notional TEXT NOT NULL,
+        a_tick TEXT NOT NULL DEFAULT '0.0001', a_reduce_only INTEGER NOT NULL DEFAULT 0,
+        b_contract TEXT, b_side TEXT, b_lot TEXT,
+        b_min_size TEXT, b_min_notional TEXT,
+        b_tick TEXT, b_reduce_only INTEGER NOT NULL DEFAULT 0,
+        target_qty TEXT NOT NULL,
+        limit_price TEXT,
+        price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch','best')),
+        deadline_at INTEGER,
+        maker_not_before INTEGER NOT NULL DEFAULT 0,
+        hedge_not_before INTEGER NOT NULL DEFAULT 0,
+        poc_rejects INTEGER NOT NULL DEFAULT 0,
+        hedge_reject_streak INTEGER NOT NULL DEFAULT 0,
+        reprice_count INTEGER NOT NULL DEFAULT 0,
+        last_maker_placement_at INTEGER NOT NULL DEFAULT 0,
+        max_clip TEXT,
+        clip_band_bp INTEGER,
+        halt_reason TEXT,
+        report_json TEXT,
+        created_at INTEGER NOT NULL
+      )`;
+    const cols = existing.join(', ');
+    this.db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec('DROP TABLE IF EXISTS pair_rebuild'); // a torn prior attempt cannot block this
+        this.db.exec(target);
+        this.db.exec(`INSERT INTO pair_rebuild (${cols}) SELECT ${cols} FROM pair`);
+        this.db.exec('DROP TABLE pair');
+        this.db.exec('ALTER TABLE pair_rebuild RENAME TO pair');
+        const violations = this.db.prepare('PRAGMA foreign_key_check').all();
+        if (violations.length) {
+          throw new Error(`pair rebuild left ${violations.length} foreign-key violation(s)`);
+        }
+        this.db.exec('COMMIT');
+      } catch (err) {
+        this.db.exec('ROLLBACK');
+        throw err;
+      }
+    } finally {
+      this.db.exec('PRAGMA foreign_keys = ON');
     }
   }
 
@@ -293,8 +408,9 @@ export class Store {
            b_contract, b_side, b_lot, b_min_size, b_min_notional, b_tick, b_reduce_only,
            target_qty, limit_price, price_policy, deadline_at,
            maker_not_before, hedge_not_before, poc_rejects, hedge_reject_streak,
+           reprice_count, last_maker_placement_at,
            max_clip, clip_band_bp, halt_reason, report_json, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         p.id, p.mode,
@@ -303,6 +419,7 @@ export class Store {
         p.b?.minSize ?? null, p.b?.minNotional ?? null, p.b?.tick ?? null, p.b?.reduceOnly ? 1 : 0,
         p.targetQty, p.limitPrice, p.pricePolicy, p.deadlineAt,
         p.makerNotBefore, p.hedgeNotBefore, p.pocRejects, p.hedgeRejectStreak,
+        p.repriceCount, p.lastMakerPlacementAt,
         p.maxClip, p.clipBandBp, p.haltReason, p.reportJson, p.createdAt,
       );
   }

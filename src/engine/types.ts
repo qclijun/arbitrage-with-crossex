@@ -46,12 +46,28 @@ export interface PairRow {
   /** Current maker price intent. Placement writes the price it actually used back
    * here, so "maker price ≠ intent" is exactly "a re-peg was requested". */
   limitPrice: string | null;
+  /** How the maker price is derived. Three exclusive modes:
+   *  - 'fixed': rest at exactly `limitPrice`.
+   *  - 'touch': rest ONE bid–ask gap behind the same-side touch.
+   *  - 'best':  rest AT the same-side best price (best bid for BUY, best ask
+   *    for SELL), recomputed at the then-current best on every replacement.
+   *  'best' is also the four-leg scope marker (spec: scope is
+   *  `price_policy === 'best'`); ordinary pairs only ever emit 'fixed'/'touch'. */
   pricePolicy: 'fixed' | 'touch' | 'best';
   deadlineAt: number | null;
   makerNotBefore: number; // anti-flap backoff after a POC/clip reject
   hedgeNotBefore: number; // anti-flap backoff after a hedge reject
   pocRejects: number;
   hedgeRejectStreak: number;
+  /** Automatic reprice cycles CONSUMED by the 'best' quote loop. Monotone —
+   * it is NOT reset when the maker fills (unlike `pocRejects`). Defaults to 0
+   * for a row written before the column existed. */
+  repriceCount: number;
+  /** Wall-clock ms of the last maker PLACEMENT — the 15 s minimum-interval gate.
+   * A DISTINCT fact from `makerNotBefore` (the old reject backoff); using
+   * "time since last reprice" instead would re-price the instant a short stall
+   * ends and produce jitter. 0 means "never placed". */
+  lastMakerPlacementAt: number;
   /** Max A-leg clip size during CONVERTING (null = uncapped). */
   maxClip: string | null;
   /** A-clip marketable-limit band in BASIS POINTS (null = pure MARKET IOC).

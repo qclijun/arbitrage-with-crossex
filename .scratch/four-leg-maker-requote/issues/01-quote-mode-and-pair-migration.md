@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 
 # 01：四腿报价模式与 pair 表迁移前置
 
@@ -24,3 +24,34 @@ Status: ready-for-agent
 - [ ] 旧账本的历史订单、成交、期限与状态在打开后一字不改，不被重新解释。
 - [ ] 原有「价差外」与「固定价」两个取值的含义与行为完全不变。
 - [ ] 测试能力新建而非扩展：仓库现有测试从未构造过旧 schema 的数据库文件，也从未断言过迁移。新增测试需真实落盘一个旧结构的库再打开，不能只用内存对象模拟。
+
+## Answer
+
+实现完成并合并进集成分支 `feat/four-leg-maker-requote`（提交 `8df0606`，工作提交 `f187bbb`）。
+
+**落地内容**
+
+- 报价模式新增取值 `'best'`，语义为「初始挂同侧最优价，每次重挂按当时的同侧最优价重算」，并写入 `pair.price_policy` 的取值约束。取值同时扩到 `src/engine/types.ts` 的 `PairRow`、`src/engine/create.ts` 的 `DealRequest` 与 `resolveDeal` 归一化、`web/src/api/types.ts` 的 `DealPair` 与 `DealRequest`。
+- `resolveDeal` 原本是二元三元表达式，任何非 `'fixed'` 的取值都会被静默降级成 `'touch'`——因此仅改前端不会报错，只会产生一个普通的 `'touch'` deal。已改为三值透传。
+- 迁移新增 `pair` 表列探测分支（`reprice_count`、`last_maker_placement_at`，均 `INTEGER NOT NULL DEFAULT 0`），沿用「只做加法、不改写既有行」。
+- `toPair` 对两列写入 `?? 0` 兜底，并断言其生效；注释记录原因：`undefined + 1` 是 `NaN`、`undefined >= cap` 是 `false`，改价上限会因此静默失效。
+- 新测试 `tests/unit/engine-store-migration.test.ts`：真实落盘一个旧结构（两值 CHECK、无新列）的库文件，关闭后经 `Store` 重开，断言旧行一字不改、新列取默认值、旧 `orders` 行逐字段存活、`'best'` 写入成功、二次重开幂等。
+
+**对工单前提的三处修正（后续工单需要知道）**
+
+1. **加列分支不足以扩 CHECK。** `ALTER TABLE ADD COLUMN` 无法放宽既有 `CHECK`，只补列会让旧库打开正常、却在第一次写 `'best'` 时抛 `CHECK constraint failed`。SQLite 唯一可行路径是表重建（新建 → 拷贝 → 删除 → 改名），且必须以 DDL 探测守卫，使已扩宽的新装库跳过。
+2. **`PRAGMA defer_foreign_keys` 对本重建无效。** 因为 `DROP` 是立即操作，而延迟约束只在 COMMIT 检查，`DROP TABLE pair` 仍会抛 `FOREIGN KEY constraint failed`。可用配方是事务**之外** `foreign_keys = OFF`，重建，`PRAGMA foreign_key_check` 校验，`finally` 里恢复 `ON`（该 pragma 在事务内是空操作）。代码注释已记录，避免被「简化」回去。
+3. **CHECK 守卫必须读 `sqlite_master` 的 DDL 文本**，因为 `PRAGMA table_info` 不报告 CHECK 约束；列本身仍用常规 `table_info` 探测。重建按 `PRAGMA table_info(pair)` 的实际列集拷贝（而非硬编码列名表），避免静默丢列。
+
+**刻意未做**
+
+- `decide.ts` 与 `loop.ts` 未改动：当前代码下 `'best'` 走非 `'touch'` 分支，即不产生任何用户可见的报价行为变化，符合「本工单不改变用户可见报价行为」。
+- `makerNotBefore`／`hedgeNotBefore` 未复用。它们是旧的反抖动拒绝退避，不是 15 秒「距上次挂单」事实；规格明确否定了这种复用。
+- 未把两个新字段加进 web 的 `DealPair` 接口：服务端返回整个 pair 对象，运行时本就到达前端，而工单只要求 web 侧接受 `'best'`，UI 读数属工单 07。
+
+**验证**
+
+- `yarn typecheck` 通过；`yarn --cwd web typecheck` 通过。
+- `yarn test`：115 文件 / 2686 通过、8 跳过（基线 114 / 2680，增量为新增测试）。
+- `yarn --cwd web test`：100 文件 / 1458 通过。
+- 未运行 `test:live`（会下真实订单）。
