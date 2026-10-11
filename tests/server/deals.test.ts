@@ -105,6 +105,25 @@ describe('POST /api/deals', () => {
     expect(view.projection.bFilled).toBe('0.152');
   });
 
+  it("persists the same-side-best quote mode ('best') verbatim instead of downgrading it", async () => {
+    const w = mkApp();
+    app = w.app;
+    mockGateGet('/rule/symbols', { body: simRules() });
+    mockGateGet('/accounts', { fixture: 'account.json' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/deals',
+      headers: HOST,
+      payload: makerPayload({ pricePolicy: 'best' }),
+    });
+    expect(res.statusCode, res.body).toBe(202);
+
+    // 'best' is its own policy: it must survive the create coercion (which today
+    // collapses anything that is not exactly 'fixed' to 'touch') and the CHECK.
+    expect(w.store.getPair('deal-000001')!.pricePolicy).toBe('best');
+  });
+
   it('refuses to start or resume a deal while a rebalance is running, and not while one is halted', async () => {
     const jobs = new JobFile(mkdtempSync(path.join(tmpdir(), 'rebalance-')));
     const store = new Store(':memory:');
@@ -139,7 +158,9 @@ describe('POST /api/deals', () => {
       hedgeNotBefore: 0,
       pocRejects: 0,
       hedgeRejectStreak: 0,
-      maxClip: null,
+      repriceCount: 0,
+      lastMakerPlacementAt: 0,
+            maxClip: null,
       clipBandBp: null,
       haltReason: 'test',
       reportJson: null,

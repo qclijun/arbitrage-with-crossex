@@ -820,7 +820,9 @@ describe('cutover-review regressions', () => {
         hedgeNotBefore: 0,
         pocRejects: 0,
         hedgeRejectStreak: 0,
-        maxClip: null,
+        repriceCount: 0,
+        lastMakerPlacementAt: 0,
+                maxClip: null,
         clipBandBp: null,
         haltReason: null,
         reportJson: null,
@@ -862,7 +864,9 @@ describe('cutover-review regressions', () => {
       b: { contract: B_CONTRACT, side: 'SELL', lot: '0.001', minSize: '0', minNotional: '0', tick: '0.01' },
       targetQty: '0.2', limitPrice: '100', pricePolicy: 'fixed', deadlineAt: null,
       makerNotBefore: 0, hedgeNotBefore: 0, pocRejects: 0, hedgeRejectStreak: 0,
-      maxClip: null, clipBandBp: null, haltReason: null, reportJson: null, createdAt: 0,
+      repriceCount: 0,
+      lastMakerPlacementAt: 0,
+            maxClip: null, clipBandBp: null, haltReason: null, reportJson: null, createdAt: 0,
     });
     const filled = (leg: 'A' | 'B', side: 'BUY' | 'SELL', cum: string, avg: string) => {
       const o = store.insertPendingOrder({ pairId: 'p1', leg, kind: 'maker', side, qty: cum, price: avg, tif: 'poc', now: 0 });
@@ -891,7 +895,9 @@ describe('cutover-review regressions', () => {
       b: { contract: B_CONTRACT, side: 'BUY' as const, lot: '0.001', minSize: '0', minNotional: '0', tick: '0.01' },
       targetQty: '1', limitPrice: null, pricePolicy: 'touch' as const, deadlineAt: null,
       makerNotBefore: 0, hedgeNotBefore: 0, pocRejects: 0, hedgeRejectStreak: 0,
-      maxClip: null, clipBandBp: null, haltReason: null,
+      repriceCount: 0,
+      lastMakerPlacementAt: 0,
+            maxClip: null, clipBandBp: null, haltReason: null,
     };
     const report = JSON.stringify({ aFilled: '1', bFilled: '1', unhedged: '0', reason: 'target reached', aAvgFill: '100.5', bAvgFill: '100.6' });
     // Usable, out of created_at order to pin the ORDER BY.

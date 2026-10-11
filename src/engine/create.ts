@@ -32,7 +32,9 @@ export interface DealRequest {
   execution: 'maker' | 'taker';
   /** Maker limit price (required for maker execution; tick-snapped here). */
   price?: string;
-  pricePolicy?: 'fixed' | 'touch';
+  /** Maker quote mode; unknown/absent ⇒ 'touch' (the historical default).
+   *  'best' is the four-leg same-side-best policy. */
+  pricePolicy?: 'fixed' | 'touch' | 'best';
   /** Maker PAIRS convert to taker after this many seconds (clamped [30, 3600],
    * default 300). Single-leg maker deals rest with NO deadline (a plain resting
    * post-only order — the user cancels or it fills). */
@@ -289,12 +291,15 @@ export async function resolveDeal(
     b,
     targetQty: fxStr(qty),
     limitPrice: price,
-    pricePolicy: req.pricePolicy === 'fixed' ? 'fixed' : 'touch',
+    pricePolicy:
+      req.pricePolicy === 'fixed' ? 'fixed' : req.pricePolicy === 'best' ? 'best' : 'touch',
     deadlineAt,
     makerNotBefore: 0,
     hedgeNotBefore: 0,
     pocRejects: 0,
     hedgeRejectStreak: 0,
+    repriceCount: 0,
+    lastMakerPlacementAt: 0,
     maxClip,
     clipBandBp,
     haltReason: null,
