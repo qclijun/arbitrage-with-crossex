@@ -110,6 +110,9 @@ describe('StrategyWizard → prefills', () => {
       shortVenue: 'GATE',
       notionalUsd: 10_000,
       mode: 'maker',
+      // The wizard's perp step IS the four-leg hedge ticket — it carries the
+      // marker that selects the 30m wait default and the 'best' quote mode.
+      strategy: 'four-leg',
     });
     // The perp ticket is live at step 2; the Boros ticket is absent entirely —
     // those rate legs already exist as a position.

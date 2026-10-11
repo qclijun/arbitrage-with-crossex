@@ -14,12 +14,21 @@ import { FieldLabel } from './SymbolCombobox';
 import { ChevronDown, RotateCw } from 'lucide-react';
 
 export type ExecMode = 'market' | 'maker';
-export const TIMEOUT_CHOICES = [
+export type TimeoutChoice = '60' | '300' | '900' | '1800';
+/** The ordinary perpetual ticket's wait options — unchanged. */
+export const TIMEOUT_CHOICES: { value: TimeoutChoice; label: string }[] = [
   { value: '60', label: '1m' },
   { value: '300', label: '5m' },
   { value: '900', label: '15m' },
-] as const;
-export type TimeoutChoice = (typeof TIMEOUT_CHOICES)[number]['value'];
+];
+/**
+ * The four-leg hedge ticket additionally offers 30m, and defaults to it. Kept a
+ * separate list so an ordinary ticket's choice set stays exactly as it was.
+ */
+export const TIMEOUT_CHOICES_FOUR_LEG: { value: TimeoutChoice; label: string }[] = [
+  ...TIMEOUT_CHOICES,
+  { value: '1800', label: '30m' },
+];
 
 function dedupeByMessage<T extends { message: string }>(list: T[]): T[] {
   return [...new Map(list.map((v) => [v.message, v])).values()];
@@ -397,6 +406,7 @@ export function MakerHedgeControls({
   onTrackTouch,
   timeoutSec,
   onTimeout,
+  timeoutChoices = TIMEOUT_CHOICES,
 }: {
   makerLegPick: 'long' | 'short';
   longSym: string | null;
@@ -412,6 +422,9 @@ export function MakerHedgeControls({
   onTrackTouch: () => void;
   timeoutSec: TimeoutChoice;
   onTimeout: (v: TimeoutChoice) => void;
+  /** The wait options to offer. The four-leg ticket passes the set that also
+   * carries 30m; an ordinary ticket keeps the default three. */
+  timeoutChoices?: { value: TimeoutChoice; label: string }[];
 }) {
   const makerSym = makerLegPick === 'long' ? longSym : shortSym;
   const makerVenue = makerSym ? parseSymbol(makerSym).exchange : makerLegPick === 'long' ? 'LONG' : 'SHORT';
@@ -483,7 +496,7 @@ export function MakerHedgeControls({
           fill
           value={timeoutSec}
           onChange={onTimeout}
-          options={TIMEOUT_CHOICES.map((t) => ({ value: t.value, label: t.label }))}
+          options={timeoutChoices.map((t) => ({ value: t.value, label: t.label }))}
         />
       </div>
     </div>

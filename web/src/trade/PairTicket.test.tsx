@@ -786,3 +786,89 @@ describe('PairTicket — the size unit follows the coin', () => {
     expect(ethBox).toHaveValue('');
   });
 });
+
+// ---------------------------------------------------------------------------
+// The four-leg wait window
+// ---------------------------------------------------------------------------
+
+describe('PairTicket maker wait window', () => {
+  it('a four-leg prefill defaults the wait to 30m and sends it WITH the strategy marker', async () => {
+    /**
+     * The ticket the wizard arms IS the four-leg hedge ticket, and it must show
+     * the same 30 minutes the engine will execute. The marker rides on the
+     * prefill (the only channel the wizard has) and turns into `pricePolicy`
+     * 'best' + `timeoutSec` 1800 on the wire — displayed selection and sent
+     * value agree.
+     */
+    const calls: ActionInput[][] = [];
+    const dealCalls: DealRequest[] = [];
+    server.use(
+      ...baseHandlers(),
+      ...ethSymbolHandlers(),
+      previewHandler({ calls }),
+      http.post('/api/deals', async ({ request }) => {
+        dealCalls.push((await request.json()) as DealRequest);
+        return HttpResponse.json(env({ id: dealCalls[0].id }), { status: 202 });
+      }),
+    );
+    renderWithClient(
+      <PrefillHarness
+        prefills={[
+          {
+            base: 'ETH',
+            longVenue: 'GATE',
+            shortVenue: 'OKX',
+            notionalUsd: 1000,
+            mode: 'maker',
+            strategy: 'four-leg',
+          },
+        ]}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'fire-0' }));
+    await waitFor(() => expect(screen.getByLabelText('Size per leg (USDT)')).toHaveValue('1000'));
+    await waitForFirstPreview();
+
+    const group = screen.getByRole('radiogroup', { name: 'Maker timeout' });
+    expect(within(group).getByRole('radio', { name: '30m' })).toHaveAttribute('aria-checked', 'true');
+
+    const btn = screen.getByRole('button', { name: 'Execute pair' });
+    await waitFor(() => expect(btn).toBeEnabled(), { timeout: 4000 });
+    fireEvent.pointerDown(btn);
+    await waitFor(() => expect(dealCalls).toHaveLength(1), { timeout: 2_000 });
+
+    expect(dealCalls[0]).toMatchObject({
+      execution: 'maker',
+      pricePolicy: 'best',
+      timeoutSec: 1800,
+    });
+  });
+
+  it('an ordinary perpetual ticket keeps 5m and the 1m/5m/15m set — no 30m, no marker', async () => {
+    const calls: ActionInput[][] = [];
+    const dealCalls: DealRequest[] = [];
+    server.use(
+      ...baseHandlers(),
+      ...ethSymbolHandlers(),
+      previewHandler({ calls }),
+      http.post('/api/deals', async ({ request }) => {
+        dealCalls.push((await request.json()) as DealRequest);
+        return HttpResponse.json(env({ id: dealCalls[0].id }), { status: 202 });
+      }),
+    );
+    await setupTwoVenuePair();
+    await waitForFirstPreview();
+    await userEvent.click(screen.getByRole('radio', { name: /Limit \+ hedge/ }));
+
+    const group = screen.getByRole('radiogroup', { name: 'Maker timeout' });
+    expect(within(group).getByRole('radio', { name: '5m' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(group).queryByRole('radio', { name: '30m' })).toBeNull();
+
+    const btn = screen.getByRole('button', { name: 'Execute pair' });
+    await waitFor(() => expect(btn).toBeEnabled(), { timeout: 4000 });
+    fireEvent.pointerDown(btn);
+    await waitFor(() => expect(dealCalls).toHaveLength(1), { timeout: 2_000 });
+
+    expect(dealCalls[0]).toMatchObject({ execution: 'maker', pricePolicy: 'touch', timeoutSec: 300 });
+  });
+});

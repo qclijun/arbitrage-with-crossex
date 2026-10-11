@@ -247,7 +247,7 @@ export function legSpec(contract: string, side: Side, over?: Partial<LegSpec>): 
 export function mkWorld(opts?: {
   target?: string;
   limitPrice?: string;
-  pricePolicy?: 'fixed' | 'touch';
+  pricePolicy?: PairRow['pricePolicy'];
   deadlineInMs?: number | null;
   mode?: PairRow['mode'];
   a?: Partial<LegSpec>;

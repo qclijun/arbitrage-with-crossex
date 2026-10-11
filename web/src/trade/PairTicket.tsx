@@ -25,6 +25,8 @@ import {
   MakerHedgeControls,
   PairEstimate,
   PairVenues,
+  TIMEOUT_CHOICES,
+  TIMEOUT_CHOICES_FOUR_LEG,
   type ExecMode,
   type TimeoutChoice,
 } from './PairTicketBits';
@@ -79,6 +81,11 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
   /** True once the user typed a price — stop auto-tracking the touch. */
   const [pricePinned, setPricePinned] = useState(false);
   const [timeoutSec, setTimeoutSec] = useState<TimeoutChoice>('300');
+  /** True once the ticket is armed as the four-leg hedge leg (see the prefill
+   * effect). Beyond the 30m default it decides the quote policy and the wait
+   * option set, so it is pinned with the rest of the prefill, not derived from
+   * a mutable field the user can later change. */
+  const [fourLeg, setFourLeg] = useState(false);
 
   /**
    * Follow the coin until the user says otherwise.
@@ -145,6 +152,12 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
      * collateral derive the unit from it rather than from the coin.
      */
     setUnitPinned(true);
+    // Four-leg arm: default the maker window to the 30m this ticket also
+    // displays. Set unconditionally (both directions) so a later ordinary
+    // prefill on the same mount resets it.
+    const isFourLeg = prefill.strategy === 'four-leg';
+    setFourLeg(isFourLeg);
+    if (isFourLeg) setTimeoutSec('1800');
     // Same invariant as the manual mode toggle: a mode switch un-pins the price
     // so the maker leg resumes tracking the touch.
     if (prefill.mode) {
@@ -225,8 +238,8 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
     }
     // Limit + hedge: the maker leg rests POC at makerPriceStr (auto-tracked to the
     // touch until pinned); the other leg is the engine-fired market hedge.
-    // NOTE: pegToTouch is NOT set here (it would leak into the preview payload);
-    // it is injected at CONFIRM in `decorate` below when the price is tracking.
+    // NOTE: neither pegToTouch nor bestQuote is set here (they would leak into
+    // the preview payload); both are injected at CONFIRM in `decorate` below.
     const makerIsLong = makerLegPick === 'long';
     const makerLeg: ActionInput = {
       kind: 'open-limit',
@@ -311,12 +324,17 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
 
   // Inject the engine-side peg ONLY at confirm and ONLY while auto-tracking: the
   // maker rests at the fresh book-offset price computed at t=submit (same
-  // one-gap-behind-the-touch formula), not the client price.
+  // one-gap-behind-the-touch formula), not the client price. Four-leg: (1) mark
+  // the quote mode (bestQuote), which rides even when pinned — the deal is
+  // created with the 'best' policy either way; (2) peg the initial price, but
+  // only while tracking.
   const trackingMaker = mode === 'maker' && !pricePinned;
   const decorate = (acts: ActionInput[]): ActionInput[] =>
-    trackingMaker
-      ? acts.map((a) => (a.kind === 'open-limit' && a.pairRole === 'maker' ? { ...a, pegToTouch: true } : a))
-      : acts;
+    acts.map((a) =>
+      a.kind === 'open-limit' && a.pairRole === 'maker'
+        ? { ...a, ...(fourLeg ? { bestQuote: true } : {}), ...(trackingMaker ? { pegToTouch: true } : {}) }
+        : a,
+    );
 
   const stageDone = () => {
     setNonce((n) => n + 1); // next pair gets a fresh group id
@@ -488,6 +506,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
           onTrackTouch={() => setPricePinned(false)}
           timeoutSec={timeoutSec}
           onTimeout={setTimeoutSec}
+          timeoutChoices={fourLeg ? TIMEOUT_CHOICES_FOUR_LEG : TIMEOUT_CHOICES}
         />
       )}
 

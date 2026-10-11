@@ -38,6 +38,13 @@ export interface PairPrefill {
   sizeUnit?: 'base' | 'usd';
   /** Execution mode to arm the ticket with; omitted = leave the user's choice. */
   mode?: ExecMode;
+  /**
+   * Marks the four-leg hedge ticket. It selects the 30m wait default (and, from
+   * the ticket, the 'best' quote mode), so the wizard's step-2 ticket and the
+   * manual drawer's ordinary ticket can share one component without sharing
+   * defaults.
+   */
+  strategy?: 'four-leg';
   /** Monotonic — a new prefill with identical content still re-applies. */
   nonce: number;
 }

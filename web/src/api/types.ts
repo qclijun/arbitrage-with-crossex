@@ -788,6 +788,10 @@ export interface OpenLimitAction {
   /** Maker-hedge maker leg only: re-peg the INITIAL submit price to the fresh
    * same-side touch at t=submit (`price` is the fallback reference). */
   pegToTouch?: boolean;
+  /** Four-leg maker leg only: mark the deal with the 'best' quote policy (the
+   * four-leg workflow's maker strategy). Distinct from pegToTouch, which is the
+   * submit-time price peg and is absent on a pinned price. */
+  bestQuote?: boolean;
 }
 
 export interface ClosePositionAction {
