@@ -1,12 +1,12 @@
 /** Pure-function tests: fx arithmetic, projections, sizing, decide edges. */
 import { describe, expect, it } from 'vitest';
 import { fx, fxFloorToStep, fxStr } from '../../src/engine/fx';
-import { clipBandPrice, decide, project, sizeFor } from '../../src/engine/decide';
+import { clipBandPrice, decide, lagTicks, project, sizeFor } from '../../src/engine/decide';
 import { TUNING, type OrderRow, type PairRow } from '../../src/engine/types';
 import type { DecideCtx } from '../../src/engine/decide';
 import { legSpec, A_CONTRACT, B_CONTRACT } from './engine-sim';
 
-const ctx: DecideCtx = { touchA: '2500', refB: '2500', refA: '2500', maxClip: '1000000' };
+const ctx: DecideCtx = { touchA: '2500', bestA: '2500', refB: '2500', refA: '2500', maxClip: '1000000' };
 
 function pairRow(over?: Partial<PairRow>): PairRow {
   return {
@@ -288,5 +288,122 @@ describe('OPENING pauses acquisition while a failed hedge waits out its backoff'
       tif: 'ioc',
       qty: '0.05',
     });
+  });
+});
+
+describe("'best' quote mode — initial placement", () => {
+  const bestMaker = (over?: Partial<OrderRow>): OrderRow => order({ price: '2500', ...over });
+
+  it('places the maker at the BARE fresh best when the book is quotable', () => {
+    const pair = pairRow({ pricePolicy: 'best' });
+    const a = decide(pair, project(pair, []), 0, { ...ctx, bestA: '2501.5' });
+    expect(a).toMatchObject({ type: 'place', leg: 'A', kind: 'maker', tif: 'poc', price: '2501.5' });
+  });
+
+  it('places NOTHING when no fresh best is available — never falls back to the retained price', () => {
+    // This is the reversal of the current `ctx.touchA ?? pair.limitPrice`
+    // fallback: after one successful placement `limitPrice` is non-empty, so a
+    // fallback would make "no book → place nothing" unreachable.
+    const pair = pairRow({ pricePolicy: 'best', limitPrice: '2500' });
+    const a = decide(pair, project(pair, []), 0, { ...ctx, bestA: null });
+    expect(a.type).toBe('idle');
+    expect(a).toMatchObject({ reason: expect.stringContaining('no price available') });
+  });
+
+  it('posts post-only (tif poc) — an aggressive quote can never silently take', () => {
+    const pair = pairRow({ pricePolicy: 'best' });
+    const a = decide(pair, project(pair, []), 0, { ...ctx, bestA: '2500' });
+    expect(a).toMatchObject({ type: 'place', tif: 'poc' });
+  });
+});
+
+describe("'best' quote mode — reprice boundaries", () => {
+  // lagTicks is the pure metric; both sides are FORMATTED prices in one grid.
+  it('counts whole ticks of lag; a more-aggressive quote is 0, never negative', () => {
+    expect(lagTicks('2499.98', '2500', '0.01', 'BUY')).toBe(2);
+    expect(lagTicks('2499.99', '2500', '0.01', 'BUY')).toBe(1);
+    expect(lagTicks('2500', '2500', '0.01', 'BUY')).toBe(0);
+    expect(lagTicks('2500.05', '2500', '0.01', 'BUY')).toBe(0); // more aggressive
+    expect(lagTicks('2500.02', '2500', '0.01', 'SELL')).toBe(2);
+    expect(lagTicks('2499.98', '2500', '0.01', 'SELL')).toBe(0); // more aggressive
+  });
+
+  // A resting maker placed by a 'best' deal: its price IS the intent (placement
+  // wrote it back), so the re-peg branch does not fire and only the lag metric
+  // decides. The lag comes from the book moving away from that resting price.
+  const restingAt = (price: string): OrderRow => order({ state: 'OPEN', price });
+
+  it('does NOT reprice below the two-tick threshold', () => {
+    const pair = pairRow({ pricePolicy: 'best', limitPrice: '2499.99', lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2499.99')]);
+    const a = decide(pair, p, 60_000, { ...ctx, bestA: '2500' });
+    expect(a).toEqual({ type: 'idle', reason: 'maker resting' });
+  });
+
+  it('DOES reprice at exactly two ticks of lag', () => {
+    const pair = pairRow({ pricePolicy: 'best', limitPrice: '2499.98', lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2499.98')]);
+    const a = decide(pair, p, 60_000, { ...ctx, bestA: '2500' });
+    expect(a).toMatchObject({ type: 'cancel', reprice: true });
+  });
+
+  it('does NOT reprice before 15s since the last maker PLACEMENT', () => {
+    const pair = pairRow({ pricePolicy: 'best', limitPrice: '2499.98', lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2499.98')]);
+    const a = decide(pair, p, 14_999, { ...ctx, bestA: '2500' });
+    expect(a).toEqual({ type: 'idle', reason: 'maker resting' });
+  });
+
+  it('DOES reprice at/after 15s since the last maker placement', () => {
+    const pair = pairRow({ pricePolicy: 'best', limitPrice: '2499.98', lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2499.98')]);
+    expect(decide(pair, p, 15_000, { ...ctx, bestA: '2500' })).toMatchObject({ type: 'cancel', reprice: true });
+  });
+
+  it('NEVER cancels a quote at the best or more aggressive merely to chase', () => {
+    for (const px of ['2500', '2500.01', '2500.5']) {
+      const pair = pairRow({ pricePolicy: 'best', limitPrice: px, lastMakerPlacementAt: 0 });
+      const p = project(pair, [restingAt(px)]);
+      expect(decide(pair, p, 60_000, { ...ctx, bestA: '2500' }).type).toBe('idle');
+    }
+  });
+
+  it('does not reprice when the book is not quotable (no fresh best)', () => {
+    const pair = pairRow({ pricePolicy: 'best', limitPrice: '2499.98', lastMakerPlacementAt: 0 });
+    const p = project(pair, [restingAt('2499.98')]);
+    expect(decide(pair, p, 60_000, { ...ctx, bestA: null })).toEqual({
+      type: 'idle',
+      reason: 'maker resting',
+    });
+  });
+
+  it('does not reprice once the 20-cycle quota is exhausted — the last quote stays live', () => {
+    const pair = pairRow({
+      pricePolicy: 'best',
+      limitPrice: '2499.98',
+      lastMakerPlacementAt: 0,
+      repriceCount: TUNING.MAX_REPRICE_CYCLES,
+    });
+    const p = project(pair, [restingAt('2499.98')]);
+    expect(decide(pair, p, 60_000, { ...ctx, bestA: '2500' })).toEqual({
+      type: 'idle',
+      reason: 'maker resting',
+    });
+  });
+
+  it('a formatted-lag comparison never livelocks: a quote already AT the formatted best is lag 0', () => {
+    // At a magnitude where the 5-sig-fig cap gives up several ticks, the resting
+    // price the engine actually placed is the FORMATTED one. Comparing that
+    // formatted price against the formatted best is lag 0, so it does not chase
+    // forever the way an unformatted-vs-formatted comparison would.
+    const hl = 'HYPERLIQUID_FUTURE_ETH_USDC';
+    const pair = pairRow({
+      a: legSpec(hl, 'BUY', { tick: '0.01' }),
+      pricePolicy: 'best',
+      limitPrice: '61717',
+      lastMakerPlacementAt: 0,
+    });
+    const p = project(pair, [restingAt('61717')]); // what formatRestPrice produced
+    expect(decide(pair, p, 60_000, { ...ctx, bestA: '61717' })).toEqual({ type: 'idle', reason: 'maker resting' });
   });
 });

@@ -346,9 +346,16 @@ async function performPlace(
     now,
   });
   // Maker placements update the price intent: "maker price ≠ intent" is exactly
-  // the re-peg trigger, so the intent must track what we actually placed.
+  // the re-peg trigger, so the intent must track what we actually placed. The
+  // PLACEMENT TIME is recorded here too — it is the clock the 15 s reprice
+  // interval is measured from (a distinct fact from `makerNotBefore`, the old
+  // reject backoff). Committed write-ahead with the reservation, before the
+  // wire call: a crash before the send still consumed the interval.
   if (a.kind === 'maker' && a.price !== undefined) {
-    deps.store.updatePair(pair.id, { limitPrice: a.price });
+    deps.store.updatePair(pair.id, {
+      limitPrice: a.price,
+      ...(pair.pricePolicy === 'best' ? { lastMakerPlacementAt: now } : {}),
+    });
   }
   if (deps.crashAfterCommit?.()) return; // simulated crash between commit and wire
 
@@ -388,8 +395,22 @@ async function performPlace(
   // pair until the resolution ladder settles it. Nothing is journaled terminal.
 }
 
-async function performCancel(deps: LoopDeps, pair: PairRow, o: OrderRow): Promise<void> {
+async function performCancel(deps: LoopDeps, pair: PairRow, o: OrderRow, reprice = false): Promise<void> {
+  // A cancel already initiated for this order must not consume a second reprice
+  // unit when it is RETRIED (an unconfirmed cancel re-sent by a later tick, or a
+  // restart that re-observes the still-OPEN order). `cancelRequested` is the
+  // durable fingerprint of "this cycle's cancel was already initiated".
+  const firstAttempt = !o.cancelRequested;
   deps.store.updateOrder(o.pairId, o.leg, o.seq, { cancelRequested: 1 });
+  // Consume ONE reprice unit for an automatic reprice cycle — AFTER the cancel is
+  // initiated (the `cancelRequested` commit) and BEFORE its outcome is knowable.
+  // Writing it before initiating would record, in a crash window, a reprice that
+  // never happened; writing it after the outcome would let a retried/unknown
+  // cancel double-count. The counter is monotone and is never reset by a fill.
+  if (reprice && firstAttempt) {
+    deps.store.updatePair(o.pairId, { repriceCount: pair.repriceCount + 1 });
+  }
+  if (deps.crashAfterCommit?.()) return; // simulated crash between the commit (quota + cancel-requested) and the wire call
   // Cancel needs no state machine: "not found / already finished" is success
   // (no further fills can land), an unknown outcome is irrelevant — the loop
   // keeps observing the order until the venue reports a terminal cum.
@@ -449,7 +470,7 @@ async function perform(deps: LoopDeps, pair: PairRow, action: Action): Promise<v
       if (action.mode === 'HALTED') deps.onFinish?.(pair.id);
       return;
     case 'cancel':
-      return performCancel(deps, pair, action.order);
+      return performCancel(deps, pair, action.order, action.reprice);
     case 'place':
       return performPlace(deps, pair, action);
     case 'finish': {
@@ -515,6 +536,11 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
   const frozen = proj.anyPending || proj.anyQuarantined;
   const needTouch =
     !frozen && pair.mode === 'OPENING' && pair.pricePolicy === 'touch' && proj.makerOrder?.state !== 'OPEN';
+  // A 'best' deal needs the live same-side best on EVERY OPENING tick — not only
+  // when it is about to place, but also to MEASURE the resting quote's lag
+  // against the current book (the auto-reprice trigger). One extra cached book
+  // read per tick while opening is the price of following a moving market.
+  const needBest = !frozen && pair.mode === 'OPENING' && pair.pricePolicy === 'best';
   // A reference price is needed ONLY for a min-notional sizing check (taker legs
   // are plain MARKET, so no band pricing). Fetch it only when a leg with a
   // min-notional is actually about to submit.
@@ -530,6 +556,7 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
     (fx(pair.a.minNotional) > 0n || pair.clipBandBp !== null);
   const ctx: DecideCtx = {
     touchA: needTouch ? await deps.venue.touch(pair.a.contract, pair.a.side, pair.a.tick) : null,
+    bestA: needBest ? await deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick) : null,
     // '0' (unused) when no hedge is owed; a real fetch only when one is.
     refB: needRefB ? await deps.venue.refPrice(pair.b!.contract) : '0',
     refA: needRefA ? await deps.venue.refPrice(pair.a.contract) : '0',
