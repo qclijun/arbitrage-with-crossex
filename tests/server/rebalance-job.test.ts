@@ -176,6 +176,7 @@ const createDeal = (store: Store): void => {
     targetQty: '0.05',
     limitPrice: '2500',
     pricePolicy: 'fixed',
+    autoPricePolicy: 'touch',
     deadlineAt: null,
     makerNotBefore: 0,
     hedgeNotBefore: 0,

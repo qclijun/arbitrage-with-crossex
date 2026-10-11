@@ -128,6 +128,7 @@ describe('the maker deadline never moves', () => {
       targetQty: '0.152',
       limitPrice: '2500',
       pricePolicy: POLICY,
+      autoPricePolicy: 'touch',
       deadlineAt: clock.now() + FOUR_LEG_WINDOW_MS,
       makerNotBefore: 0,
       hedgeNotBefore: 0,

@@ -301,6 +301,11 @@ export async function resolveDeal(
     limitPrice: price,
     pricePolicy:
       req.pricePolicy === 'fixed' ? 'fixed' : req.pricePolicy === 'best' ? 'best' : 'touch',
+    // The deal's OWN auto-follow policy, remembered independently of the live
+    // value (see PairRow.autoPricePolicy). A four-leg deal is `'best'`; anything
+    // else falls back to the historical `'touch'`, which is also what a plain
+    // pinned deal restores to. A request never sets this directly.
+    autoPricePolicy: req.pricePolicy === 'best' ? 'best' : 'touch',
     deadlineAt,
     makerNotBefore: 0,
     hedgeNotBefore: 0,

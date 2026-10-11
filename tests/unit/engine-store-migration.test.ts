@@ -152,6 +152,9 @@ describe('Store migration of a pre-existing file', () => {
       // exactly the silent "unlimited reprice" the spec forbids.
       expect(old.repriceCount).toBe(0);
       expect(old.lastMakerPlacementAt).toBe(0);
+      // A pre-'best' deal's auto-follow family is 'touch' — the historical
+      // default, and correct for every legacy row (none was a four-leg deal).
+      expect(old.autoPricePolicy).toBe('touch');
 
       // The historical order is byte-for-byte what was written.
       const orders = store.listOrders('old-deal');
@@ -167,10 +170,11 @@ describe('Store migration of a pre-existing file', () => {
       expect(store.getPair('old-deal')!.pricePolicy).toBe('best');
 
       // ...and the new columns are writable and read back.
-      store.updatePair('old-deal', { repriceCount: 3, lastMakerPlacementAt: 999 });
+      store.updatePair('old-deal', { repriceCount: 3, lastMakerPlacementAt: 999, autoPricePolicy: 'best' });
       const after = store.getPair('old-deal')!;
       expect(after.repriceCount).toBe(3);
       expect(after.lastMakerPlacementAt).toBe(999);
+      expect(after.autoPricePolicy).toBe('best'); // survives the rebuild + reopen
     } finally {
       store.close();
     }
@@ -235,6 +239,7 @@ describe('Store migration of a pre-existing file', () => {
         targetQty: '0.152',
         limitPrice: null,
         pricePolicy: 'best',
+        autoPricePolicy: 'touch',
         deadlineAt: 123,
         makerNotBefore: 0,
         hedgeNotBefore: 0,

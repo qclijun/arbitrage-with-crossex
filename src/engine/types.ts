@@ -54,6 +54,15 @@ export interface PairRow {
    *  'best' is also the four-leg scope marker (spec: scope is
    *  `price_policy === 'best'`); ordinary pairs only ever emit 'fixed'/'touch'. */
   pricePolicy: 'fixed' | 'touch' | 'best';
+  /** The AUTO-FOLLOW policy this deal returns to when the user hands control
+   * back. Separate from `pricePolicy` because pinning a price OVERWRITES the
+   * policy: a pinned four-leg deal carries `pricePolicy === 'fixed'`, so the
+   * current value no longer says whether its family quotes at the same-side
+   * best ('best') or one spread behind ('touch'). Restoring a `'best'` deal as
+   * `'touch'` would silently swap its quoting semantics for the OLD ones.
+   * Recorded once at creation (`'best'` for a four-leg deal, `'touch'`
+   * otherwise) and never changed — there is no user-adjustable path to it. */
+  autoPricePolicy: 'touch' | 'best';
   deadlineAt: number | null;
   makerNotBefore: number; // anti-flap backoff after a POC/clip reject
   hedgeNotBefore: number; // anti-flap backoff after a hedge reject

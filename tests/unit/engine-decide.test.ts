@@ -17,6 +17,7 @@ function pairRow(over?: Partial<PairRow>): PairRow {
     targetQty: '0.152',
     limitPrice: '2500',
     pricePolicy: 'fixed',
+    autoPricePolicy: 'touch',
     deadlineAt: null,
     makerNotBefore: 0,
     hedgeNotBefore: 0,

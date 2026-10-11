@@ -223,12 +223,15 @@ export function dealsRoutes(deps: AppDeps) {
         throw new CoreError(`deal ${pair.id} is not awaiting a maker fill (mode: ${pair.mode})`);
       }
       const body = (req.body ?? {}) as { price?: unknown };
-      // An explicit price PINS the deal (pricePolicy 'fixed'). Without that, a
-      // 'touch' pair — the default for every maker-hedge pair ticket — re-derives
-      // its price from the live book on the next placement, so this route used to
-      // return 200 echoing the user's number while the engine re-placed at
-      // whatever the market had moved to. The UI's own two buttons say exactly
-      // this: "at YOUR price" vs "at the fresh same-side touch".
+      // The ONLY input this route takes is `price`. Extra body keys are ignored,
+      // so there is no new user-adjustable entry point for policy, family or an
+      // auto-follow flag — button, parameter and route count stay exactly as
+      // they were.
+      // An explicit price PINS the deal (pricePolicy 'fixed'). Without that, the
+      // deal re-derives its price from the live book on the next placement, so
+      // this route used to return 200 echoing the user's number while the engine
+      // re-placed at whatever the market had moved to. The UI's own two buttons
+      // say exactly this: "at YOUR price" vs "at the fresh same-side best".
       const explicit = body.price !== undefined && body.price !== null && String(body.price).trim() !== '';
       let price: string | null;
       if (explicit) {
@@ -242,10 +245,28 @@ export function dealsRoutes(deps: AppDeps) {
           throw new CoreError(`re-peg price ${n} is below one tick (${pair.a.tick})`, 'validation');
         }
       } else {
-        price = await deps.engine!.venue.touch(pair.a.contract, pair.a.side, pair.a.tick);
+        // Restore auto-follow. The price comes from the deal's OWN auto-follow
+        // source, not a hardcoded quote fetch: a 'best' deal quotes at the bare
+        // same-side best, an ordinary one one spread behind (the historical
+        // 'touch'). Restoring a four-leg deal as 'touch' would silently swap its
+        // quoting semantics for the old ones — the family policy is what says
+        // which, and it is the only legitimate source (never venue/symbol/
+        // position, and never an origin field).
+        price =
+          pair.autoPricePolicy === 'best'
+            ? await deps.engine!.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick)
+            : await deps.engine!.venue.touch(pair.a.contract, pair.a.side, pair.a.tick);
       }
-      if (!price) throw new CoreError('no fresh touch price available — re-peg aborted (book unavailable)');
-      commands.repeg(deps.engine!.store, pair.id, price, explicit ? 'fixed' : 'touch');
+      // No fresh quote → FAIL, and say so. Writing the policy anyway would
+      // silently turn auto-follow OFF (the deal would keep the retained price
+      // and never follow again) — the opposite of what the user asked for. The
+      // pre-existing "no fresh price, no execution" rule is preserved.
+      if (!price) {
+        throw new CoreError(
+          'no fresh quote available — re-peg aborted (book unavailable). Auto-follow is unchanged.',
+        );
+      }
+      commands.repeg(deps.engine!.store, pair.id, price, explicit ? 'fixed' : pair.autoPricePolicy);
       deps.engine!.wake?.();
       return reply.ok({ id: pair.id, price });
     });

@@ -191,6 +191,7 @@ describe('POST /api/deals', () => {
       targetQty: '0.05',
       limitPrice: '2500',
       pricePolicy: 'fixed',
+      autoPricePolicy: 'touch',
       deadlineAt: null,
       makerNotBefore: 0,
       hedgeNotBefore: 0,
@@ -909,6 +910,129 @@ describe('deal commands + alerts', () => {
     const pair = w.store.getPair(w.id)!;
     expect(pair.limitPrice).toBe('2499');
     expect(pair.pricePolicy).toBe('touch');
+  });
+
+  // Ticket 06. The re-peg route's no-price branch used to hardcode 'touch',
+  // which silently rewrote a four-leg deal's quoting semantics to the OLD
+  // one-spread-behind behavior the moment the user asked for auto-follow back.
+  it("restoring auto-follow on a four-leg deal restores its OWN 'best' policy", async () => {
+    const w = mkApp();
+    app = w.app;
+    mockGateGet('/rule/symbols', { body: simRules() });
+    mockGateGet('/accounts', { fixture: 'account.json' });
+    // A real two-sided book so the 'best' restore has a fresh quote to write.
+    w.venue.books.set(A_CONTRACT, { bid: '2500', ask: '2500.2' });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/deals',
+      headers: HOST,
+      payload: makerPayload({ pricePolicy: 'best', price: '2500' }),
+    });
+    expect(created.statusCode, created.body).toBe(202);
+    await tickPair(w.loop, 'deal-000001');
+
+    // The user pins a price — an explicit re-peg. The family must survive.
+    const pin = await app.inject({
+      method: 'POST',
+      url: '/api/deals/deal-000001/repeg',
+      headers: HOST,
+      payload: { price: '2470' },
+    });
+    expect(pin.statusCode).toBe(200);
+    const pinned = w.store.getPair('deal-000001')!;
+    expect(pinned.pricePolicy).toBe('fixed');
+    expect(pinned.autoPricePolicy).toBe('best'); // remembered, not guessed
+
+    // Auto-follow is turned back on through the SAME command, no price.
+    const restore = await app.inject({
+      method: 'POST',
+      url: '/api/deals/deal-000001/repeg',
+      headers: HOST,
+      payload: {},
+    });
+    expect(restore.statusCode, restore.body).toBe(200);
+    expect(restore.json().data.price).toBe('2500'); // the THEN-current best bid
+    const restored = w.store.getPair('deal-000001')!;
+    expect(restored.pricePolicy).toBe('best'); // NOT 'touch'
+    expect(restored.limitPrice).toBe('2500');
+  });
+
+  it('restoring auto-follow on an ordinary deal restores touch', async () => {
+    const w = await mkWorking();
+    w.store.updatePair(w.id, { pricePolicy: 'touch' });
+    w.venue.touchA = '2499';
+    const res = await app.inject({ method: 'POST', url: `/api/deals/${w.id}/repeg`, headers: HOST, payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(w.store.getPair(w.id)!.pricePolicy).toBe('touch');
+  });
+
+  it('a missing fresh quote FAILS the restore and leaves the pin in place', async () => {
+    const w = mkApp();
+    app = w.app;
+    mockGateGet('/rule/symbols', { body: simRules() });
+    mockGateGet('/accounts', { fixture: 'account.json' });
+    w.venue.books.set(A_CONTRACT, { bid: '2500', ask: '2500.2' });
+    await app.inject({
+      method: 'POST',
+      url: '/api/deals',
+      headers: HOST,
+      payload: makerPayload({ pricePolicy: 'best', price: '2500' }),
+    });
+    await tickPair(w.loop, 'deal-000001');
+    await app.inject({
+      method: 'POST',
+      url: '/api/deals/deal-000001/repeg',
+      headers: HOST,
+      payload: { price: '2470' },
+    });
+
+    // The book dies. A restore that "succeeded" here would silently switch the
+    // deal out of manual control with no quote — the exact half-success the
+    // command's fail-loudly contract forbids.
+    w.venue.books.delete(A_CONTRACT);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/deals/deal-000001/repeg',
+      headers: HOST,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/no fresh/i);
+    const pair = w.store.getPair('deal-000001')!;
+    expect(pair.pricePolicy).toBe('fixed'); // still pinned — auto-follow NOT disabled
+    expect(pair.limitPrice).toBe('2470');
+  });
+
+  it('the re-peg route takes ONLY a price — no new user-adjustable entry point', async () => {
+    const w = await mkWorking();
+    // A caller cannot request a policy, a family, or an auto-follow flag: the
+    // body is ignored beyond `price`. Extra keys change nothing.
+    const before = w.store.getPair(w.id)!;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/deals/${w.id}/repeg`,
+      headers: HOST,
+      payload: { pricePolicy: 'best', autoPricePolicy: 'best', autoFollow: true, price: '2471' },
+    });
+    expect(res.statusCode).toBe(200);
+    const after = w.store.getPair(w.id)!;
+    expect(after.limitPrice).toBe('2471'); // the price is honored
+    expect(after.pricePolicy).toBe('fixed'); // the bogus policy key is NOT
+    expect(after.autoPricePolicy).toBe(before.autoPricePolicy); // and the family is untouched
+  });
+
+  it('the re-peg command keeps its existing authorization', async () => {
+    const w = await mkWorking();
+    // Same token gate as every other deal command: no header → 401, and the
+    // intent is untouched. The restore path adds no new surface to authorize.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/deals/${w.id}/repeg`,
+      headers: { host: 'localhost:6688' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+    expect(w.store.getPair(w.id)!.pricePolicy).toBe('fixed');
   });
 
   it('rejects a non-numeric re-peg price instead of writing it as the intent', async () => {
