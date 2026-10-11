@@ -7,7 +7,7 @@ Status: resolved
 
 **Blocked by：** 无（可立即开始）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -54,3 +54,15 @@ Status: resolved
 - 到期同步进入 converting 时的「撤销剩余 maker、确认最终成交、补齐对冲、taker 收尾且不越过 pending／隔离／未知撤单／可提交数量校验」——**未新写断言**。这是既有的 `decide()` 到期 → `CONVERTING` 路径，已由现有套件（`engine-loop.test.ts` 的 "timeout converts exactly like convert-now" 等）覆盖；本工单只新增了「到期后确实进入 CONVERTING」的断言，未复制既有转换路径的断言。
 - 「到期优先于盘口暂停」：本工单只断言了「到期优先于同一 tick 的改价条件」。盘口暂停属工单 04，合并后的代码里尚不存在该分支，故无法断言其与到期的相对位置（规格要求该分支插在 `decide.ts:240` 之下，届时天然成立）。
 - 未改动任何 `'best'` 的报价行为（工单 02）、盘口暂停（04）、预算拆分（05）。
+
+## Comments
+
+### 2026-10-11 完成状态复核
+
+结论：实现与离线验收已完成，顶部与正文状态统一为 `resolved`。原始验收清单和历史 Answer 保留。
+
+30m 默认、可调整窗口、普通票据隔离、期限不变与到期优先：engine-create.test.ts、engine-deadline.test.ts、engine-loop.test.ts、PairTicket.test.tsx、StrategyWizard.test.tsx。
+
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+
+此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

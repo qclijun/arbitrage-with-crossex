@@ -98,3 +98,37 @@ review.
   `.worktrees/t01` and the `opt_monitor` worktree retained.
 - No live tests, account mutations, deployment, push or PR creation performed.
   Offline evidence does not establish a future maker fill-rate improvement.
+
+## Completion status recheck — 2026-10-11
+
+All seven tickets have completed implementation and offline acceptance. Their
+existing top-level `Status: resolved` values are retained; stale inline
+`ready-for-agent` values and the spec status now agree with them. Historical
+acceptance lists and Answers are preserved, with per-ticket audit comments.
+
+Implementation checked: `36dbcaf`, including final-review fixes in `9f12669`.
+HEAD at completion: `1e42912`; the intervening commit only adds the stop script
+and its documentation/package entry, with no changes to this feature.
+The newer migration tests also verify preservation of additional legacy
+columns, their defaults, indexes, triggers, orders and foreign keys.
+
+Fresh verification:
+
+- Focused unit/server: 12 files / 277 passed.
+- Focused web: 4 files / 87 passed.
+- `yarn verify`: passed outside the sandbox; root 122 files / 2840 passed /
+  8 skipped; web 100 files / 1469 passed; both TypeScript checks passed.
+- The initial sandbox run failed due to denied installer/Python subprocesses
+  and localhost listening; the permitted rerun passed.
+- `yarn --cwd web build`: passed, retaining the existing bundle-size advisory.
+
+Ticket 05's fourth acceptance bullet incorrectly calls the quota-free cancel
+an automatic reprice cancel. The spec explicitly makes book-outage cancels
+quota-free, while each actual auto-reprice cycle consumes one unit. Completion
+is assessed against that spec; the original ticket wording is retained and
+qualified in its audit comment. Ticket 02's historical two-commit quota
+accounting discussion is superseded by the atomic final-review repair.
+
+No live trading, deployment, service restart or account mutation was performed.
+The separate live-validation checklist remains unverified; ticket completion
+does not claim improved real-world maker fill rates or completed live acceptance.

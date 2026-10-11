@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 四腿交易永续 Maker 报价与有限改价
 
@@ -133,3 +133,5 @@ Status: ready-for-agent
 - 改价次数与时间应是同一 deal 的持久化事实，不能存放为前端组件状态。继续使用现有 venue truth／intent ledger 分工，不新增平行恢复状态机。
 - 本次已确认的参数默认：初始挂同侧最优价；落后阈值两个合约 tick；改价最小间隔十五秒；改价额度二十次；默认等待三十分钟；盘口异常撤销阈值三十秒。全部为固定默认，不以用户可调项形式暴露。
 - 实施时若发现协议或现有引擎无法满足撤单确认、对冲优先或范围隔离，应记录具体阻碍；不得通过更改本规格的已确认约束来绕过。
+
+- 2026-10-11 完成状态复核：01–07 实现与离线验收完成，状态统一为 `resolved`；证据见 [review.md](review.md#completion-status-recheck-2026-10-11)。实盘验证另见未执行的 [清单](live-validation-checklist.md)。

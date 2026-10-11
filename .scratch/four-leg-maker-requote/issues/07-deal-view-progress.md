@@ -7,7 +7,7 @@ Status: resolved
 
 **Blocked by：** 02（挂同侧最优价并按落后 tick 有限自动改价）、04（盘口不可用时的报价暂停与三十秒撤销）、06（手动控制优先与恢复自动跟随）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -67,3 +67,15 @@ Status: resolved
 - **未新增用户可调入口**，未暴露拒绝计数。
 - 工单验收里「UI 测试覆盖四腿票据传播策略与等待设置、普通交易不带新策略」由工单 03 的 `PairTicket.test.tsx` / `StrategyWizard.test.tsx` 既有用例覆盖（`strategy: 'four-leg'` → `pricePolicy:'best'` + `timeoutSec:1800`），本工单**未重复**，仅补了 `ExecuteControl` 侧「普通票据无法发出 `'best'`」这一 07 独有的范围隔离 seam。若评审要求把传播断言也归到 07，可另开工单。
 - **暂停原因的分级仍有已知取舍**：`maker-backoff` 用 `makerNotBefore`（既有拒绝退避）。这是一个**拒绝预算**的派生量，与「不以拒绝计数作为进度」并不冲突（它只产出布尔式的「退避中」，不产出计数），但它与 reprice 循环的 15 秒间隔门（`lastMakerPlacementAt`）不是同一件事——前者在盘口抖动时可能短暂显示。若评审认为「退避中」不应来自拒绝退避，需要引擎侧新增一个专用于报价节奏的持久化事实，本工单未做，因为那正是工单要求避免的平行状态。
+
+## Comments
+
+### 2026-10-11 完成状态复核
+
+结论：实现与离线验收已完成，顶部与正文状态统一为 `resolved`。原始验收清单和历史 Answer 保留。
+
+持久化改价用量、暂停原因、自动跟随标识、阶段推进不残留、普通票据范围隔离：tests/server/deals.test.ts、DealModal.test.tsx、PairTicket.test.tsx、StrategyWizard.test.tsx、ExecuteControl.test.tsx。
+
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+
+此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

@@ -7,7 +7,7 @@ Status: resolved
 
 **Blocked by：** 02（挂同侧最优价并按落后 tick 有限自动改价）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -80,3 +80,15 @@ Post-only 拒绝从既有共享预算中**拆出**，落到一个**新增的持�
 - **无新增 UI**：拒绝类预算按规格不属于进度，无可展示项。
 - **一次对工单 02 既有断言的修正**：`tests/unit/engine-best-quote.test.ts` 有一处断言「`'best'` post-only 拒绝后 `pocRejects === 1`（旧预算不变）」——这条断言**正是本工单要推翻的语义**，已改为断言 `pocRejects === 0` 且 `postOnlyRejects === 1`。这不是回归，是工单 05 的核心所在。
 - **未做**：源盘口时间戳、live 测试、任何真实下单。
+
+## Comments
+
+### 2026-10-11 完成状态复核
+
+结论：实现与离线验收已完成，顶部与正文状态统一为 `resolved`。原始验收清单和历史 Answer 保留。
+
+独立 post-only 20 次预算、耗尽转换、taker 原预算、范围隔离与诚实报告：engine-post-only-budget.test.ts。验收第 4 项存在笔误：按 spec.md 的明确约定，盘口异常撤单不消耗改价额度；真正的自动改价周期消耗一次，重试不重复消耗。原文保留，此处记录核查口径。
+
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+
+此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

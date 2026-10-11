@@ -9,7 +9,7 @@ Status: resolved
 
 **Blocked by：** 01（四腿报价模式与 pair 表迁移前置）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -74,3 +74,15 @@ Status: resolved
 - **状态与进度的展示（工单 07）未实现**：`repriceCount`/`lastMakerPlacementAt` 已持久化，但未在 deal view 暴露，也未加暂停原因。
 - **未改动 web**：`'best'` 的 UI 发射入口由工单 03 提供（`bestQuote` 内部标记 → `deal.ts` 映射），本工单未触碰，也未新增第二种发射方式。
 - 规格「auto-reprice 在任何情况下都不得覆盖 `'fixed'`」：本实现的 `'best'` 分支只在 `pricePolicy === 'best'` 时触发；用户显式固定价会把 policy 改为 `'fixed'`（既有 re-peg 路径），自动改价随之停用。此语义由既有路径保证，本工单未新增断言（归工单 06）。
+
+## Comments
+
+### 2026-10-11 完成状态复核
+
+结论：实现与离线验收已完成，顶部与正文状态统一为 `resolved`。原始验收清单和历史 Answer 保留。
+
+初始同侧最优价、精度、2 tick / 15 秒边界、20 次上限、撤单成交竞态、原子计数与重启：engine-best-quote.test.ts、book-quality.test.ts、venue-gate-touch.test.ts。最终修复使用 recordRepriceCancel 原子提交撤单标记与计数，已取代 Answer 中的两个提交方案。
+
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+
+此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

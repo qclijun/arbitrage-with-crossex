@@ -7,7 +7,7 @@ Status: resolved
 
 **Blocked by：** 02（挂同侧最优价并按落后 tick 有限自动改价）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -58,3 +58,15 @@ Status: resolved
 
 - **工单 07 的展示未做**：未在交易视图暴露家族策略、改价次数或暂停原因。
 - **工单 04 的盘口暂停/30 秒撤销、工单 05 的 post-only 独立预算未做**（并行）。相关断言只覆盖「这些安全状态不被绕过」，不覆盖 04/05 自身语义。
+
+## Comments
+
+### 2026-10-11 完成状态复核
+
+结论：实现与离线验收已完成，顶部与正文状态统一为 `resolved`。原始验收清单和历史 Answer 保留。
+
+固定价压制自动改价、无价格 re-peg 恢复原策略、报价失败不改意图、权限与安全优先级：engine-manual-control.test.ts、tests/server/deals.test.ts。最终修复还覆盖首次固定报价与恢复 best。
+
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+
+此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。

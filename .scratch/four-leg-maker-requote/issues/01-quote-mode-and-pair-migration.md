@@ -9,7 +9,7 @@ Status: resolved
 
 **Blocked by：** 无（可立即开始）
 
-**Status：** ready-for-agent
+**Status：** resolved
 
 ## 背景
 
@@ -55,3 +55,15 @@ Status: resolved
 - `yarn test`：115 文件 / 2686 通过、8 跳过（基线 114 / 2680，增量为新增测试）。
 - `yarn --cwd web test`：100 文件 / 1458 通过。
 - 未运行 `test:live`（会下真实订单）。
+
+## Comments
+
+### 2026-10-11 完成状态复核
+
+结论：实现与离线验收已完成，顶部与正文状态统一为 `resolved`。原始验收清单和历史 Answer 保留。
+
+旧 schema 文件迁移、缺列默认值、best CHECK、历史订单与期限、额外列/索引/触发器保留及重开幂等：engine-store-migration.test.ts。
+
+核查实现提交 `36dbcaf`（含最终修复 `9f12669`）；核查结束时 HEAD 为 `1e42912`，其新增 stop 脚本未改本功能实现。当前重新运行 `yarn verify` 通过：根测试 122 文件 / 2840 通过 / 8 跳过，web 测试 100 文件 / 1469 通过，两项类型检查通过；`yarn --cwd web build` 通过。详细记录见 [review.md](../review.md#completion-status-recheck-2026-10-11)。
+
+此状态不表示部署或实盘验证完成；[实盘验证清单](../live-validation-checklist.md) 尚未执行，不勾选其检查项。
