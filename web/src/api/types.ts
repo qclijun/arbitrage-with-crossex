@@ -931,11 +931,25 @@ export interface DealPair {
   targetQty: string;
   limitPrice: string | null;
   pricePolicy: 'fixed' | 'touch' | 'best';
+  /** The AUTO-FOLLOW family this deal returns to when the user hands control
+   * back. Set at creation and never changed — a pinned deal reads
+   * `pricePolicy: 'fixed'` here while its family stays `'best'`. */
+  autoPricePolicy: 'touch' | 'best';
   deadlineAt: number | null;
   makerNotBefore: number;
   hedgeNotBefore: number;
   pocRejects: number;
   hedgeRejectStreak: number;
+  /** Automatic reprice cycles consumed (monotone; NOT reset by a fill). */
+  repriceCount: number;
+  /** Consecutive post-only rejections for a `'best'` deal only. Part of a
+   * reject budget — delivered because the whole row is, but deliberately NOT
+   * surfaced as progress. */
+  postOnlyRejects: number;
+  /** Wall-clock ms of the last maker placement (the reprice interval gate). */
+  lastMakerPlacementAt: number;
+  /** Wall-clock ms at which the current book outage began (0 = quotable). */
+  bookOutageStartedAt: number;
   maxClip: string | null;
   clipBandBp: number | null;
   haltReason: string | null;
@@ -978,11 +992,30 @@ export interface DealProjection {
   allSettled: boolean;
 }
 
+/** Why automated quoting is not currently advancing. Derived server-side from
+ * persisted engine facts (never a front-end tally): `book-unavailable` while
+ * the book is unquotable, `reprice-cap` once the bounded-chase quota is spent,
+ * `maker-backoff` while a reject's anti-flap wait runs. */
+export type DealPause =
+  | { kind: 'book-unavailable'; since: number }
+  | { kind: 'reprice-cap' }
+  | { kind: 'maker-backoff'; until: number };
+
+/** Explainable execution progress (mirrors the route's `dealProgress`). */
+export interface DealProgress {
+  reprice: { used: number; limit: number };
+  pause: DealPause | null;
+  /** `following` is false once the user pins a price (manual control), while
+   * `family` still names what a restore would re-quote at. */
+  autoFollow: { following: boolean; family: 'touch' | 'best' };
+}
+
 /** GET /api/deals/:id */
 export interface DealView {
   pair: DealPair;
   orders: DealOrder[];
   projection: DealProjection;
+  progress: DealProgress;
 }
 
 export interface DealReport {

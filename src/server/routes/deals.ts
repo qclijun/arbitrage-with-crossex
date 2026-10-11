@@ -13,7 +13,7 @@ import { setLeverage } from '../../core/orders';
 import { resolveDeal, type DealRequest } from '../../engine/create';
 import { project } from '../../engine/decide';
 import { commands } from '../../engine/loop';
-import type { PairRow } from '../../engine/types';
+import { TUNING, type PairRow } from '../../engine/types';
 import type { AppDeps } from '../app';
 import { TTL } from '../cache';
 import { DISCLAIMER_NOT_ACCEPTED, isDisclaimerAccepted } from '../disclaimer';
@@ -26,9 +26,56 @@ const TRANSFER_SETTLING_TEXT = 'Deals wait until Gate takes the transfer. Try ag
 
 // deps.engine is non-null here: the deals routes are registered only when the
 // engine exists (never in the credential-free public mode — see buildApp).
+
+/** The explainable progress the deal view reports.
+ *
+ * Every field is DERIVED here from facts the engine already persists — no new
+ * column, no parallel state. The loop's own idle reason string is transient
+ * (an `idle` action is never written by `perform()`), so a persisted "reason"
+ * would be exactly the recovery state AGENTS.md forbids; deriving it from the
+ * same durable facts the engine decides on keeps the view and the loop in
+ * agreement by construction.
+ *
+ * `following` is the necessary companion to manual price pinning: a pinned
+ * deal carries `pricePolicy === 'fixed'` while its FAMILY (`autoPricePolicy`)
+ * stays `'best'`, so the current value alone cannot say whether the deal still
+ * chases the book. Reject-class failure budgets are deliberately absent —
+ * they are not progress. */
+function dealProgress(pair: PairRow, now: number) {
+  // A pause is a fact about QUOTING, so it only exists while the deal is still
+  // in the maker (OPENING) phase. The loop clears `bookOutageStartedAt` only on
+  // a tick that finds the book quotable, and stops clearing it at all once the
+  // deal leaves OPENING — so a deal converted mid-outage would otherwise carry
+  // the stale marker into the terminal phases. Gating here is what keeps the
+  // readout from reporting a pause for a deal that is no longer quoting.
+  const quoting = pair.mode === 'OPENING';
+  // Book outage WINS over the cap: while the book is unquotable the loop
+  // cannot reprice whatever the quota says, and the pause is the actionable
+  // fact (it is what the 30 s cancel grading measures).
+  const pause = !quoting
+    ? null
+    : pair.bookOutageStartedAt > 0
+      ? { kind: 'book-unavailable', since: pair.bookOutageStartedAt }
+      : pair.repriceCount >= TUNING.MAX_REPRICE_CYCLES
+        ? { kind: 'reprice-cap' }
+        : now < pair.makerNotBefore
+          ? { kind: 'maker-backoff', until: pair.makerNotBefore }
+          : null;
+  return {
+    reprice: { used: pair.repriceCount, limit: TUNING.MAX_REPRICE_CYCLES },
+    pause,
+    autoFollow: { following: pair.pricePolicy !== 'fixed', family: pair.autoPricePolicy },
+  };
+}
+
 function dealView(deps: AppDeps, pair: PairRow) {
   const orders = deps.engine!.store.listOrders(pair.id);
-  return { pair, orders, projection: project(pair, orders) };
+  return {
+    pair,
+    orders,
+    projection: project(pair, orders),
+    progress: dealProgress(pair, deps.engine!.clock.now()),
+  };
 }
 
 export function dealsRoutes(deps: AppDeps) {
