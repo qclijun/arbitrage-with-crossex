@@ -2,10 +2,19 @@ import { readEvidence, type ReadEvidence } from '../api/client';
 import { contracts, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
+import { fx, fxMul, fxStr, type Fx } from '../../../src/engine/fx';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const number = (v: unknown) => typeof v === 'string' || typeof v === 'number' ? gateNumber(v) : null;
 const total = (xs: unknown[]) => xs.every(finite) ? xs.reduce<number>((n, x) => n + (x as number), 0) : null;
+const exactDecimal = (v: unknown): Fx | null => {
+  if (typeof v !== 'string' && typeof v !== 'number') return null;
+  if (typeof v === 'number' && !Number.isFinite(v)) return null;
+  try { return fx(String(v)); } catch { return null; }
+};
+const exactPositionQty = (v: unknown): Fx | null => typeof v === 'string' ? exactDecimal(v) : null;
+const absFx = (v: Fx) => v < 0n ? -v : v;
+const metricNumber = (v: Fx) => Number(fxStr(v));
 const bases = ['ETH', 'BTC'] as const;
 type Detail = NonNullable<MetricEvidence['details']>[number];
 const priceUsd = (token: { symbol: string; priceUsd?: number | null }) => {
@@ -43,15 +52,25 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     && boros.every(b => bases.includes(b.base as typeof bases[number]) && b.tokenId !== undefined
       && poolIdentity(b.marketAcc, b.tokenId) && finite(b.sizeBase) && b.sizeBase > 0 && finite(b.maturity) && b.venue
       && ['LONG', 'SHORT'].includes(b.side)));
-  const rows = positions?.data.positions.filter(p => number(p.positionQty) !== 0) ?? [];
+  const rows = positions?.data.positions.filter(p => exactPositionQty(p.positionQty) !== 0n) ?? [];
   const exposures = positions?.data.exposure ?? [];
   const legs = exposures.flatMap(g => g.legs.map(l => ({ ...l, base: g.base })));
+  const exactLegs = legs.map(p => {
+    const row = rows.find(r => r.symbol === p.symbol);
+    const rawQty = row ? exactPositionQty(row.positionQty) : null;
+    return { ...p, qtyFx: rawQty === null ? null : absFx(rawQty), signedQtyFx: rawQty };
+  });
   const perpsComplete = Boolean(positions && rows.length === legs.length
     && new Set(rows.map(p => p.symbol)).size === rows.length && new Set(legs.map(p => p.symbol)).size === legs.length
-    && legs.every(p => bases.includes(p.base as typeof bases[number]) && finite(p.qty) && p.qty > 0
+    && exactLegs.every(p => {
+      const row = rows.find(r => r.symbol === p.symbol);
+      const exposureQty = exactDecimal(p.qty);
+      const expectedQty = p.side === 'SHORT' ? -(p.qtyFx ?? 0n) : p.qtyFx;
+      return bases.includes(p.base as typeof bases[number]) && p.qtyFx !== null && p.qtyFx > 0n
       && ['LONG', 'SHORT'].includes(p.side) && p.symbol === `${p.exchange}_FUTURE_${p.base}_${p.quote}`
       && ['USDT', 'USDC', 'USD'].includes(p.quote)
-      && rows.some(r => r.symbol === p.symbol && number(r.positionQty) === (p.side === 'SHORT' ? -p.qty : p.qty)))
+      && exposureQty === p.qtyFx && row !== undefined && p.signedQtyFx === expectedQty;
+    })
     && rows.every(p => !p.markHeldSinceMs && !p.markStaleSinceMs));
   const seenAt = Math.min(account?.time ?? now, positions?.time ?? now, asset?.time ?? now);
   const equity = account ? number(account.data.marginBalance) : null;
@@ -62,19 +81,21 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     ['gate.loss_equity_ratio', equity !== null && equity > 0 && gatePnl !== null ? Math.max(0, -gatePnl) / equity : null]] as const) {
     put(id, value, seenAt, Boolean(account && perpsComplete), 'Incomplete account positions / unsupported nonzero holding, or non-positive equity');
   }
-  const residuals: number[] = [], netDetails: Detail[] = [];
+  const residuals: (Fx | null)[] = [], netDetails: Detail[] = [];
   for (const base of bases) {
-    const ls = legs.filter(p => p.base === base);
-    const net = ls.reduce((n, p) => n + (p.side === 'SHORT' ? -p.qty : p.qty), 0);
-    const prices = ls.map(p => number(rows.find(r => r.symbol === p.symbol)?.markPrice));
-    const px = prices.length && prices.every(p => finite(p) && p > 0) ? Math.max(...prices as number[]) : null;
+    const ls = exactLegs.filter(p => p.base === base);
+    const net = ls.reduce((n, p) => n + (p.signedQtyFx ?? 0n), 0n);
+    const prices = ls.map(p => exactDecimal(rows.find(r => r.symbol === p.symbol)?.markPrice));
+    const px = prices.length && prices.every((p): p is Fx => p !== null && p > 0n)
+      ? prices.reduce((max, p) => p > max ? p : max, 0n) : null;
     // The largest verified mark is conservative for absolute residual USD.
-    const usd = !ls.length ? 0 : px === null ? null : Math.abs(net) * px;
-    put(`hedge.perp_net_${base.toLowerCase()}`, perpsComplete ? net : null, positions?.time ?? null, perpsComplete, 'Incomplete or unsupported ETH/BTC perpetual contracts');
-    if (usd !== null) residuals.push(usd);
-    netDetails.push({ label: base, value: usd, unit: 'USD' });
+    const usd = !ls.length ? 0n : px === null ? null : fxMul(absFx(net), px);
+    put(`hedge.perp_net_${base.toLowerCase()}`, perpsComplete ? metricNumber(net) : null, positions?.time ?? null, perpsComplete, 'Incomplete or unsupported ETH/BTC perpetual contracts');
+    residuals.push(usd);
+    netDetails.push({ label: base, value: usd === null ? null : metricNumber(usd), unit: 'USD' });
   }
-  const residual = perpsComplete && residuals.length === bases.length ? total(residuals) : null;
+  const residual = perpsComplete && residuals.length === bases.length && residuals.every((v): v is Fx => v !== null)
+    ? metricNumber(residuals.reduce((n, v) => n + v, 0n)) : null;
   put('hedge.residual_usd', residual, seenAt, perpsComplete, 'Missing complete per-asset marks / quantities', netDetails);
   put('hedge.residual_equity_ratio', residual !== null && equity !== null && equity > 0 ? residual / equity : null, seenAt,
     perpsComplete && Boolean(account), 'Missing complete marks / positive Gate equity');
@@ -151,12 +172,19 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
 
   const matchComplete = borosComplete && perpsComplete;
   const keys = new Set([...legs.map(p => `${p.base}:${p.exchange}:${p.side}`), ...boros.map(b => `${b.base}:${b.venue}:${b.side}`)]);
-  const gaps: Detail[] = [];
+  const gaps: Detail[] = [], exactGaps = new Map<string, Fx | null>();
   for (const key of keys) {
     const [base, venue, side] = key.split(':');
-    const actual = legs.filter(p => p.base === base && p.exchange === venue && p.side === side).reduce((n, p) => n + p.qty, 0);
-    const funding = boros.filter(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now).reduce((n, b) => n + (b.sizeBase ?? NaN), 0);
-    gaps.push({ label: key, value: finite(funding) ? actual - funding : null, unit: base });
+    const actual = exactLegs.filter(p => p.base === base && p.exchange === venue && p.side === side)
+      .reduce((n, p) => n + (p.qtyFx ?? 0n), 0n);
+    const fundingLegs = boros.filter(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now);
+    const funding = fundingLegs.reduce<Fx | null>((n, b) => {
+      const size = exactDecimal(b.sizeBase);
+      return n === null || size === null ? null : n + size;
+    }, 0n);
+    const gap = funding === null ? null : actual - funding;
+    exactGaps.set(key, gap);
+    gaps.push({ label: key, value: gap === null ? null : metricNumber(gap), unit: base });
   }
   const mismatchedDirection = keys.size > 0 && [...keys].some(key => {
     const [base, venue, side] = key.split(':');
@@ -165,13 +193,15 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
       && boros.some(b => b.base === base && b.venue === venue && b.side === opposite && b.maturity! > now)
       && !boros.some(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now);
   });
-  const quantityComplete = matchComplete && gaps.every(d => finite(d.value))
-    && !gaps.some(d => d.unit === 'BTC' && Math.abs(d.value as number) > 1e-12);
-  put('hedge.quantity_verified', quantityComplete ? gaps.every(d => Math.abs(d.value as number) <= (d.unit === 'ETH' ? .001 : 1e-12)) : null,
+  const quantityComplete = matchComplete && [...exactGaps.entries()].every(([key, gap]) => gap !== null
+    && (key.startsWith('BTC:') ? absFx(gap) <= fx('0.000000000001') : true));
+  put('hedge.quantity_verified', quantityComplete ? [...exactGaps.entries()].every(([key, gap]) => gap !== null
+    && absFx(gap) <= (key.startsWith('ETH:') ? fx('0.001') : fx('0.000000000001'))) : null,
     seenAt, quantityComplete, 'BTC funding quantity tolerance is not configured; nonzero BTC differences remain UNKNOWN', gaps);
   put('hedge.direction_match', matchComplete ? !mismatchedDirection : null, seenAt, matchComplete, 'Incomplete funding direction / quantities');
   for (const [venue, id] of [['HYPERLIQUID', 'hl'], ['BINANCE', 'binance']] as const) put(`hedge.${id}_size_gap_eth`,
-    matchComplete ? Math.max(0, ...gaps.filter(d => d.label.startsWith(`ETH:${venue}:`)).map(d => Math.abs(d.value as number))) : null,
+    matchComplete ? metricNumber([...exactGaps.entries()].filter(([key]) => key.startsWith(`ETH:${venue}:`))
+      .reduce((max, [, gap]) => gap === null ? max : absFx(gap) > max ? absFx(gap) : max, 0n)) : null,
     seenAt, matchComplete, 'Incomplete funding quantities', gaps);
   const maturityMatch = boros.every(b => b.maturity! > now);
   put('hedge.maturity_match', borosComplete ? maturityMatch : null, asset?.time ?? null, borosComplete, 'Incomplete live funding maturities');

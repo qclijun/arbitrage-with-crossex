@@ -245,6 +245,38 @@ describe('read-only shared Risk report', () => {
     expect(metric(r, 'hedge.residual_equity_ratio').value).toBeCloseTo(.3);
     expect(r.checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('CRITICAL');
   });
+  it('preserves exact signed ETH and BTC quantity totals from decimal position strings', async () => {
+    const f = await fixture(); addBtc(f); const s = f.snapshots;
+    const addLeg = (base: 'ETH' | 'BTC', venue: string, quote: string, side: 'LONG' | 'SHORT', qty: string) => {
+      const symbol = `${venue}_FUTURE_${base}_${quote}`;
+      s.positions.positions.push({ symbol, positionQty: side === 'SHORT' ? `-${qty}` : qty,
+        markPrice: base === 'ETH' ? '3000' : '50000', upnl: '0', updateTime: String(now * 1000) });
+      let group = s.positions.exposure.find((g: any) => g.base === base);
+      if (!group) { group = { base, legs: [] }; s.positions.exposure.push(group); }
+      group.legs.push({ symbol, exchange: venue, quote, side, qty: Number(qty), value: Number(qty) * (base === 'ETH' ? 3000 : 50000) });
+      const tokenId = base === 'ETH' ? 2 : 1;
+      const marketAcc = address + f.scope.accountId!.toString(16).padStart(2, '0') + tokenId.toString(16).padStart(4, '0') + 'ffffff';
+      s.asset.risk.positions.push({ ...s.asset.risk.positions[0], marketAcc, venue, base, tokenId,
+        side, marketId: 200 + s.asset.risk.positions.length,
+        sizeToken: Number(qty), sizeBase: Number(qty), maturity: now + 80 * 86400 });
+    };
+
+    s.positions.positions = [];
+    s.positions.exposure = [];
+    for (const [base, venue, side, qty] of [
+      ['ETH', 'HYPERLIQUID', 'LONG', '0.1'], ['ETH', 'BINANCE', 'LONG', '0.2'], ['ETH', 'OKX', 'SHORT', '0.3'],
+      ['BTC', 'HYPERLIQUID', 'LONG', '0.1'], ['BTC', 'OKX', 'LONG', '0.2'], ['BTC', 'BINANCE', 'SHORT', '0.3'],
+    ] as const) addLeg(base, venue, base === 'ETH' && venue === 'HYPERLIQUID' ? 'USDC' : 'USDT', side, qty);
+
+    const response = await app.inject({ url: f.url, headers: HOST });
+    expect(response.statusCode, response.body).toBe(200);
+    const r = response.json().data;
+    expect(metric(r, 'gate.equity_usd').complete).toBe(true);
+    expect(metric(r, 'hedge.perp_net_eth').value).toBe(0);
+    expect(metric(r, 'hedge.perp_net_btc').value).toBe(0);
+    expect(metric(r, 'hedge.residual_usd').value).toBe(0);
+    expect(metric(r, 'data.coverage_complete').value).toBe(true);
+  });
   it('shows signed account inflow while an independent BTC outflow pool remains critical', async () => {
     const f = await fixture(), btc = addBtc(f), s = f.snapshots;
     s.collateral.tokens[1].cross.availableInitialMargin = .0001;
