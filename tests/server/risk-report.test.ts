@@ -96,6 +96,71 @@ describe('read-only shared Risk report', () => {
     }
     expect(metric(r, 'boros.buffer_runway_days')).toMatchObject({ value: null, applicability: 'NA', complete: true });
   });
+  it('does not require opposite Boros sides to balance within each maturity bucket', async () => {
+    const f = await fixture();
+    f.snapshots.asset.risk.positions[1].maturity += 86400;
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(true);
+    expect(metric(r, 'hedge.direction_match').value).toBe(true);
+    expect(metric(r, 'hedge.maturity_match').value).toBe(true);
+    expect(r.checks.find((c: any) => c.id === 'hedge.maturity_match').status).toBe('OK');
+  });
+  it('still reports funding legs on the wrong side of their perpetual position', async () => {
+    const f = await fixture();
+    f.snapshots.asset.risk.positions[0].side = 'LONG';
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.maturity_match').value).toBe(true);
+    expect(metric(r, 'hedge.direction_match').value).toBe(false);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(false);
+  });
+  it('does not count expired Boros legs as current funding coverage', async () => {
+    const f = await fixture();
+    f.snapshots.asset.risk.positions[0].maturity = now - 1;
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.maturity_match').value).toBe(false);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(false);
+  });
+  it('uses the same account loss thresholds when history or recovery margin changes', async () => {
+    const f = await fixture();
+    f.snapshots.positions.positions[0].upnl = '-30';
+    f.snapshots.supplement.settings = { thresholds: {}, recoveryMarginFraction: .5 };
+    const ruleId = 'basis.mark_spread_usd_per_eth';
+    const status = (report: any) => report.checks.find((c: any) => c.id === ruleId).status;
+    const clean = await readReport(f);
+    const criticalHistory = await readReport(f, { scope: f.scope, state: {
+      [ruleId]: { status: 'CRITICAL', criticalMetrics: ['gate.loss_equity_ratio'] },
+    } });
+    expect(status(clean)).toBe('WARNING');
+    expect(status(criticalHistory)).toBe(status(clean));
+
+    f.snapshots.positions.positions[0].upnl = '-24';
+    const warningHistory = await readReport(f, { scope: f.scope, state: {
+      [ruleId]: { status: 'WARNING', criticalMetrics: [] },
+    } });
+    expect(status(warningHistory)).toBe('WARNING');
+  });
+  it.each(['USDT', 'USDC'])('values %s collateral and settlement at 1:1 when no quote is supplied', async symbol => {
+    const f = await fixture(), tokenId = 3, marketAcc = address + '000003ffffff';
+    f.snapshots.collateral.tokens.push({ symbol, tokenId, priceUsd: null,
+      cross: { marketAcc, activePositions: 0, netBalance: 100, initialMargin: 0, maintenanceMargin: 0,
+        availableInitialMargin: 100, imCoverage: null, mmCoverage: null }, isolated: [] });
+    f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: 10 });
+    const r = await readReport(f);
+    expect(metric(r, 'boros.equity_usd').value).toBe(400);
+    expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(10);
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: symbol, value: 10, unit: `${symbol}/24h` });
+  });
+  it('keeps settlement USD unknown when a non-stablecoin quote is missing', async () => {
+    const f = await fixture(), tokenId = 4, marketAcc = address + '000004ffffff';
+    f.snapshots.collateral.tokens.push({ symbol: 'HYPE', tokenId, priceUsd: null,
+      cross: { marketAcc, activePositions: 1, netBalance: 10, initialMargin: 1, maintenanceMargin: .5,
+        availableInitialMargin: 1, imCoverage: 10, mmCoverage: 20 }, isolated: [] });
+    f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: 2 });
+    const r = await readReport(f);
+    expect(metric(r, 'boros.settlement_net_24h_usd').value).toBeNull();
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: 'HYPE', value: 2, unit: 'HYPE/24h' });
+    expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('UNKNOWN');
+  });
   it('supports BTC and keeps opposing ETH/BTC USD residuals from cancelling', async () => {
     const f = await fixture(); addBtc(f); const s = f.snapshots;
     s.positions.positions[1].positionQty = '3.01'; s.positions.exposure[0].legs[1].qty = 3.01;

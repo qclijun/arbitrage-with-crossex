@@ -8,6 +8,10 @@ const number = (v: unknown) => typeof v === 'string' || typeof v === 'number' ? 
 const total = (xs: unknown[]) => xs.every(finite) ? xs.reduce<number>((n, x) => n + (x as number), 0) : null;
 const bases = ['ETH', 'BTC'] as const;
 type Detail = NonNullable<MetricEvidence['details']>[number];
+const priceUsd = (token: { symbol: string; priceUsd?: number | null }) => {
+  if (['USDT', 'USDC'].includes(token.symbol.toUpperCase())) return 1;
+  return finite(token.priceUsd) && token.priceUsd > 0 ? token.priceUsd : null;
+};
 
 /** Account estimates never assign an aggregate venue position's PnL to a pair. */
 export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now: number,
@@ -80,8 +84,11 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   const poolComplete = Boolean(subject(collateral?.data) && new Set(pools.map(p => p.marketAcc.toLowerCase())).size === pools.length
     && pools.every(p => poolIdentity(p.marketAcc, p.token.tokenId) && finite(p.netBalance) && finite(p.initialMargin)
       && p.initialMargin >= 0 && finite(p.maintenanceMargin) && p.maintenanceMargin >= 0 && finite(p.availableInitialMargin)
-      && finite(p.activePositions) && (p.netBalance === 0 && p.activePositions === 0 || finite(p.token.priceUsd) && p.token.priceUsd > 0)));
-  const balances = pools.map(p => p.netBalance === 0 ? 0 : finite(p.netBalance) && finite(p.token.priceUsd) ? p.netBalance * p.token.priceUsd : null);
+      && finite(p.activePositions) && (p.netBalance === 0 && p.activePositions === 0 || priceUsd(p.token) !== null)));
+  const balances = pools.map(p => {
+    const px = priceUsd(p.token);
+    return p.netBalance === 0 ? 0 : finite(p.netBalance) && px !== null ? p.netBalance * px : null;
+  });
   const borosEquity = poolComplete ? total(balances) : null;
   const borosPnl = borosComplete ? total(boros.map(b => b.mtmUsd)) : null;
   const poolLabel = (p: typeof pools[number]) => `${p.token.symbol} ${p.marketAcc.endsWith('ffffff') ? 'cross' : 'isolated ' + parseInt(p.marketAcc.slice(-6), 16)}`;
@@ -109,7 +116,8 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   const money: unknown[] = [];
   for (const p of window?.pools ?? []) {
     const token = tokens.find(t => t.tokenId === p.tokenId);
-    money.push(p.netToken === 0 ? 0 : token && finite(token.priceUsd) && token.priceUsd > 0 ? p.netToken * token.priceUsd : null);
+    const px = token ? priceUsd(token) : null;
+    money.push(p.netToken === 0 ? 0 : finite(p.netToken) && px !== null ? p.netToken * px : null);
   }
   for (const token of tokens) {
     const net = window?.pools.filter(p => p.tokenId === token.tokenId).reduce((n, p) => n + p.netToken, 0) ?? 0;
@@ -126,7 +134,8 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   put('boros.buffer_runway_days', runway, window?.throughSec ?? null, runwayComplete, 'Missing complete per-pool net outflow / available collateral', runways);
   if (settlementComplete && !runwayComplete && runway !== null) { metrics['boros.buffer_runway_days'].upperBound = true; metrics['boros.buffer_runway_days'].reason = 'Incomplete coverage'; }
   if (runwayComplete && !outflows.length) metrics['boros.buffer_runway_days'].applicability = 'NA';
-  put('boros.settlement_net_24h_usd', settlementComplete ? total(money) : null, window?.throughSec ?? null, settlementComplete,
+  const settlementUsdComplete = settlementComplete && money.every(finite);
+  put('boros.settlement_net_24h_usd', settlementUsdComplete ? total(money) : null, window?.throughSec ?? null, settlementUsdComplete,
     'Missing complete signed settlement window / collateral prices', settlementDetails);
   for (const [base, tokenId] of [['eth', 2], ['btc', 1]] as const) put(`boros.settlement_net_24h_${base}`,
     settlementComplete ? window!.pools.filter(p => p.tokenId === tokenId).reduce((n, p) => n + p.netToken, 0) : null,
@@ -156,19 +165,12 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   for (const [venue, id] of [['HYPERLIQUID', 'hl'], ['BINANCE', 'binance']] as const) put(`hedge.${id}_size_gap_eth`,
     matchComplete ? Math.max(0, ...gaps.filter(d => d.label.startsWith(`ETH:${venue}:`)).map(d => Math.abs(d.value as number))) : null,
     seenAt, matchComplete, 'Incomplete funding quantities', gaps);
-  const maturities = new Set(boros.map(b => `${b.base}:${b.maturity}`));
-  const maturityMatch = [...maturities].every(key => {
-    const [base, maturity] = key.split(':');
-    const bs = boros.filter(b => b.base === base && String(b.maturity) === maturity);
-    const longs = bs.filter(b => b.side === 'LONG').reduce((n, b) => n + b.sizeBase!, 0);
-    const shorts = bs.filter(b => b.side === 'SHORT').reduce((n, b) => n + b.sizeBase!, 0);
-    return Number(maturity) > now && Math.abs(longs - shorts) <= (base === 'ETH' ? .001 : 1e-12);
-  });
+  const maturityMatch = boros.every(b => b.maturity! > now);
   put('hedge.maturity_match', borosComplete ? maturityMatch : null, asset?.time ?? null, borosComplete, 'Incomplete live funding maturities');
   const days = borosComplete && boros.length ? (Math.min(...boros.map(b => b.maturity!)) - now) / 86400 : null;
   put('rollover.days_to_maturity', days, asset?.time ?? null, borosComplete, 'Missing complete live maturities; empty account has no maturity clock');
   const complete = Boolean(account && perpsComplete && borosComplete && poolComplete && settlementComplete
-    && borosPnl !== null && borosEquity !== null && gatePnl !== null && residual !== null);
+    && settlementUsdComplete && borosPnl !== null && borosEquity !== null && gatePnl !== null && residual !== null);
   put('data.coverage_complete', complete, seenAt, true, 'Incomplete ETH/BTC account / collateral pool evidence');
   return { metrics, boros, days, pauseRollover: borosComplete && days !== null && days >= 14 };
 }
