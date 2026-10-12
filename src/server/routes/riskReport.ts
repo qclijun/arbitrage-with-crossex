@@ -3,7 +3,7 @@ import type { AppDeps } from '../app';
 import { CoreError } from '../../core/errors';
 import { credentialIdentity } from '../readScope';
 import { sameRiskTerminal } from '../riskTerminal';
-import { evaluateRisk, rules, scopeKey, visibleRiskChecks, type RiskScope, type RiskState } from '../../core/risk';
+import { contracts, evaluateRisk, rules, scopeKey, visibleRiskChecks, type RiskScope, type RiskState } from '../../core/risk';
 import { riskMeasurements, type RiskInputs, type RiskRead } from '../../../web/src/lib/riskSources';
 import type { ReadEvidence } from '../../../web/src/api/client';
 import type { ProducerScope } from './riskEvidence';
@@ -19,7 +19,7 @@ function previousReport(raw?: string): PreviousReport | null {
     for (const [id, entry] of Object.entries(value.state)) {
       const rule = rules.find(r => r.id === id);
       if (!rule || !entry || !['OK', 'UNKNOWN', 'WARNING', 'CRITICAL', 'PAUSED'].includes(entry.status)
-        || !Array.isArray(entry.criticalMetrics) || !entry.criticalMetrics.every(m => rule.metrics.includes(m))) throw new Error();
+        || !Array.isArray(entry.criticalMetrics) || !entry.criticalMetrics.every(m => Boolean(contracts[m]))) throw new Error();
     }
     return value;
   } catch { throw new CoreError('Invalid prior Risk state', 'validation'); }
@@ -35,7 +35,7 @@ export function riskReportRoutes(_deps: AppDeps) {
       const accountId = Number(process.env.BOROS_ACCOUNT_ID ?? 0);
       if (!Number.isInteger(accountId) || accountId < 0 || accountId > 255) throw new CoreError('Invalid Risk subaccount', 'validation');
       const previous = previousReport(query.previous);
-      const scope: RiskScope = { credentialId: credentialIdentity(_deps), address, accountId, pool: 'ETH-cross' };
+      const scope: RiskScope = { credentialId: credentialIdentity(_deps), address, accountId, pool: 'account' };
       const metadata = new WeakMap<object, ReadEvidence>();
       const errors: Record<string, string> = {};
       const headers = { host: req.headers.host ?? 'localhost:6688', 'x-arb-token': req.headers['x-arb-token'] as string };
@@ -84,8 +84,9 @@ export function riskReportRoutes(_deps: AppDeps) {
       // Credential IDs rotate on a terminal restart. A verified stable Gate
       // user + wallet/subaccount identity preserves recovery state across it.
       const sameSubject = !previous?.scope || previous.scope.address === address
-        && previous.scope.accountId === accountId && previous.scope.pool === scope.pool;
-      const prior = previous && (previous.scope && scopeKey(previous.scope) === scopeKey(scope)
+        && previous.scope.accountId === accountId && ['ETH-cross', 'account'].includes(previous.scope.pool);
+      const sameCredential = previous?.scope && previous.scope.credentialId === scope.credentialId && sameSubject;
+      const prior = previous && (sameCredential || previous.scope && scopeKey(previous.scope) === scopeKey(scope)
         || sameSubject && sameLegacy) ? previous.state : {};
       const report = evaluateRisk(scope, adapted.metrics, now, prior, adapted.pauseRollover, settings);
       const checks = visibleRiskChecks(report.checks);

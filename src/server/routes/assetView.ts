@@ -53,7 +53,7 @@ import { TTL } from '../cache';
 import { currentRebateClient, loggedInRoot } from '../borosRebate';
 import { GATE_HISTORY_FLOOR_MS, INTEREST_MAX_PAGES, INTEREST_PAGE_SIZE } from '../interestLedger';
 import { LedgerStore } from '../ledgerStore';
-import { netSettlementWindow } from '../../core/boros/riskSettlement';
+import { accountSettlementWindow, netSettlementWindow } from '../../core/boros/riskSettlement';
 import type { RiskAssetEvidence, RiskBorosPosition } from '../../core/risk';
 import { earliestSupportedOpenMs, TrackingStartFile } from '../trackingStart';
 import { borosFeesKnown, currentBorosCycle } from '../borosTracking';
@@ -1351,23 +1351,24 @@ export function createAssetViewBuilder(deps: AppDeps) {
 
     // Keep quantities and directions even when USD pricing is unavailable.
     const riskPositions: RiskBorosPosition[] = [];
-    let riskPositionsComplete = zones.every(z => !z.cross || z.cross.positionsComplete === true);
+    let riskPositionsComplete = zones.every(z => [...(z.cross ? [z.cross] : []), ...z.isolated].every(g => g.positionsComplete === true));
     const amount18 = (v: unknown): number | null => typeof v === 'string' && /^-?\d+$/.test(v)
       && Number.isFinite(Number(v)) ? Number(v) / 1e18 : null;
-    for (const zone of zones.filter(z => z.tokenId === 2)) {
-      const group = zone.cross;
-      if (!group) continue;
-      const expected = address.toLowerCase() + '000002ffffff';
-      if (group.marketAcc.toLowerCase() !== expected) { riskPositionsComplete = false; continue; }
+    for (const zone of zones) {
+      for (const group of [...(zone.cross ? [zone.cross] : []), ...zone.isolated]) {
+      const prefix = address.toLowerCase() + '00' + zone.tokenId.toString(16).padStart(4, '0');
+      if (!group.marketAcc.toLowerCase().startsWith(prefix) || !/^0x[a-f0-9]{52}$/i.test(group.marketAcc)) { riskPositionsComplete = false; continue; }
       for (const position of group.marketPositions) {
         const size = amount18(position.notionalSize);
         if (size === null) { riskPositionsComplete = false; continue; }
         if (size === 0) continue;
         const market = marketById.get(position.marketId);
-        if (!market || market.base !== 'ETH' || market.tokenId !== 2 || !Number.isFinite(market.maturity)) riskPositionsComplete = false;
-        const price = collateralPriceUsd.get(2);
+        if (!market || !['ETH', 'BTC'].includes(market.base) || market.tokenId !== zone.tokenId || !Number.isFinite(market.maturity)) riskPositionsComplete = false;
+        const price = collateralPriceUsd.get(zone.tokenId);
         const mtm = amount18(position.pnl.unrealisedPnl);
         riskPositions.push({ marketAcc: group.marketAcc, marketId: position.marketId,
+          base: market?.base, tokenId: zone.tokenId,
+          sizeBase: market && ((market.base === 'ETH' && zone.tokenId === 2) || (market.base === 'BTC' && zone.tokenId === 1)) ? Math.abs(size) : null,
           venue: market ? normalizeVenue(market.venue) : null, maturity: market?.maturity ?? null,
           side: size > 0 ? 'LONG' : 'SHORT', sizeToken: Math.abs(size),
           entryApr: position.fixedApr, markApr: Number.isFinite(position.markApr) ? position.markApr : null,
@@ -1375,17 +1376,21 @@ export function createAssetViewBuilder(deps: AppDeps) {
           notionalUsd: price && price > 0 ? Math.abs(size) * price : null,
           settleFeeApr: market?.settleFeeApr ?? null });
       }
+      }
     }
     const ledgerThrough = ledgerRead.observedAt === null ? nowSec : Math.floor(ledgerRead.observedAt / 1000);
     const net = netSettlementWindow(ledger, address, 0, ledgerThrough);
     const settlement = ledgerRead.stale ? { ...net, netEth: null, complete: false,
       reason: 'Settlement producer read incomplete / stale' } : net;
+    const allNet = accountSettlementWindow(ledger, address, 0, ledgerThrough);
+    const accountSettlements = ledgerRead.stale ? { ...allNet, pools: [], complete: false,
+      reason: 'Settlement producer read incomplete / stale' } : allNet;
     const out: AssetViewOut = {
       trackingStart: { complete: unknownCycles.size === 0 && txnsComplete.every(Boolean) && perpAvailable && closedAvailable
           && !sourceStale && borosPositionsComplete && perpClosedFromSec === 0,
         corrected: gateSinceSec !== null && defaultSinceSec !== null && defaultSinceSec < gateSinceSec },
-      risk: { address, accountId: 0, observedAt: Math.min(marketObservedAt, collateralObservedAt),
-        stale: sourceStale, positionsComplete: riskPositionsComplete, positions: riskPositions, settlement },
+      risk: { version: 2, address, accountId: 0, observedAt: Math.min(marketObservedAt, collateralObservedAt),
+        stale: sourceStale, positionsComplete: riskPositionsComplete, positions: riskPositions, settlement, settlements: accountSettlements },
       sinceSec,
       nowSec,
       defaultSinceSec,

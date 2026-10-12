@@ -114,8 +114,10 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(check['metrics']['custody.incident_status']['expiresAt'], NOW + 50)
 
     def test_contract_covers_every_metric_with_units_and_source(self):
-        self.assertEqual(set(CONTRACTS), {m for r in self.rules for m in r['metrics']})
-        self.assertEqual(len(CONTRACTS), 68)
+        self.assertEqual(set(CONTRACTS), {m for r in self.rules for m in [*r['metrics'], *r.get('account', {}).get('metrics', [])]})
+        for rule in self.rules:
+            for version in [rule, rule.get('account', rule)]:
+                self.assertTrue({c[0] for c in version['conditions']}.issubset(version['metrics']))
         for contract in CONTRACTS.values():
             self.assertTrue(contract['unit'])
             self.assertTrue(contract['source'])

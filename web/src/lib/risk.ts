@@ -5,7 +5,7 @@ export function formatRiskValue(value: unknown, unit: string): string {
   if (typeof value !== 'number') return String(value);
   if (unit === 'unix seconds') return formatRiskTime(value);
   if (unit === 'count') return String(value);
-  const digits = unit.startsWith('ETH') ? 6 : ['ratio', 'APR fraction', 'ratio lower bound'].includes(unit) ? 4 : 2;
+  const digits = unit.startsWith('BTC') ? 8 : unit.startsWith('ETH') ? 6 : ['ratio', 'APR fraction', 'ratio lower bound'].includes(unit) ? 4 : 2;
   return value !== 0 && Math.abs(value) < 10 ** -digits ? value.toExponential(2) : value.toFixed(digits);
 }
 

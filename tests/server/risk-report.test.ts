@@ -14,12 +14,12 @@ afterEach(async () => { await app?.close(); vi.useRealTimers(); });
 async function fixture() {
   vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
   const deps = {} as AppDeps;
-  const scope: RiskScope = { credentialId: credentialIdentity(deps), address, accountId: 0, pool: 'ETH-cross' };
+  const scope: RiskScope = { credentialId: credentialIdentity(deps), address, accountId: 0, pool: 'account' };
   const meta = { ts: now * 1000, observedAt: now * 1000, credentialId: scope.credentialId, coverageComplete: true };
   const legs = ['HYPERLIQUID', 'BINANCE'].map((exchange, i) => ({ exchange,
-    symbol: exchange + '_FUTURE_ETH_' + (i ? 'USDT' : 'USDC'), side: i ? 'LONG' : 'SHORT', qty: 3, value: 9000 }));
+    symbol: exchange + '_FUTURE_ETH_' + (i ? 'USDT' : 'USDC'), quote: i ? 'USDT' : 'USDC', side: i ? 'LONG' : 'SHORT', qty: 3, value: 9000 }));
   const boros = legs.map((p, i) => ({ marketAcc: pool, marketId: 128 + i, venue: p.exchange, side: p.side,
-    sizeToken: 3.00013, maturity: now + 80 * 86400, entryApr: i ? .04 : .08, markApr: i ? .04 : .08,
+    base: 'ETH', tokenId: 2, sizeBase: 3.00013, sizeToken: 3.00013, maturity: now + 80 * 86400, entryApr: i ? .04 : .08, markApr: i ? .04 : .08,
     mtmUsd: 0, notionalUsd: 9000, settleFeeApr: .001 }));
   const snapshots: Record<string, any> = {
     account: { userId: 'gate-user', marginBalance: '200', initialMargin: '100', maintenanceMargin: '50',
@@ -27,10 +27,11 @@ async function fixture() {
     positions: { positions: legs.map((p, i) => ({ symbol: p.symbol, positionQty: i ? '3' : '-3', markPrice: '3000', upnl: '0', updateTime: String(now * 1000) })),
       exposure: [{ base: 'ETH', legs }] },
     interest: { buckets: [{ coin: 'USDT', venue: 'BINANCE', borrow: 0, interestPerDayUsd: 0 }, { coin: 'USDC', venue: 'HYPERLIQUID', borrow: 0, interestPerDayUsd: 0 }] },
-    collateral: { address, accountId: 0, observedAt: now * 1000, stale: false, tokens: [{ tokenId: 2, priceUsd: 3000,
-      cross: { marketAcc: pool, netBalance: .1, initialMargin: .04, maintenanceMargin: .02, availableInitialMargin: .04, imCoverage: 2.5, mmCoverage: 5 }, isolated: [] }] },
+    collateral: { address, accountId: 0, observedAt: now * 1000, stale: false, tokens: [{ symbol: 'ETH', tokenId: 2, priceUsd: 3000,
+      cross: { marketAcc: pool, activePositions: 2, netBalance: .1, initialMargin: .04, maintenanceMargin: .02, availableInitialMargin: .04, imCoverage: 2.5, mmCoverage: 5 }, isolated: [] }] },
     asset: { assets: [], warnings: [], coverage: { borosPositionsComplete: true, borosTxnsComplete: true, backfilling: false },
-      risk: { address, accountId: 0, observedAt: now * 1000, stale: false, positionsComplete: true, positions: boros,
+      risk: { version: 2, address, accountId: 0, observedAt: now * 1000, stale: false, positionsComplete: true, positions: boros,
+        settlements: { pools: [], complete: true, fromSec: now - 86400, throughSec: now, reason: 'complete ledger' },
         settlement: { netEth: 0, complete: true, fromSec: now - 86400, throughSec: now, reason: 'complete ledger' } } },
     supplement: { scope, metrics: {}, baseline: null, fundingGapStartedAt: null, reason: '' },
     deals: [], orders: [], alerts: [], health: { status: 'ok' },
@@ -55,6 +56,105 @@ async function fixture() {
 }
 
 describe('read-only shared Risk report', () => {
+  const readReport = async (f: Awaited<ReturnType<typeof fixture>>, previous?: unknown) => (await app.inject({
+    url: f.url + (previous ? '&previous=' + encodeURIComponent(JSON.stringify(previous)) : ''), headers: HOST,
+  })).json().data;
+  const metric = (r: any, id: string) => r.checks.flatMap((c: any) => Object.entries(c.metrics)).find(([k]: any) => k === id)?.[1] as any;
+  const addBtc = (f: Awaited<ReturnType<typeof fixture>>) => {
+    const s = f.snapshots, acc = address + '000001ffffff';
+    s.collateral.tokens.push({ symbol: 'BTC', tokenId: 1, priceUsd: 50000,
+      cross: { marketAcc: acc, activePositions: 2, netBalance: .01, initialMargin: .002, maintenanceMargin: .001,
+        availableInitialMargin: .001, imCoverage: 5, mmCoverage: 10 }, isolated: [] });
+    for (const [venue, side, id] of [['HYPERLIQUID', 'SHORT', 300], ['OKX', 'LONG', 301]] as const) {
+      const symbol = `${venue}_FUTURE_BTC_USDT`;
+      s.positions.positions.push({ symbol, positionQty: side === 'SHORT' ? '-0.1' : '0.1', markPrice: '50000', upnl: '0', updateTime: String(now * 1000) });
+      let g = s.positions.exposure.find((g: any) => g.base === 'BTC');
+      if (!g) { g = { base: 'BTC', legs: [] }; s.positions.exposure.push(g); }
+      g.legs.push({ symbol, exchange: venue, quote: 'USDT', side, qty: .1, value: 5000 });
+      s.asset.risk.positions.push({ marketAcc: acc, marketId: id, venue, base: 'BTC', tokenId: 1, side,
+        sizeToken: .1, sizeBase: .1, maturity: now + 80 * 86400, mtmUsd: 0, notionalUsd: 5000, entryApr: .05, markApr: .05 });
+    }
+    return acc;
+  };
+  it('handles two ETH maturities sharing one HL perp, including OKX, without pair PnL allocation', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.positions.positions[0].positionQty = '-7';
+    s.positions.exposure[0].legs[0].qty = 7;
+    s.positions.positions.push({ symbol: 'OKX_FUTURE_ETH_USDT', positionQty: '4', markPrice: '3000', upnl: '20', updateTime: String(now * 1000) });
+    s.positions.exposure[0].legs.push({ symbol: 'OKX_FUTURE_ETH_USDT', exchange: 'OKX', quote: 'USDT', side: 'LONG', qty: 4, value: 12000 });
+    for (const [venue, side, id] of [['HYPERLIQUID', 'SHORT', 196], ['OKX', 'LONG', 198]] as const) s.asset.risk.positions.push({
+      ...s.asset.risk.positions[0], venue, side, marketId: id, sizeToken: 4.00083, sizeBase: 4.00083, maturity: now + 20 * 86400, mtmUsd: 2,
+    });
+    const r = await readReport(f);
+    expect(r.complete).toBe(true);
+    expect(metric(r, 'gate.upnl_usd').value).toBe(20);
+    expect(metric(r, 'boros.rate_mtm_usd').value).toBe(4);
+    expect(metric(r, 'hedge.perp_net_eth').value).toBe(0);
+    expect(metric(r, 'hedge.hl_size_gap_eth').value).toBeCloseTo(.00096);
+    for (const id of ['boros.adverse_spread_pp', 'boros.settlement_net_24h_eth', 'basis.mark_spread_usd_per_eth', 'hedge.perp_net_eth', 'hedge.hl_size_gap_eth', 'hedge.maturity_match']) {
+      expect(r.checks.find((c: any) => c.id === id).status).toBe('OK');
+    }
+    expect(metric(r, 'boros.buffer_runway_days')).toMatchObject({ value: null, applicability: 'NA', complete: true });
+  });
+  it('supports BTC and keeps opposing ETH/BTC USD residuals from cancelling', async () => {
+    const f = await fixture(); addBtc(f); const s = f.snapshots;
+    s.positions.positions[1].positionQty = '3.01'; s.positions.exposure[0].legs[1].qty = 3.01;
+    s.positions.positions[2].positionQty = '-0.1006'; s.positions.exposure[1].legs[0].qty = .1006;
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.perp_net_eth').value).toBeCloseTo(.01);
+    expect(metric(r, 'hedge.perp_net_btc').value).toBeCloseTo(-.0006);
+    expect(metric(r, 'hedge.residual_usd').value).toBeCloseTo(60);
+    expect(metric(r, 'hedge.residual_equity_ratio').value).toBeCloseTo(.3);
+    expect(r.checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('CRITICAL');
+  });
+  it('shows signed account inflow while an independent BTC outflow pool remains critical', async () => {
+    const f = await fixture(), btc = addBtc(f), s = f.snapshots;
+    s.collateral.tokens[1].cross.availableInitialMargin = .0001;
+    s.asset.risk.settlements.pools = [{ marketAcc: pool, tokenId: 2, netToken: .01 }, { marketAcc: btc, tokenId: 1, netToken: -.0001 }];
+    const r = await readReport(f);
+    expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(25);
+    expect(metric(r, 'boros.settlement_net_24h_btc').value).toBe(-.0001);
+    expect(metric(r, 'boros.buffer_runway_days').value).toBe(1);
+    expect(metric(r, 'boros.buffer_runway_days').details.some((d: any) => d.value === 'NA')).toBe(true);
+    expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('CRITICAL');
+  });
+  it('does not offset Gate account losses with Boros profits', async () => {
+    const f = await fixture(); f.snapshots.positions.positions[0].upnl = '-30'; f.snapshots.asset.risk.positions[0].mtmUsd = 100;
+    const r = await readReport(f);
+    expect(metric(r, 'gate.loss_equity_ratio').value).toBe(.15);
+    expect(metric(r, 'boros.mtm_loss_equity_ratio').value).toBe(0);
+    expect(r.checks.find((c: any) => c.id === 'basis.mark_spread_usd_per_eth').status).toBe('WARNING');
+  });
+  it('preserves threshold units and known legacy critical during account migration', async () => {
+    const f = await fixture();
+    const r = await readReport(f, { scope: { ...f.scope, pool: 'ETH-cross' }, state: {
+      'basis.mark_spread_usd_per_eth': { status: 'CRITICAL', criticalMetrics: ['basis.loss_profit_ratio'] },
+    } });
+    const c = r.checks.find((c: any) => c.id === 'basis.mark_spread_usd_per_eth');
+    expect(c.status).toBe('CRITICAL'); expect(c.reason).toContain('basis.loss_profit_ratio');
+    expect(c.thresholds).toContainEqual(['gate.loss_equity_ratio', 'gt', .2, 'CRITICAL']);
+  });
+  it('fails closed for unsupported holdings, missing units, stale ledger and foreign pools', async () => {
+    for (const change of [
+      (s: any) => { s.positions.exposure[0].base = 'HYPE'; },
+      (s: any) => { s.asset.risk.positions[0].sizeBase = null; },
+      (s: any) => { s.asset.risk.settlements.complete = false; },
+      (s: any) => { s.collateral.tokens[0].cross.marketAcc = '0x' + '2'.repeat(40) + '000002ffffff'; },
+    ]) {
+      const f = await fixture(); change(f.snapshots);
+      const r = await readReport(f); expect(r.complete).toBe(false); expect(r.counts.UNKNOWN).toBeGreaterThan(0);
+      await app.close();
+    }
+  });
+  it('does not hide a known unhealthy pool when another pool lacks a price', async () => {
+    const f = await fixture(); addBtc(f);
+    f.snapshots.collateral.tokens[0].cross.netBalance = .001;
+    f.snapshots.collateral.tokens[1].priceUsd = null;
+    const r = await readReport(f);
+    expect(r.complete).toBe(false);
+    expect(r.checks.find((c: any) => c.id === 'boros.mm_health_ratio').status).toBe('CRITICAL');
+    expect(metric(r, 'boros.mm_health_ratio').complete).toBe(false);
+  });
   it('matches the page adapter and evaluator without a baseline, including its visible check set', async () => {
     const f = await fixture();
     const response = await app.inject({ url: f.url, headers: HOST });

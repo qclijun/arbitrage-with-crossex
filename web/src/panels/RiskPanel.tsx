@@ -6,7 +6,8 @@ import { riskMeasurements } from '../lib/riskSources';
 import { useTrackedAddress } from './trackedAddress';
 
 const tones: Record<RiskStatus, string> = { CRITICAL: 'text-negative', WARNING: 'text-warning', UNKNOWN: 'text-ink-400', OK: 'text-positive', PAUSED: 'text-ink-500' };
-const featured = ['gate.im_coverage', 'gate.mm_health_ratio', 'gate.liquidation_distance_pct', 'boros.available_eth', 'boros.settlement_net_24h_eth', 'rollover.days_to_maturity'];
+const featured = ['gate.equity_usd', 'gate.upnl_usd', 'gate.loss_equity_ratio', 'boros.equity_usd', 'boros.rate_mtm_usd',
+  'boros.mtm_loss_equity_ratio', 'hedge.perp_net_eth', 'hedge.perp_net_btc', 'hedge.residual_equity_ratio', 'boros.settlement_net_24h_usd', 'boros.buffer_runway_days', 'rollover.days_to_maturity'];
 
 export function RiskPanel() {
   const { address } = useTrackedAddress();
@@ -19,7 +20,7 @@ export function RiskPanel() {
   const asset = useAssetView(address);
   const scope: RiskScope = { credentialId: credentials.data?.identity ?? '', address: address?.toLowerCase() ?? null,
     accountId: collateral.data && collateral.data.address.toLowerCase() === address?.toLowerCase() ? collateral.data.accountId : 0,
-    pool: 'ETH-cross' };
+    pool: 'account' };
   const supplement = useRiskEvidence(scope);
   const deals = useActiveDeals();
   const orders = useOpenOrders();
@@ -56,7 +57,7 @@ export function RiskPanel() {
   return <section aria-label="Risk inspection" className="space-y-5">
     <div className="rounded-lg border border-ink-700 bg-ink-900 p-5">
       <h2 className="text-lg font-semibold text-ink-50">Risk</h2>
-      <p className="mt-2 text-sm text-ink-400">Gate account · {credentials.data?.keyMasked ?? 'UNKNOWN'} · ETH strategy / ETH cross pool</p>
+      <p className="mt-2 text-sm text-ink-400">Gate CrossEx account · {credentials.data?.keyMasked ?? 'UNKNOWN'} · ETH / BTC</p>
       <p className="num mt-1 break-all text-xs text-ink-500">Boros wallet · {scope.address ?? 'UNKNOWN — select a wallet in Settings'} · Subaccount {scope.accountId ?? 'UNKNOWN'}</p>
       <p className="mt-3 text-xs text-ink-500">Management thresholds and conditional models. UNKNOWN is not safe. Terminal HTTP, independent collection and confirmed notification delivery are separate.</p>
       <p role="status" className="mt-3 text-sm text-ink-400">{loading ? 'Loading verified evidence — unavailable checks are UNKNOWN.' : failed ? 'Read failed — last successful values are historical. Known CRITICAL remains until verified recovery.' : 'Shared terminal refresh; source observation times and coverage appear in each check.'}</p>
@@ -67,7 +68,7 @@ export function RiskPanel() {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Key risk values">
       {featured.map(id => {
         const metric = checks.flatMap(c => Object.entries(c.metrics)).find(([k]) => k === id)?.[1];
-        return <div key={id} className="rounded-lg border border-ink-700 bg-ink-900 p-4"><p className="text-xs text-ink-400">{id}</p><p className="num mt-2 break-words text-lg text-ink-50">{formatRiskValue(metric?.value, contracts[id].unit)} <span className="text-xs text-ink-500">{contracts[id].unit}</span></p></div>;
+        return <div key={id} className="rounded-lg border border-ink-700 bg-ink-900 p-4"><p className="text-xs text-ink-400">{id}</p><p className="num mt-2 break-words text-lg text-ink-50">{metric?.applicability === 'NA' ? 'NA' : formatRiskValue(metric?.value, contracts[id].unit)} <span className="text-xs text-ink-500">{contracts[id].unit}</span></p></div>;
       })}
     </div>
     <div className="space-y-3" aria-label="All enabled risk checks">
@@ -75,7 +76,8 @@ export function RiskPanel() {
         <summary className="cursor-pointer text-sm text-ink-200"><span className={`mr-3 font-semibold ${tones[check.status]}`}>{check.status}</span>{check.label}<span className="ml-3 text-xs text-ink-500">{check.id} · {check.coverageComplete ? 'Complete applicable evidence' : 'Incomplete / unknown evidence'}</span></summary>
         <div className="mt-4 space-y-4">
           {Object.entries(check.metrics).map(([id, e]) => <div key={id} className="border-t border-ink-700 pt-3 text-xs text-ink-400">
-            <p className="break-words"><span className="text-ink-200">{id}</span> · <span className="num text-ink-50">{e.lowerBound && e.value !== null ? '≥ ' : ''}{formatRiskValue(e.value, e.unit)} {e.unit}</span></p>
+            <p className="break-words"><span className="text-ink-200">{id}</span> · <span className="num text-ink-50">{e.lowerBound && e.value !== null ? '≥ ' : e.upperBound && e.value !== null ? '≤ ' : ''}{e.applicability === 'NA' ? 'NA' : formatRiskValue(e.value, e.unit)} {e.unit}</span></p>
+            {e.details?.map((d, i) => <p key={i} className="mt-1 break-words">{d.label}: {typeof d.value === 'string' ? d.value : formatRiskValue(d.value, d.unit)} {d.unit}{d.reason ? ' · ' + d.reason : ''}</p>)}
             {e.value === null && e.historicalValue !== null && e.historicalValue !== undefined && <p className="mt-1 text-warning">Historical last success: {formatRiskValue(e.historicalValue, e.unit)} {e.unit} — not current evidence</p>}
             <p className="mt-1">Thresholds: {check.thresholds.filter(c => c[0] === id).map(([, op, threshold, status]) => `${status} ${op} ${threshold} ${e.unit}`).join('; ') || 'Required associated evidence'}</p>
             <p className="mt-1 break-words">Source: {e.source}</p>

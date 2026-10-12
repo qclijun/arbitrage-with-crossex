@@ -66,5 +66,18 @@
   "stablecoin.usdc_deviation": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "独立USD报价，不能把USDT/USDC价恒设1", "collection": "derived"},
   "stablecoin.usdc_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "独立USD报价，不能把USDT/USDC价恒设1", "collection": "external", "positive": true},
   "stablecoin.usdt_deviation": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "独立USD报价，不能把USDT/USDC价恒设1", "collection": "derived"},
-  "stablecoin.usdt_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "独立USD报价，不能把USDT/USDC价恒设1", "collection": "external", "positive": true}
+  "stablecoin.usdt_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "独立USD报价，不能把USDT/USDC价恒设1", "collection": "external", "positive": true},
+  "gate.equity_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "gate.upnl_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "gate.loss_equity_ratio": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "gate.equity_positive": {"unit": "bool", "type": "bool", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "boros.equity_usd": {"unit": "USD", "type": "number", "max_age_seconds": 3600, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "boros.equity_positive": {"unit": "bool", "type": "bool", "max_age_seconds": 3600, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "boros.pool_available_nonnegative": {"unit": "bool", "type": "bool", "max_age_seconds": 3600, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "boros.settlement_net_24h_usd": {"unit": "USD/24h", "type": "number", "max_age_seconds": 3600, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "boros.settlement_net_24h_btc": {"unit": "BTC/24h", "type": "number", "max_age_seconds": 3600, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "hedge.perp_net_btc": {"unit": "BTC", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "hedge.residual_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "hedge.residual_equity_ratio": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "hedge.quantity_verified": {"unit": "bool", "type": "bool", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"}
 }

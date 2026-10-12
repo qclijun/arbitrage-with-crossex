@@ -6,11 +6,11 @@ import { RiskPanel } from './RiskPanel';
 import { TrackedAddressProvider, useTrackedAddress } from './trackedAddress';
 import { STRATEGY_STORAGE_KEY } from './HomeControls';
 import { env, server } from '../test/server';
-import { contracts, rules, type MetricEvidence, type RiskScope, type RiskBaseline } from '../lib/risk';
+import { contracts, effectiveRiskRule, rules, type MetricEvidence, type RiskScope, type RiskBaseline } from '../lib/risk';
 import { useBookId } from './bookId';
 import { savePrefs } from './assets/assetPrefsStore';
 const address = '0x' + '1'.repeat(40), second = '0x' + '2'.repeat(40);
-const scope: RiskScope = { address, credentialId: 'account-a', accountId: 0, pool: 'ETH-cross' };
+const scope: RiskScope = { address, credentialId: 'account-a', accountId: 0, pool: 'account' };
 const pool = address + '000002ffffff';
 const hiddenHistory = ['hedge.market_identity_match', 'positions.unexpected_change_eth'];
 let accountFails = false, margin = '100';
@@ -19,7 +19,7 @@ let baseline: RiskBaseline | null = null;
 const clients: QueryClient[] = [];
 const response = (data: unknown) => HttpResponse.json(env(data, { observedAt: Date.now(), credentialId: scope.credentialId, coverageComplete: true }));
 const positions = () => ['HYPERLIQUID', 'BINANCE'].map((venue, i) => ({ marketAcc: pool, marketId: 128 + i, venue,
-  maturity: Math.floor(Date.now() / 1000) + 20 * 86400, side: i ? 'LONG' : 'SHORT', sizeToken: 3,
+  base: 'ETH', tokenId: 2, sizeBase: 3, maturity: Math.floor(Date.now() / 1000) + 20 * 86400, side: i ? 'LONG' : 'SHORT', sizeToken: 3,
   entryApr: i ? .04 : .12, markApr: i ? .04 : .15, mtmUsd: -2, notionalUsd: 9000, settleFeeApr: .001 }));
 function Controls({ client }: { client: QueryClient }) {
   const wallet = useTrackedAddress();
@@ -57,7 +57,8 @@ beforeEach(() => {
     }),
     http.get('/api/asset-view/:address', () => response({ sinceSec: 0, nowSec: Date.now() / 1000, assets: [], earliestSec: null,
       coverage: { borosPositionsComplete: true, borosTxnsComplete: true, backfilling: false, settlementsFromSec: 0, perpClosedFromSec: 0 }, warnings: [],
-      risk: { address, accountId: 0, observedAt: Date.now(), stale: false, positionsComplete: true, positions: positions(),
+      risk: { version: 2, address, accountId: 0, observedAt: Date.now(), stale: false, positionsComplete: true, positions: positions(),
+        settlements: { pools: [{ marketAcc: pool, tokenId: 2, netToken: -.006 }], complete: true, fromSec: Math.floor(Date.now() / 1000) - 86400, throughSec: Math.floor(Date.now() / 1000), reason: 'Complete incremental net window; fees included' },
         settlement: { netEth: -.006, complete: true, fromSec: Date.now() / 1000 - 86400, throughSec: Date.now() / 1000, reason: 'Complete incremental net ETH window; fees included' } } })),
   );
 });
@@ -65,11 +66,11 @@ afterEach(() => { for (const c of clients.splice(0)) c.clear(); });
 describe('rendered Risk / shared API evidence', () => {
   it('shows current hedge checks as OK and omits historical checks without a baseline', async () => {
     server.use(http.get('/api/positions', () => response({
-      positions: [{ symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', positionQty: '-3' },
-        { symbol: 'BINANCE_FUTURE_ETH_USDT', positionQty: '3' }],
+      positions: [{ symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', positionQty: '-3', markPrice: '3000', upnl: '0' },
+        { symbol: 'BINANCE_FUTURE_ETH_USDT', positionQty: '3', markPrice: '3000', upnl: '0' }],
       exposure: [{ base: 'ETH', legs: [
-        { symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', exchange: 'HYPERLIQUID', side: 'SHORT', qty: 3 },
-        { symbol: 'BINANCE_FUTURE_ETH_USDT', exchange: 'BINANCE', side: 'LONG', qty: 3 },
+        { symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', exchange: 'HYPERLIQUID', quote: 'USDC', side: 'SHORT', qty: 3 },
+        { symbol: 'BINANCE_FUTURE_ETH_USDT', exchange: 'BINANCE', quote: 'USDT', side: 'LONG', qty: 3 },
       ] }],
     })));
     mount();
@@ -108,10 +109,10 @@ describe('rendered Risk / shared API evidence', () => {
     server.events.on('request:start', listener);
     try {
       mount();
-      await waitFor(() => expect(Array.from(document.querySelectorAll('details')).filter(d => d !== check('basis.mark_spread_usd_per_eth'))
+      await waitFor(() => expect(Array.from(document.querySelectorAll('details')).filter(d => !['hedge.hl_size_gap_eth', 'hedge.perp_net_eth'].some(id => d === check(id)))
         .every(d => d.querySelector('summary')?.textContent?.includes('Complete applicable evidence'))).toBe(true));
-      expect(check('basis.mark_spread_usd_per_eth')).toHaveTextContent('Missing fresh scope-matched ETH positions or four-leg pair');
-      const visibleRules = rules.filter(r => r.enabled !== false && r.risk !== 8 && !hiddenHistory.includes(r.id));
+      expect(check('basis.mark_spread_usd_per_eth')).toHaveTextContent('Gate CrossEx 账户浮亏');
+      const visibleRules = rules.filter(r => r.enabled !== false && r.risk !== 8 && !hiddenHistory.includes(r.id)).map(r => effectiveRiskRule(r, scope));
       expect(document.querySelectorAll('details')).toHaveLength(visibleRules.length);
       for (const id of new Set(visibleRules.flatMap(r => r.metrics))) expect(screen.getAllByText(id, { exact: false }).length).toBeGreaterThan(0);
       for (const rule of rules.filter(r => r.enabled === false || r.risk === 8 || hiddenHistory.includes(r.id))) {

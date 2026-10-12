@@ -12,6 +12,19 @@ from risk_monitor import Collector, DEFAULT_CONFIG, ROOT
 
 STATUSES = ('CRITICAL', 'WARNING', 'UNKNOWN', 'OK', 'PAUSED')
 KEY_METRICS = {
+    'gate.equity_usd': 'Gate 账户权益',
+    'gate.upnl_usd': 'Gate 当前浮盈亏',
+    'gate.loss_equity_ratio': 'Gate 浮亏/权益',
+    'boros.equity_usd': 'Boros 账户权益',
+    'boros.mtm_loss_equity_ratio': 'Boros 浮亏/权益',
+    'boros.settlement_net_24h_usd': 'Boros 24h净流入',
+    'boros.settlement_net_24h_eth': 'ETH 24h净流入',
+    'boros.settlement_net_24h_btc': 'BTC 24h净流入',
+    'boros.buffer_runway_days': '流出池最短历史续航',
+    'hedge.perp_net_btc': '永续净 BTC 敞口',
+    'hedge.residual_usd': '永续残余绝对美元敞口',
+    'hedge.residual_equity_ratio': '永续残余敞口/Gate权益',
+    'boros.pool_available_nonnegative': '逐池可用抵押品非负',
     'gate.im_coverage': 'Gate 初始保证金覆盖',
     'gate.mm_health_ratio': 'Gate 维持保证金覆盖',
     'gate.liability_usdt': 'USDT 借款',
@@ -78,7 +91,7 @@ def sanitize(report):
         for key, metric in check['metrics'].items():
             if not isinstance(metric, dict):
                 raise ValueError('Malformed shared Risk metric')
-            metrics[key] = {k: metric.get(k) for k in ('value', 'unit', 'observedAt', 'ttlSeconds', 'complete', 'reason', 'source')}
+            metrics[key] = {k: metric.get(k) for k in ('value', 'unit', 'observedAt', 'ttlSeconds', 'complete', 'reason', 'source', 'applicability', 'details')}
         visible.append(clean({'id': check['id'], 'label': check.get('label', check['id']),
                               'status': check['status'], 'reason': check.get('reason', ''),
                               'recommendedAction': check.get('recommendedAction', ''), 'metrics': metrics}))
@@ -106,13 +119,19 @@ def markdown(report):
             if key not in KEY_METRICS:
                 continue
             value = metric['value']
-            if value is None:
+            if metric.get('applicability') == 'NA':
+                shown = 'NA'
+            elif value is None:
                 shown = 'UNKNOWN'
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 shown = f'{value:.6g}'
             else:
                 shown = str(value)
             rows.append(f"| {KEY_METRICS[key]} | {shown} {metric.get('unit') or ''} | {check['status']} |")
+            for detail in metric.get('details') or []:
+                detail_value = detail.get('value')
+                detail_shown = 'UNKNOWN' if detail_value is None else f'{detail_value:+.6g}' if isinstance(detail_value, (int, float)) and not isinstance(detail_value, bool) else str(detail_value)
+                rows.append(f"| ↳ {detail.get('label', '')} | {detail_shown} {detail.get('unit', '')} | {check['status']} |")
     lines.append('\n'.join(rows))
     attention = [c for c in report['checks'] if c['status'] in STATUSES[:3]]
     for check in attention:

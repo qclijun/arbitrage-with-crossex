@@ -3,6 +3,7 @@ import { readEvidence, type ReadEvidence } from '../api/client';
 import { gateNumber, liquidationLines } from './liquidation';
 import { deriveAsset, pairMaturityProfit } from '../panels/assets/assetModel';
 import { contracts, fundingGapFingerprint, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
+import { accountRiskMeasurements } from './accountRiskSources';
 
 export interface RiskRead<T> { data?: T; isError?: boolean; isPending?: boolean; isPlaceholderData?: boolean }
 export interface RiskInputs {
@@ -345,6 +346,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     const e = metrics[`${group}.incident_status`];
     if (e && !validateEvidence(`${group}.incident_status`, e, scope, now)) put(`${group}.review_age_h`, (now - e.observedAt!) / 3600, e.source, e.observedAt);
   }
+  const accountAdapted = scope.pool === 'account' ? accountRiskMeasurements(scope, input, now, evidenceFor, historicalOnly) : null;
+  if (accountAdapted) Object.assign(metrics, accountAdapted.metrics);
   if (!historicalOnly && (sourcesFailed || markedStale)) {
     const historical = riskMeasurements(scope, input, now, true).metrics;
     for (const [id, entry] of Object.entries(historical)) {
@@ -356,5 +359,6 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
       }
     }
   }
-  return { metrics, pauseRollover: borosComplete && days !== null && days >= 14, boros, days };
+  return { metrics, pauseRollover: accountAdapted?.pauseRollover ?? (borosComplete && days !== null && days >= 14),
+    boros: accountAdapted?.boros ?? boros, days: accountAdapted?.days ?? days };
 }

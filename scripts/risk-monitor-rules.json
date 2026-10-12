@@ -75,7 +75,22 @@
         0,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "2. Boros 逐池可用抵押品",
+      "metrics": [
+        "boros.pool_available_nonnegative"
+      ],
+      "conditions": [
+        [
+          "boros.pool_available_nonnegative",
+          "eq",
+          false,
+          "CRITICAL"
+        ]
+      ],
+      "action": "检查可用抵押品不足的独立池"
+    }
   },
   {
     "id": "boros.adverse_spread_pp",
@@ -113,7 +128,37 @@
         0.2,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "1. Boros 账户浮亏",
+      "metrics": [
+        "boros.rate_mtm_usd",
+        "boros.equity_usd",
+        "boros.mtm_loss_equity_ratio",
+        "boros.equity_positive"
+      ],
+      "conditions": [
+        [
+          "boros.mtm_loss_equity_ratio",
+          "gt",
+          0.1,
+          "WARNING"
+        ],
+        [
+          "boros.mtm_loss_equity_ratio",
+          "gt",
+          0.2,
+          "CRITICAL"
+        ],
+        [
+          "boros.equity_positive",
+          "eq",
+          false,
+          "CRITICAL"
+        ]
+      ],
+      "action": "检查异常抵押池及账户估值，账户盈余不能补足独立抵押池"
+    }
   },
   {
     "id": "boros.settlement_net_24h_eth",
@@ -138,7 +183,31 @@
         2,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "1. Boros 净流入与逐池续航",
+      "metrics": [
+        "boros.settlement_net_24h_usd",
+        "boros.settlement_net_24h_eth",
+        "boros.settlement_net_24h_btc",
+        "boros.buffer_runway_days"
+      ],
+      "conditions": [
+        [
+          "boros.buffer_runway_days",
+          "lt",
+          7,
+          "WARNING"
+        ],
+        [
+          "boros.buffer_runway_days",
+          "lt",
+          2,
+          "CRITICAL"
+        ]
+      ],
+      "action": "检查每个流出池；NA 仅表示完整历史窗口无净流出"
+    }
   },
   {
     "id": "gate.im_coverage",
@@ -303,7 +372,37 @@
         0.5,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "4. Gate CrossEx 账户浮亏",
+      "metrics": [
+        "gate.upnl_usd",
+        "gate.equity_usd",
+        "gate.loss_equity_ratio",
+        "gate.equity_positive"
+      ],
+      "conditions": [
+        [
+          "gate.loss_equity_ratio",
+          "gt",
+          0.1,
+          "WARNING"
+        ],
+        [
+          "gate.loss_equity_ratio",
+          "gt",
+          0.2,
+          "CRITICAL"
+        ],
+        [
+          "gate.equity_positive",
+          "eq",
+          false,
+          "CRITICAL"
+        ]
+      ],
+      "action": "检查账户当前浮亏和保证金；不与 Boros 盈亏抵消"
+    }
   },
   {
     "id": "basis.executable_exit_cost_usd",
@@ -354,7 +453,31 @@
         0.01,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "5. ETH/BTC 永续价格净敞口",
+      "metrics": [
+        "hedge.perp_net_eth",
+        "hedge.perp_net_btc",
+        "hedge.residual_usd",
+        "hedge.residual_equity_ratio"
+      ],
+      "conditions": [
+        [
+          "hedge.residual_equity_ratio",
+          "gt",
+          0.001,
+          "WARNING"
+        ],
+        [
+          "hedge.residual_equity_ratio",
+          "gt",
+          0.01,
+          "CRITICAL"
+        ]
+      ],
+      "action": "核对各标的残余敞口，不跨币抵消，不盲目重复下单"
+    }
   },
   {
     "id": "hedge.hl_size_gap_eth",
@@ -398,7 +521,55 @@
         false,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "5. 每条资金费腿匹配",
+      "metrics": [
+        "hedge.hl_size_gap_eth",
+        "hedge.binance_size_gap_eth",
+        "hedge.direction_match",
+        "hedge.quantity_verified"
+      ],
+      "conditions": [
+        [
+          "hedge.hl_size_gap_eth",
+          "gt",
+          0.001,
+          "WARNING"
+        ],
+        [
+          "hedge.hl_size_gap_eth",
+          "gt",
+          0.01,
+          "CRITICAL"
+        ],
+        [
+          "hedge.binance_size_gap_eth",
+          "gt",
+          0.001,
+          "WARNING"
+        ],
+        [
+          "hedge.binance_size_gap_eth",
+          "gt",
+          0.01,
+          "CRITICAL"
+        ],
+        [
+          "hedge.direction_match",
+          "eq",
+          false,
+          "CRITICAL"
+        ],
+        [
+          "hedge.quantity_verified",
+          "eq",
+          false,
+          "WARNING"
+        ]
+      ],
+      "action": "逐来源检查资金费缺口与过覆盖；净价格敞口为零不代表资金费匹配"
+    }
   },
   {
     "id": "hedge.maturity_match",

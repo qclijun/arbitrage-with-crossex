@@ -6,9 +6,10 @@ export type Condition = [string, 'lt' | 'gt' | 'abs_gt' | 'eq' | 'ne', number | 
 export interface RiskRule {
   id: string; risk: number; label: string; metrics: string[]; sourcePlan: string;
   action: string; conditions: Condition[]; enabled?: boolean;
+  account?: { label: string; metrics: string[]; conditions: Condition[]; action?: string };
 }
 export interface RiskScope {
-  credentialId: string; address: string | null; accountId: number | null; pool: 'ETH-cross';
+  credentialId: string; address: string | null; accountId: number | null; pool: 'ETH-cross' | 'account';
 }
 export interface MetricContract {
   unit: string; type: string; max_age_seconds: number; source: string; values?: string[]; positive?: boolean;
@@ -17,16 +18,23 @@ export interface MetricEvidence {
   value: unknown; unit: string; source: string; evidence: string; observedAt: number | null;
   ttlSeconds: number; scope: RiskScope; complete: boolean; reason?: string; historicalValue?: unknown;
   lowerBound?: boolean;
+  upperBound?: boolean;
+  applicability?: 'NA';
+  details?: Array<{ label: string; value: number | string | null; unit: string; reason?: string }>;
 }
 export interface RiskBorosPosition {
   marketAcc: string; marketId: number; venue: string | null; maturity: number | null;
   side: 'LONG' | 'SHORT'; sizeToken: number; entryApr: number | null; markApr: number | null;
   mtmUsd: number | null; notionalUsd: number | null; settleFeeApr: number | null;
+  base?: string; tokenId?: number; sizeBase?: number | null;
 }
 export interface RiskAssetEvidence {
   address: string; accountId: number; observedAt: number | null; stale: boolean;
   positionsComplete: boolean; positions: RiskBorosPosition[];
   settlement: { netEth: number | null; complete: boolean; fromSec: number; throughSec: number; reason: string };
+  version?: 2;
+  settlements?: { complete: boolean; fromSec: number; throughSec: number; reason: string;
+    pools: Array<{ marketAcc: string; tokenId: number; netToken: number }> };
 }
 export interface RiskBaseline {
   boros: Record<string, number>; perps: Record<string, number>; opened_at: number;
@@ -50,6 +58,9 @@ export interface RiskCheck {
 export const rules = catalog as RiskRule[];
 export const contracts = metricContracts as Record<string, MetricContract>;
 export const severity: Record<RiskStatus, number> = { PAUSED: -1, OK: 0, UNKNOWN: 1, WARNING: 2, CRITICAL: 3 };
+export function effectiveRiskRule(rule: RiskRule, scope: RiskScope): RiskRule {
+  return scope.pool === 'account' && rule.account ? { ...rule, ...rule.account } : rule;
+}
 /** Checks currently displayed by Risk and used by the background notifier. */
 export function visibleRiskChecks(checks: RiskCheck[]): RiskCheck[] {
   return checks.filter(check => check.risk !== 8
@@ -88,7 +99,8 @@ export function validMetric(value: unknown, contract: MetricContract): boolean {
 }
 export function validateEvidence(id: string, entry: MetricEvidence, scope: RiskScope, now: number): string | null {
   const contract = contracts[id];
-  if (!contract || !validMetric(entry.value, contract)) return entry.reason ?? 'Invalid or missing value / type';
+  const na = id === 'boros.buffer_runway_days' && entry.applicability === 'NA' && entry.value === null;
+  if (!contract || (!na && !validMetric(entry.value, contract))) return entry.reason ?? 'Invalid or missing value / type';
   if (entry.unit !== contract.unit) return 'Wrong contract unit';
   if (scopeKey(entry.scope) !== scopeKey(scope) || !scope.credentialId) return 'Account / wallet / subaccount scope not verified';
   if (!entry.source?.trim() || !entry.evidence?.trim()) return 'Missing source / evidence reference';
@@ -105,28 +117,35 @@ export function validateEvidence(id: string, entry: MetricEvidence, scope: RiskS
 export function evaluateRisk(scope: RiskScope, measurements: Record<string, MetricEvidence>, now: number,
   previous: RiskState = {}, pauseRollover = false, settings?: RiskSupplement['settings']) {
   const state: RiskState = {};
-  const checks: RiskCheck[] = rules.filter(r => r.enabled !== false).map(rule => {
+  const checks: RiskCheck[] = rules.filter(r => r.enabled !== false).map(original => {
+    const rule = effectiveRiskRule(original, scope);
     const metrics: Record<string, MetricEvidence> = {};
     for (const id of rule.metrics) {
       const entry = measurements[id] ?? { value: null, unit: contracts[id].unit, source: contracts[id].source,
         evidence: '', observedAt: null, ttlSeconds: contracts[id].max_age_seconds, scope, complete: false,
         reason: 'Missing verified evidence: ' + contracts[id].source };
       const error = validateEvidence(id, entry, scope, now);
-      const usableBound = entry.lowerBound && !entry.complete && error === 'Incomplete coverage' && typeof entry.value === 'number';
+      const usableBound = (entry.lowerBound || entry.upperBound) && !entry.complete && error === 'Incomplete coverage' && typeof entry.value === 'number';
       metrics[id] = error ? { ...entry, value: usableBound ? entry.value : null, complete: false, reason: error,
         historicalValue: entry.historicalValue ?? entry.value } : entry;
     }
-    const missing = rule.metrics.filter(id => metrics[id].value === null || !metrics[id].complete);
+    const missing = rule.metrics.filter(id => (!metrics[id].applicability && metrics[id].value === null) || !metrics[id].complete);
     const old = previous[rule.id];
     let status: RiskStatus = missing.length ? 'UNKNOWN' : 'OK';
     const reasons = missing.map(id => `${id}: ${metrics[id].reason}`);
     const criticalMetrics: string[] = [];
-    const thresholds = settings?.thresholds[rule.id] ?? rule.conditions;
+    const configured = settings?.thresholds[rule.id];
+    // Legacy combinations use different denominators/units; never reinterpret them.
+    const activeThresholds = configured?.length && configured.every(c => rule.metrics.includes(c[0])) ? configured : rule.conditions;
+    const legacyRecovery = scope.pool === 'account' ? original.conditions.filter(c => old?.criticalMetrics.includes(c[0])
+      && c[3] === 'CRITICAL' && rule.metrics.includes(c[0]) && !activeThresholds.some(t => t[0] === c[0] && t[3] === 'CRITICAL')) : [];
+    const thresholds = [...activeThresholds, ...legacyRecovery];
     const recoveryMargin = settings?.recoveryMarginFraction ?? .03;
     for (const [id, op, threshold, level] of thresholds) {
       const value = metrics[id]?.value;
       if (value === null || value === undefined) continue;
       if (metrics[id].lowerBound && !metrics[id].complete && !['gt', 'abs_gt'].includes(op)) continue;
+      if (metrics[id].upperBound && !metrics[id].complete && op !== 'lt') continue;
       let boundary = threshold;
       if (old && severity[old.status] >= severity[level] && typeof threshold === 'number') {
         if (op === 'lt') boundary = threshold + Math.abs(threshold) * recoveryMargin;
@@ -141,7 +160,7 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
         if (level === 'CRITICAL') criticalMetrics.push(id);
       }
     }
-    const unresolved = old?.criticalMetrics.filter(id => metrics[id]?.value === null || !metrics[id]?.complete) ?? [];
+    const unresolved = old?.criticalMetrics.filter(id => !rule.metrics.includes(id) || (!metrics[id]?.applicability && metrics[id]?.value === null) || !metrics[id]?.complete) ?? [];
     if (unresolved.length) { status = 'CRITICAL'; reasons.push('Previous CRITICAL cannot be verified: ' + unresolved.join(', ')); }
     state[rule.id] = { status, criticalMetrics: [...new Set([...criticalMetrics, ...unresolved])] };
     // Pausing never clears previously known danger or its recovery state.

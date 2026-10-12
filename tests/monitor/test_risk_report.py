@@ -86,6 +86,22 @@ class ReadOnlyRiskReportTest(unittest.TestCase):
         self.report['complete'] = False
         self.assertEqual(sanitize(self.report)['status'], 'UNKNOWN')
 
+    def test_account_scope_na_and_pool_details_are_read_only_and_sanitized(self):
+        self.report['scope']['pool'] = 'account'
+        self.report['checks'].append({'id': 'boros.settlement_net_24h_eth', 'label': '净流入', 'status': 'OK',
+            'reason': '', 'metrics': {
+                'boros.settlement_net_24h_usd': {'value': 3, 'unit': 'USD/24h', 'complete': True,
+                    'details': [{'label': 'ETH cross ' + self.root, 'value': .001, 'unit': 'ETH/24h'}]},
+                'boros.buffer_runway_days': {'value': None, 'unit': 'days', 'complete': True, 'applicability': 'NA',
+                    'details': [{'label': 'ETH cross', 'value': 'NA', 'unit': 'days'}]}}})
+        before = {p.name: p.read_bytes() for p in self.folder.iterdir()}
+        code, output, _ = self.invoke()
+        self.assertEqual(code, 0)
+        self.assertIn('NA days', output)
+        self.assertIn('净流入', output)
+        self.assertNotIn(self.root, output)
+        self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir()}, before)
+
     def test_expired_response_or_corrupt_state_fails_closed_without_writing(self):
         self.report['observedAt'] = time.time() - 121
         code, output, _ = self.invoke(True)

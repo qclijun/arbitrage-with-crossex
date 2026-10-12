@@ -217,7 +217,10 @@ def format_check(check):
                 continue
             comparison = '|value| >' if op == 'abs_gt' else operators.get(op, op)
             conditions.append(f'{level} {comparison} {threshold}')
-        text = f"{key}={format_metric_value(metric['value'], metric['unit'])} {metric['unit']}"
+        shown = 'NA' if metric.get('applicability') == 'NA' else format_metric_value(metric['value'], metric['unit'])
+        text = f"{key}={shown} {metric['unit']}"
+        if metric.get('details'):
+            text += ' [' + '; '.join(f"{d['label']}={format_metric_value(d['value'], d['unit'])} {d['unit']}" for d in metric['details']) + ']'
         if conditions:
             text += ' (' + '; '.join(conditions) + ')'
         values.append(text)
@@ -361,7 +364,7 @@ class Collector:
                 or not isinstance(scope.get('address'), str) or not re.fullmatch(r'0x[0-9a-f]{40}', scope['address'])
                 or scope.get('address') != (root or scope.get('address'))
                 or scope.get('accountId') != self.config.get('account_id', 0)
-                or scope.get('pool') != 'ETH-cross' or self.config.get('base', 'ETH') != 'ETH'
+                or scope.get('pool') not in ('ETH-cross', 'account') or self.config.get('base', 'ETH') != 'ETH'
                 or self.config.get('collateral_token_id', 2) != 2
                 or not isinstance(report.get('checks'), list) or not isinstance(report.get('state'), dict)
                 or not isinstance(report.get('collection'), dict) or not isinstance(report.get('complete'), bool)):
@@ -383,7 +386,9 @@ class Collector:
         old_user = (state.get('producer_scope') or {}).get('gate_user_id')
         raw_user = (report['collection'].get('account') or {}).get('userId')
         current_user = str(raw_user).strip() if isinstance(raw_user, (str, int)) and not isinstance(raw_user, bool) else None
-        changed_subject = old_scope and (any(old_scope.get(key) != scope.get(key) for key in ('address', 'accountId', 'pool'))
+        compatible_pool = old_scope.get('pool') in ('ETH-cross', 'account') and scope.get('pool') in ('ETH-cross', 'account')
+        changed_subject = old_scope and (any(old_scope.get(key) != scope.get(key) for key in ('address', 'accountId'))
+                                         or old_scope.get('pool') != scope.get('pool') and not compatible_pool
                                          or old_user and current_user and old_user != current_user)
         if changed_subject:
             for key in ('pending', 'observed_status', 'notified_status', 'consecutive_status', 'notified_at',
@@ -816,6 +821,8 @@ def unavailable_report(state, rules, now, error):
     """Fail closed when the shared evaluator cannot be read, preserving unresolved danger."""
     checks = []
     for rule in rules:
+        if (state.get('shared_scope') or {}).get('pool') == 'account' and rule.get('account'):
+            rule = {**rule, **rule['account']}
         if (rule.get('enabled', True) is False or rule['risk'] == 8
                 or rule['id'] in ('hedge.market_identity_match', 'positions.unexpected_change_eth')):
             continue

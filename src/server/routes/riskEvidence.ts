@@ -39,7 +39,7 @@ export function riskEvidenceRoutes(deps: AppDeps) {
       if (address !== null && !/^0x[0-9a-f]{40}$/.test(address)) throw new CoreError('Invalid Risk address', 'validation');
       const accountId = Number(process.env.BOROS_ACCOUNT_ID ?? 0);
       if (!Number.isInteger(accountId) || accountId < 0 || accountId > 255) throw new CoreError('Invalid Risk subaccount', 'validation');
-      const scope: RiskScope = { credentialId: credentialIdentity(deps), address, accountId, pool: 'ETH-cross' };
+      const scope: RiskScope = { credentialId: credentialIdentity(deps), address, accountId, pool: 'account' };
       const metrics: Record<string, MetricEvidence> = {};
       const put = (id: string, value: unknown, observedAt: number | null, source: string, evidence: string,
         complete = true, ttlSeconds = contracts[id].max_age_seconds) => {
@@ -151,7 +151,7 @@ export function riskEvidenceRoutes(deps: AppDeps) {
         for (const [id, conditions] of Object.entries(record(config.thresholds))) {
           const rule = rules.find(r => r.id === id);
           if (!rule || !Array.isArray(conditions) || !conditions.every(c => Array.isArray(c) && c.length === 4
-            && rule.metrics.includes(c[0]) && ['lt', 'gt', 'abs_gt', 'eq', 'ne'].includes(c[1]) && ['WARNING', 'CRITICAL'].includes(c[3])
+            && [...rule.metrics, ...(rule.account?.metrics ?? [])].includes(c[0]) && ['lt', 'gt', 'abs_gt', 'eq', 'ne'].includes(c[1]) && ['WARNING', 'CRITICAL'].includes(c[3])
             && (contracts[c[0]].type === 'number' ? finite(c[2]) : contracts[c[0]].type === 'bool' ? typeof c[2] === 'boolean' : contracts[c[0]].values?.includes(c[2])))) continue;
           thresholds[id] = conditions as Condition[];
         }
