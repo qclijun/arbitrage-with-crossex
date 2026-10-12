@@ -20,7 +20,7 @@ const clients: QueryClient[] = [];
 const response = (data: unknown) => HttpResponse.json(env(data, { observedAt: Date.now(), credentialId: scope.credentialId, coverageComplete: true }));
 const positions = () => ['HYPERLIQUID', 'BINANCE'].map((venue, i) => ({ marketAcc: pool, marketId: 128 + i, venue,
   base: 'ETH', tokenId: 2, sizeBase: '3', maturity: Math.floor(Date.now() / 1000) + 20 * 86400, side: i ? 'LONG' : 'SHORT', sizeToken: 3,
-  entryApr: i ? .04 : .12, markApr: i ? .04 : .15, mtmUsd: -2, notionalUsd: 9000, settleFeeApr: .001 }));
+  entryApr: i ? .04 : .12, markApr: i ? .04 : .15, mtmUsd: -2, mtmUsdExact: '-2', notionalUsd: 9000, settleFeeApr: .001 }));
 function Controls({ client }: { client: QueryClient }) {
   const wallet = useTrackedAddress();
   const book = useBookId(wallet.address);
@@ -42,7 +42,7 @@ beforeEach(() => {
     http.get('/api/credentials', () => response({ configured: true, keyMasked: 'test…1111', identity: scope.credentialId })),
     http.get('/api/account', () => accountFails ? HttpResponse.json({ ok: false, error: { category: 'network', message: 'offline' } }, { status: 502 })
       : response({ marginBalance: margin, initialMargin: '100', maintenanceMargin: '60', assets: [
-        { coin: 'USDT', exchangeType: 'BINANCE', liability: '10' }, { coin: 'USDC', exchangeType: 'HYPERLIQUID', liability: '0' }] })),
+        { coin: 'USDT', exchangeType: 'BINANCE', liability: '10', upnl: '0' }, { coin: 'USDC', exchangeType: 'HYPERLIQUID', liability: '0', upnl: '0' }] })),
     http.get('/api/account/interest', () => response({ buckets: [
       { coin: 'USDT', venue: 'BINANCE', borrow: 10, ratePerYear: .1752, interestPerDayUsd: .0048 },
       { coin: 'USDC', venue: 'HYPERLIQUID', borrow: 0, ratePerYear: null, interestPerDayUsd: 0 }], account: { assets: [] } })),
@@ -53,7 +53,7 @@ beforeEach(() => {
     http.get('/api/boros/collateral', ({ request }) => {
       if (new URL(request.url).searchParams.get('address') !== address) return HttpResponse.json({ ok: false, error: { category: 'network', message: 'unavailable' } }, { status: 502 });
       return response({ address, accountId: 0, observedAt: Date.now(), stale: false, tokens: [{ symbol: 'ETH', tokenId: 2, priceUsd: 3000,
-        cross: { marketAcc: pool, netBalance: .1, initialMargin: .08, maintenanceMargin: .04, availableInitialMargin: .012,
+        cross: { marketAcc: pool, netBalance: .1, netBalanceExact: '0.1', initialMargin: .08, maintenanceMargin: .04, availableInitialMargin: .012,
           activePositions: 2, imCoverage: 1.25, mmCoverage: 2.5 }, isolated: [] }] });
     }),
     http.get('/api/asset-view/:address', () => response({ sinceSec: 0, nowSec, assets: [], earliestSec: null,
@@ -140,9 +140,9 @@ describe('rendered Risk / shared API evidence', () => {
   });
   it('renders exact per-pool settlement amounts and their USD quote provenance', async () => {
     mount();
-    await waitFor(() => expect(check('boros.settlement_net_24h_usd')).toHaveTextContent('ETH cross: -0.006 ETH/24h'));
-    expect(check('boros.settlement_net_24h_usd')).toHaveTextContent('USD valuation -18 uses collateral token priceUsd 3000');
-    expect(check('boros.settlement_net_24h_usd')).toHaveTextContent('observed at');
+    await waitFor(() => expect(check('boros.settlement_net_24h_eth')).toHaveTextContent('ETH cross: -0.006 ETH/24h'));
+    expect(check('boros.settlement_net_24h_eth')).toHaveTextContent('USD valuation -18 uses collateral token priceUsd 3000');
+    expect(check('boros.settlement_net_24h_eth')).toHaveTextContent('observed at');
   });
   it('retains unresolved CRITICAL and historical values after background failure, then requires verified recovery', async () => {
     const { client } = mount();

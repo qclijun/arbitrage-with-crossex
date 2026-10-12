@@ -26,6 +26,7 @@ export interface RiskBorosPosition {
   marketAcc: string; marketId: number; venue: string | null; maturity: number | null;
   side: 'LONG' | 'SHORT'; sizeToken: number; entryApr: number | null; markApr: number | null;
   mtmUsd: number | null; notionalUsd: number | null; settleFeeApr: number | null;
+  mtmUsdExact?: string | null; notionalUsdExact?: string | null;
   base?: string; tokenId?: number; sizeBase?: string | null;
 }
 export interface RiskAssetEvidence {

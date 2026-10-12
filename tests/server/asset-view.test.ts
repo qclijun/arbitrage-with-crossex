@@ -389,6 +389,36 @@ describe('GET /api/asset-view/:address', () => {
     expect(data.warnings).toHaveLength(0);
   });
 
+  it('keeps raw Boros risk amounts exact through USD quote conversion', async () => {
+    const bodies = borosBodies();
+    const markets = bodies['/apis/v1/markets'] as { results: Array<{ tokenId: number }> };
+    markets.results.forEach(market => { market.tokenId = 2; });
+    const marketAccounts = bodies['/apis/v1/accounts/market-acc-infos-by-root'] as {
+      results: Array<{ marketAcc: string; positions: Array<{ marketId: number; signedSize: string }> }>;
+    };
+    marketAccounts.results[0].marketAcc = marketAcc(ADDR, 2);
+    marketAccounts.results[0].positions = [
+      { marketId: 155, signedSize: raw(3) }, { marketId: 158, signedSize: raw(3) },
+    ];
+    const active = bodies['/apis/v1/accounts/active-positions'] as {
+      results: Array<{ marketAcc: string; signedSize: string; unrealisedPnl: string }>;
+    };
+    active.results[0] = { ...active.results[0], marketAcc: marketAcc(ADDR, 2), signedSize: raw(-3), unrealisedPnl: '1' };
+    active.results[1] = { ...active.results[1], marketAcc: marketAcc(ADDR, 2), signedSize: raw(3), unrealisedPnl: '2' };
+    app = makeTestApp({ borosFetch: borosStub(bodies) });
+    mockGateGet('/positions', { body: gatePositions });
+    mockGateGet('/history_positions', { body: [] });
+    mockGateGet('/history_margin_interests', { body: [] });
+
+    const res = await get(`/api/asset-view/${ADDR}?since=0`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.risk).toMatchObject({ positionsComplete: true,
+      positions: [
+        { sizeBase: '3', mtmUsdExact: '0.00000000000000188', notionalUsdExact: '5640' },
+        { sizeBase: '3', mtmUsdExact: '0.00000000000000376', notionalUsdExact: '5640' },
+      ] });
+  });
+
   it('emits a margin row for a collateral-only bucket, with null health and the fallback available', async () => {
     const ISO = marketAcc(ADDR, 3, 155);
     const bodies = {

@@ -8,7 +8,7 @@ vi.mock('./trackedAddress', () => ({ useTrackedAddress: () => ({ address: mocks.
 vi.mock('../api/queries', () => ({ useBorosCollateral: () => mocks.query }));
 const snapshot = (): BorosCollateralResponse => ({ address: mocks.address, accountId: 0,
   observedAt: 1800000000000, stale: false, tokens: [{ symbol: 'ETH', tokenId: 2, priceUsd: 3000,
-    cross: { marketAcc: 'pool', netBalance: .1, initialMargin: .08, maintenanceMargin: .04,
+    cross: { marketAcc: 'pool', netBalance: .1, netBalanceExact: '0.1', initialMargin: .08, maintenanceMargin: .04,
       availableInitialMargin: .012, activePositions: 2, imCoverage: 1.25, mmCoverage: 2.5 }, isolated: [] },
     { symbol: 'BTC', tokenId: 1, priceUsd: null, cross: null, isolated: [] },
     { symbol: 'USDT', tokenId: 3, priceUsd: null, cross: null, isolated: [] }] });

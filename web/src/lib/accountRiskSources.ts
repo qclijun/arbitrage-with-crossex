@@ -3,11 +3,28 @@ import { contracts, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
 import { fx, fxStr, type Fx } from '../../../src/engine/fx';
-import { formatDecimal18 } from '../../../src/core/boros/decimal18';
+import { formatDecimal18, parseDecimal18 } from '../../../src/core/boros/decimal18';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const number = (v: unknown) => typeof v === 'string' || typeof v === 'number' ? gateNumber(v) : null;
-const total = (xs: unknown[]) => xs.every(finite) ? xs.reduce<number>((n, x) => n + (x as number), 0) : null;
+const totalAccountPnl = (values: unknown[]): number | null => {
+  const decimals = values.map(value => {
+    if ((typeof value !== 'string' && typeof value !== 'number') || (typeof value === 'number' && !Number.isFinite(value))) return null;
+    const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(value).trim());
+    if (!match) return null;
+    const fraction = match[3] ?? '';
+    if (fraction.length > 36) return null;
+    const scale = fraction.length;
+    const magnitude = BigInt(match[2]) * 10n ** BigInt(scale) + BigInt(fraction || '0');
+    return { coefficient: match[1] === '-' ? -magnitude : magnitude, scale };
+  });
+  if (!decimals.length || decimals.some(value => value === null)) return null;
+  const parts = decimals as Array<{ coefficient: bigint; scale: number }>;
+  const scale = Math.max(...parts.map(value => value.scale));
+  const sum = parts.reduce((total, value) => total + value.coefficient * 10n ** BigInt(scale - value.scale), 0n);
+  const result = Number(sum) / 10 ** scale;
+  return Number.isFinite(result) ? result : null;
+};
 const exactDecimal = (v: unknown): Fx | null => {
   if (typeof v !== 'string' && typeof v !== 'number') return null;
   if (typeof v === 'number' && !Number.isFinite(v)) return null;
@@ -15,16 +32,7 @@ const exactDecimal = (v: unknown): Fx | null => {
 };
 const SCALE18 = 1_000_000_000_000_000_000n;
 const SCALE30 = 1_000_000_000_000_000_000_000_000_000_000n;
-const exact18 = (v: unknown): bigint | null => {
-  if (typeof v !== 'string') return null;
-  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(v.trim());
-  if (!m) return null;
-  const [, sign, integer, rawFraction = ''] = m;
-  const fraction = rawFraction.replace(/0+$/, '');
-  if (fraction.length > 18) return null;
-  const value = BigInt(integer) * SCALE18 + BigInt(fraction.padEnd(18, '0') || '0');
-  return sign === '-' ? -value : value;
-};
+const exact18 = parseDecimal18;
 const exactPositionQty = (v: unknown) => exact18(v);
 const abs18 = (v: bigint) => v < 0n ? -v : v;
 const metricNumber18 = (v: bigint): number | null => {
@@ -100,13 +108,16 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     && rows.every(p => !p.markHeldSinceMs && !p.markStaleSinceMs));
   const seenAt = Math.min(account?.time ?? now, positions?.time ?? now, asset?.time ?? now);
   const equity = account ? number(account.data.marginBalance) : null;
-  const officialPnl = account && account.data.assets.length > 0 ? total(account.data.assets.map(a => number(a.upnl))) : null;
-  const gatePnl = perpsComplete && account ? officialPnl ?? total(rows.map(p => number(p.upnl))) : null;
-  for (const [id, value] of [['gate.equity_usd', equity], ['gate.upnl_usd', gatePnl],
-    ['gate.equity_positive', equity === null ? null : equity > 0],
-    ['gate.loss_equity_ratio', equity !== null && equity > 0 && gatePnl !== null ? Math.max(0, -gatePnl) / equity : null]] as const) {
-    put(id, value, seenAt, Boolean(account && perpsComplete), 'Incomplete account positions / unsupported nonzero holding, or non-positive equity');
-  }
+  const officialPnl = account && account.data.assets.length > 0 ? totalAccountPnl(account.data.assets.map(a => a.upnl)) : null;
+  const gatePnl = perpsComplete && account ? officialPnl : null;
+  const gateEvidenceComplete = Boolean(account && perpsComplete);
+  const gatePnlComplete = gateEvidenceComplete && officialPnl !== null;
+  put('gate.equity_usd', equity, seenAt, gateEvidenceComplete, 'Incomplete account positions / unsupported nonzero holding, or non-positive equity');
+  put('gate.upnl_usd', gatePnl, seenAt, gatePnlComplete, 'Missing or invalid account unrealized PnL / incomplete positions');
+  put('gate.equity_positive', equity === null ? null : equity > 0, seenAt, gateEvidenceComplete,
+    'Incomplete account positions / unsupported nonzero holding, or non-positive equity');
+  put('gate.loss_equity_ratio', equity !== null && equity > 0 && gatePnl !== null ? Math.max(0, -gatePnl) / equity : null,
+    seenAt, gatePnlComplete, 'Missing account PnL / positive equity or incomplete positions');
   const residuals: (Fx | null)[] = [], netDetails: Detail[] = [];
   for (const base of bases) {
     const ls = exactLegs.filter(p => p.base === base);
@@ -135,15 +146,25 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   const tokens = subject(collateral?.data) ? collateral!.data.tokens : [];
   const pools = tokens.flatMap(t => [...(t.cross ? [t.cross] : []), ...t.isolated].map(p => ({ ...p, token: t })));
   const poolComplete = Boolean(subject(collateral?.data) && new Set(pools.map(p => p.marketAcc.toLowerCase())).size === pools.length
-    && pools.every(p => poolIdentity(p.marketAcc, p.token.tokenId) && finite(p.netBalance) && finite(p.initialMargin)
-      && p.initialMargin >= 0 && finite(p.maintenanceMargin) && p.maintenanceMargin >= 0 && finite(p.availableInitialMargin)
-      && finite(p.activePositions) && (p.netBalance === 0 && p.activePositions === 0 || priceUsd(p.token) !== null)));
+    && pools.every(p => {
+      const balance = exact18(p.netBalanceExact);
+      return poolIdentity(p.marketAcc, p.token.tokenId) && balance !== null && finite(p.netBalance) && finite(p.initialMargin)
+        && p.initialMargin >= 0 && finite(p.maintenanceMargin) && p.maintenanceMargin >= 0 && finite(p.availableInitialMargin)
+        && finite(p.activePositions) && (balance === 0n && p.activePositions === 0 || priceUsd(p.token) !== null);
+    }));
   const balances = pools.map(p => {
-    const px = priceUsd(p.token);
-    return p.netBalance === 0 ? 0 : finite(p.netBalance) && px !== null ? p.netBalance * px : null;
+    const amount18 = exact18(p.netBalanceExact);
+    const px = amount18 === 0n ? fx('0') : settlementPriceFx(p.token);
+    return amount18 !== null && px !== null ? amount18 * px : null;
   });
-  const borosEquity = poolComplete ? total(balances) : null;
-  const borosPnl = borosComplete ? total(boros.map(b => b.mtmUsd)) : null;
+  const equity30 = poolComplete && balances.every((value): value is bigint => value !== null)
+    ? balances.reduce((sum, value) => sum + value, 0n) : null;
+  const borosEquity = equity30 === null ? null : metricNumber30(equity30);
+  const borosPnlExact = borosComplete ? boros.reduce<bigint | null>((sum, position) => {
+    const amount = exact18(position.mtmUsdExact);
+    return amount === null || sum === null ? null : sum + amount;
+  }, 0n) : null;
+  const borosPnl = borosPnlExact === null ? null : metricNumber18(borosPnlExact);
   const poolLabel = (p: typeof pools[number]) => `${p.token.symbol} ${p.marketAcc.endsWith('ffffff') ? 'cross' : 'isolated ' + parseInt(p.marketAcc.slice(-6), 16)}`;
   put('boros.equity_usd', borosEquity, collateral?.time ?? null, poolComplete, 'Missing complete priced collateral pools');
   put('boros.equity_positive', borosEquity === null ? null : borosEquity > 0, collateral?.time ?? null, poolComplete, 'Missing complete collateral equity');
