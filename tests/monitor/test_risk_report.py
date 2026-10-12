@@ -102,6 +102,14 @@ class ReadOnlyRiskReportTest(unittest.TestCase):
         self.assertNotIn(self.root, output)
         self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir()}, before)
 
+    def test_boros_market_account_redacts_subaccount_suffix_in_json(self):
+        market_account = self.root + '000002000123'
+        self.report['checks'][0]['metrics']['gate.mm_health_ratio']['source'] = market_account
+        code, output, _ = self.invoke(True)
+        self.assertEqual(code, 0)
+        self.assertNotIn(market_account, output)
+        self.assertNotIn(market_account[42:], output)
+
     def test_expired_response_or_corrupt_state_fails_closed_without_writing(self):
         self.report['observedAt'] = time.time() - 121
         code, output, _ = self.invoke(True)

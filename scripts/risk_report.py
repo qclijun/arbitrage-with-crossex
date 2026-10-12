@@ -73,9 +73,10 @@ def sanitize(report):
 
     def clean(value):
         if isinstance(value, str):
+            value = re.sub(r'0x[0-9a-fA-F]{40,64}\b', '[redacted]', value)
             for secret in secrets:
                 value = value.replace(secret, '[redacted]')
-            return re.sub(r'0x[0-9a-fA-F]{40}|\b\d+:[A-Za-z0-9_-]{20,}', '[redacted]', value)
+            return re.sub(r'\b\d+:[A-Za-z0-9_-]{20,}', '[redacted]', value)
         if isinstance(value, dict):
             return {k: clean(v) for k, v in value.items()}
         if isinstance(value, list):

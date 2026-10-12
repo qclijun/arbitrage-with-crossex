@@ -24,7 +24,9 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-function accountRiskBorosBodies(accountId: number): Record<string, unknown> {
+function accountRiskBorosBodies(accountId: number, signedSizes: [string, string] = [
+  '-3000000000000000000', '3000000000000000000',
+]): Record<string, unknown> {
   const marketAcc = `${address}${accountId.toString(16).padStart(2, '0')}0002ffffff`;
   const raw = (n: number) => String(n * 1e18);
   const market = (marketId: number, venue: string) => ({ marketId, tokenId: 2,
@@ -33,23 +35,23 @@ function accountRiskBorosBodies(accountId: number): Record<string, unknown> {
     config: { status: 2 }, platform: { platformId: venue }, metadata: { underlyingSymbol: 'ETH' },
     data: { markApr: .05, floatingApr: .05, assetMarkPrice: 3000 } });
   const positions = [
-    { marketId: 128, signedSize: raw(-3), initialMargin: raw(2), maintMargin: raw(1), liquidationApr: raw(.12), orders: [] },
-    { marketId: 129, signedSize: raw(3), initialMargin: raw(2), maintMargin: raw(1), liquidationApr: raw(.12), orders: [] },
+    { marketId: 128, signedSize: signedSizes[0], initialMargin: raw(2), maintMargin: raw(1), liquidationApr: raw(.12), orders: [] },
+    { marketId: 129, signedSize: signedSizes[1], initialMargin: raw(2), maintMargin: raw(1), liquidationApr: raw(.12), orders: [] },
   ];
   return {
     '/apis/v1/markets': { results: [market(128, 'Hyperliquid'), market(129, 'OKX')], total: 2, skip: 0 },
     '/apis/v1/accounts/market-acc-infos-by-root': { results: [{ marketAcc, netBalance: raw(200),
       initialMargin: raw(4), availableInitialMargin: raw(196), positions }] },
     '/apis/v1/accounts/active-positions': { results: [
-      { marketAcc, marketId: 128, side: 1, fixedApr: .05, signedSize: raw(-3), unrealisedPnl: raw(0), settlementPnl: raw(0) },
-      { marketAcc, marketId: 129, side: 0, fixedApr: .05, signedSize: raw(3), unrealisedPnl: raw(0), settlementPnl: raw(0) },
+      { marketAcc, marketId: 128, side: 1, fixedApr: .05, signedSize: signedSizes[0], unrealisedPnl: raw(0), settlementPnl: raw(0) },
+      { marketAcc, marketId: 129, side: 0, fixedApr: .05, signedSize: signedSizes[1], unrealisedPnl: raw(0), settlementPnl: raw(0) },
     ] },
     '/apis/v1/accounts/settlement-events': { results: [], resumeToken: null },
     '/apis/v1/accounts/position-update-events': { results: [], resumeToken: null },
   };
 }
 
-async function fixture(accountId = 0, actualAsset = false) {
+async function fixture(accountId = 0, actualAsset = false, signedSizes?: [string, string]) {
   vi.stubEnv('BOROS_ACCOUNT_ID', String(accountId));
   vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
   const deps = {} as AppDeps;
@@ -59,7 +61,7 @@ async function fixture(accountId = 0, actualAsset = false) {
   const legs = ['HYPERLIQUID', 'BINANCE'].map((exchange, i) => ({ exchange,
     symbol: exchange + '_FUTURE_ETH_' + (i ? 'USDT' : 'USDC'), quote: i ? 'USDT' : 'USDC', side: i ? 'LONG' : 'SHORT', qty: 3, value: 9000 }));
   const boros = legs.map((p, i) => ({ marketAcc: accountPool, marketId: 128 + i, venue: p.exchange, side: p.side,
-    base: 'ETH', tokenId: 2, sizeBase: 3.00013, sizeToken: 3.00013, maturity: now + 80 * 86400, entryApr: i ? .04 : .08, markApr: i ? .04 : .08,
+    base: 'ETH', tokenId: 2, sizeBase: '3.00013', sizeToken: 3.00013, maturity: now + 80 * 86400, entryApr: i ? .04 : .08, markApr: i ? .04 : .08,
     mtmUsd: 0, notionalUsd: 9000, settleFeeApr: .001 }));
   const snapshots: Record<string, any> = {
     account: { userId: 'gate-user', marginBalance: '200', initialMargin: '100', maintenanceMargin: '50',
@@ -97,7 +99,7 @@ async function fixture(accountId = 0, actualAsset = false) {
     tempDataDir = mkdtempSync(path.join(tmpdir(), 'risk-report-subaccount-'));
     const crossEx = new Proxy({}, { get: () => async () => ({ body: [] }) });
     Object.assign(deps, { cache: new TtlCache(), dataDir: tempDataDir,
-      getClients: () => ({ crossEx }), borosFetch: borosStub(accountRiskBorosBodies(accountId), borosCalls) });
+      getClients: () => ({ crossEx }), borosFetch: borosStub(accountRiskBorosBodies(accountId, signedSizes), borosCalls) });
     app.register(assetViewRoutes(deps), { prefix: '/api' });
   }
   app.register(riskReportRoutes(deps), { prefix: '/api' });
@@ -123,7 +125,7 @@ describe('read-only shared Risk report', () => {
       if (!g) { g = { base: 'BTC', legs: [] }; s.positions.exposure.push(g); }
       g.legs.push({ symbol, exchange: venue, quote: 'USDT', side, qty: .1, value: 5000 });
       s.asset.risk.positions.push({ marketAcc: acc, marketId: id, venue, base: 'BTC', tokenId: 1, side,
-        sizeToken: .1, sizeBase: .1, maturity: now + 80 * 86400, mtmUsd: 0, notionalUsd: 5000, entryApr: .05, markApr: .05 });
+        sizeToken: .1, sizeBase: '0.1', maturity: now + 80 * 86400, mtmUsd: 0, notionalUsd: 5000, entryApr: .05, markApr: .05 });
     }
     return acc;
   };
@@ -134,7 +136,7 @@ describe('read-only shared Risk report', () => {
     s.positions.positions.push({ symbol: 'OKX_FUTURE_ETH_USDT', positionQty: '4', markPrice: '3000', upnl: '20', updateTime: String(now * 1000) });
     s.positions.exposure[0].legs.push({ symbol: 'OKX_FUTURE_ETH_USDT', exchange: 'OKX', quote: 'USDT', side: 'LONG', qty: 4, value: 12000 });
     for (const [venue, side, id] of [['HYPERLIQUID', 'SHORT', 196], ['OKX', 'LONG', 198]] as const) s.asset.risk.positions.push({
-      ...s.asset.risk.positions[0], venue, side, marketId: id, sizeToken: 4.00083, sizeBase: 4.00083, maturity: now + 20 * 86400, mtmUsd: 2,
+      ...s.asset.risk.positions[0], venue, side, marketId: id, sizeToken: 4.00083, sizeBase: '4.00083', maturity: now + 20 * 86400, mtmUsd: 2,
     });
     const r = await readReport(f);
     expect(r.complete).toBe(true);
@@ -153,6 +155,26 @@ describe('read-only shared Risk report', () => {
     expect(f.borosCalls.some(call => call.includes('settlement-events?root=' + address + '&accountId=3'))).toBe(true);
     expect(r.scope.accountId).toBe(3);
     expect(r.collection.farm.risk).toMatchObject({ accountId: 3, positionsComplete: true });
+    expect(metric(r, 'data.coverage_complete').value).toBe(true);
+    expect(r.complete).toBe(true);
+  });
+  it('preserves raw Boros 18-place quantities through the shared report and exact gap check', async () => {
+    const signed = '1000000000000000001', f = await fixture(0, true, [`-${signed}`, signed]);
+    f.snapshots.positions.positions[0].positionQty = '-1.000000000000000001';
+    f.snapshots.positions.positions[1].positionQty = '1.000000000000000001';
+    f.snapshots.positions.positions[1].symbol = 'OKX_FUTURE_ETH_USDT';
+    f.snapshots.positions.exposure[0].legs[1].symbol = 'OKX_FUTURE_ETH_USDT';
+    f.snapshots.positions.exposure[0].legs[1].exchange = 'OKX';
+    f.snapshots.positions.exposure[0].legs[0].qty = 1;
+    f.snapshots.positions.exposure[0].legs[1].qty = 1;
+    const response = await app.inject({ url: f.url, headers: HOST });
+    expect(response.statusCode, response.body).toBe(200);
+    const r = response.json().data;
+    expect(r.collection.farm.risk.positions.map((p: any) => p.sizeBase)).toEqual([
+      '1.000000000000000001', '1.000000000000000001',
+    ]);
+    expect(metric(r, 'hedge.quantity_verified')).toMatchObject({ value: true, complete: true });
+    expect(metric(r, 'hedge.quantity_verified').details.every((d: any) => d.value === 0)).toBe(true);
     expect(metric(r, 'data.coverage_complete').value).toBe(true);
     expect(r.complete).toBe(true);
   });
@@ -199,6 +221,34 @@ describe('read-only shared Risk report', () => {
     } });
     expect(status(warningHistory)).toBe('WARNING');
   });
+  it('falls back to complete per-position UPNL when the account asset list is empty', async () => {
+    const f = await fixture();
+    f.snapshots.account.assets = [];
+    f.snapshots.positions.positions[0].upnl = '-5';
+    f.snapshots.positions.positions[1].upnl = '-7';
+    const r = await readReport(f);
+    expect(metric(r, 'gate.upnl_usd')).toMatchObject({ value: -12, complete: true });
+    expect(metric(r, 'gate.loss_equity_ratio').value).toBe(.06);
+    expect(metric(r, 'data.coverage_complete').value).toBe(true);
+  });
+  it('applies strict account loss thresholds at exactly 10% and 20%', async () => {
+    const f = await fixture(), status = (r: any) => r.checks.find((c: any) => c.id === 'basis.mark_spread_usd_per_eth').status;
+    f.snapshots.account.assets = [];
+    f.snapshots.positions.positions[0].upnl = '-20';
+    expect(metric(await readReport(f), 'gate.loss_equity_ratio').value).toBe(.1);
+    expect(status(await readReport(f))).toBe('OK');
+    f.snapshots.positions.positions[0].upnl = '-40';
+    expect(metric(await readReport(f), 'gate.loss_equity_ratio').value).toBe(.2);
+    expect(status(await readReport(f))).toBe('WARNING');
+  });
+  it.each(['0', '-1'])('never treats non-positive Gate equity %s as healthy', async equity => {
+    const f = await fixture();
+    f.snapshots.account.marginBalance = equity;
+    const r = await readReport(f);
+    expect(metric(r, 'gate.equity_positive')).toMatchObject({ value: false, complete: true });
+    expect(metric(r, 'gate.loss_equity_ratio').value).toBeNull();
+    expect(r.checks.find((c: any) => c.id === 'basis.mark_spread_usd_per_eth').status).toBe('CRITICAL');
+  });
   it.each(['USDT', 'USDC'])('values %s collateral and settlement at 1:1 when no quote is supplied', async symbol => {
     const f = await fixture(), tokenId = 3, marketAcc = address + '000003ffffff';
     f.snapshots.collateral.tokens.push({ symbol, tokenId, priceUsd: null,
@@ -208,7 +258,9 @@ describe('read-only shared Risk report', () => {
     const r = await readReport(f);
     expect(metric(r, 'boros.equity_usd').value).toBe(400);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(10);
-    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: `${symbol} cross`, value: 10, unit: `${symbol}/24h` });
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual(expect.objectContaining({ label: `${symbol} cross`, value: 10, unit: `${symbol}/24h` }));
+    expect(metric(r, 'boros.settlement_net_24h_usd').details.find((d: any) => d.label === `${symbol} cross`).reason)
+      .toContain('1:1');
   });
   it('keeps settlement USD unknown when a non-stablecoin quote is missing', async () => {
     const f = await fixture(), tokenId = 4, marketAcc = address + '000004ffffff';
@@ -218,7 +270,8 @@ describe('read-only shared Risk report', () => {
     f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: 2 });
     const r = await readReport(f);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBeNull();
-    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: 'HYPE cross', value: 2, unit: 'HYPE/24h' });
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual(expect.objectContaining({ label: 'HYPE cross', value: 2, unit: 'HYPE/24h' }));
+    expect(JSON.stringify(metric(r, 'boros.settlement_net_24h_usd').details)).not.toContain(marketAcc);
     expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('UNKNOWN');
   });
   it('preserves opposite settlement flows as separate collateral-pool details', async () => {
@@ -229,21 +282,60 @@ describe('read-only shared Risk report', () => {
       { marketAcc: pool, tokenId: 2, netToken: 10 },
       { marketAcc: isolated, tokenId: 2, netToken: -10 },
     ];
+    f.snapshots.collateral.tokens[0].priceUsd = 3000;
     const r = await readReport(f), details = metric(r, 'boros.settlement_net_24h_usd').details;
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(0);
-    expect(details).toContainEqual({ label: 'ETH cross', value: 10, unit: 'ETH/24h' });
-    expect(details).toContainEqual({ label: 'ETH isolated 291', value: -10, unit: 'ETH/24h' });
+    expect(details).toContainEqual(expect.objectContaining({ label: 'ETH cross', value: 10, unit: 'ETH/24h' }));
+    expect(details).toContainEqual(expect.objectContaining({ label: 'ETH isolated 291', value: -10, unit: 'ETH/24h' }));
+    expect(details.every((d: any) => d.reason?.includes('observed at'))).toBe(true);
+    expect(details[0].reason).toContain('priceUsd');
+    expect(details[0].reason).toContain('3000');
+    expect(details[0].reason).toContain(String(now * 1000));
   });
   it('supports BTC and keeps opposing ETH/BTC USD residuals from cancelling', async () => {
     const f = await fixture(); addBtc(f); const s = f.snapshots;
+    s.positions.positions[0].markPrice = '3001';
     s.positions.positions[1].positionQty = '3.01'; s.positions.exposure[0].legs[1].qty = 3.01;
     s.positions.positions[2].positionQty = '-0.1006'; s.positions.exposure[1].legs[0].qty = .1006;
     const r = await readReport(f);
     expect(metric(r, 'hedge.perp_net_eth').value).toBeCloseTo(.01);
     expect(metric(r, 'hedge.perp_net_btc').value).toBeCloseTo(-.0006);
-    expect(metric(r, 'hedge.residual_usd').value).toBeCloseTo(60);
+    expect(metric(r, 'hedge.residual_usd').value).toBeCloseTo(60.01);
     expect(metric(r, 'hedge.residual_equity_ratio').value).toBeCloseTo(.3);
     expect(r.checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('CRITICAL');
+    expect(metric(r, 'hedge.residual_usd').details.find((d: any) => d.label === 'ETH').reason)
+      .toContain('HYPERLIQUID_FUTURE_ETH_USDC');
+    expect(metric(r, 'hedge.residual_usd').details.find((d: any) => d.label === 'ETH').reason)
+      .toContain('markPrice 3001');
+    expect(metric(r, 'hedge.residual_usd').details.find((d: any) => d.label === 'ETH').reason)
+      .toContain(String(now));
+  });
+  it('values sub-12-place residual quantities before converting the USD metric to a number', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.positions.positions[0].positionQty = '-0.000000000000000001';
+    s.positions.positions[1].positionQty = '0.000000000000000002';
+    s.positions.positions.forEach((p: any) => { p.markPrice = '1000000000000'; });
+    s.positions.exposure[0].legs[0].qty = 1e-18;
+    s.positions.exposure[0].legs[1].qty = 2e-18;
+    s.asset.risk.positions[0].sizeBase = '0.000000000000000001';
+    s.asset.risk.positions[1].sizeBase = '0.000000000000000002';
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.perp_net_eth').value).toBe(1e-18);
+    expect(metric(r, 'hedge.residual_usd').value).toBe(0.000001);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(true);
+    expect(metric(r, 'data.coverage_complete').value).toBe(true);
+  });
+  it('keeps every nonzero BTC quantity gap unverified until a tolerance is configured', async () => {
+    const f = await fixture(), btc = addBtc(f);
+    f.snapshots.asset.risk.positions.find((p: any) => p.marketAcc === btc && p.side === 'SHORT').sizeBase = '0.100000000001';
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.quantity_verified')).toMatchObject({ value: null, complete: false });
+    expect(r.checks.find((c: any) => c.metrics?.['hedge.quantity_verified'])?.status).toBe('UNKNOWN');
+  });
+  it('verifies an exact zero BTC quantity gap without an unconfigured tolerance', async () => {
+    const f = await fixture(); addBtc(f);
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.quantity_verified')).toMatchObject({ value: true, complete: true });
   });
   it('preserves exact signed ETH and BTC quantity totals from decimal position strings', async () => {
     const f = await fixture(); addBtc(f); const s = f.snapshots;
@@ -258,7 +350,7 @@ describe('read-only shared Risk report', () => {
       const marketAcc = address + f.scope.accountId!.toString(16).padStart(2, '0') + tokenId.toString(16).padStart(4, '0') + 'ffffff';
       s.asset.risk.positions.push({ ...s.asset.risk.positions[0], marketAcc, venue, base, tokenId,
         side, marketId: 200 + s.asset.risk.positions.length,
-        sizeToken: Number(qty), sizeBase: Number(qty), maturity: now + 80 * 86400 });
+        sizeToken: Number(qty), sizeBase: qty, maturity: now + 80 * 86400 });
     };
 
     s.positions.positions = [];

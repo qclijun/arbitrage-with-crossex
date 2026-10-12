@@ -40,11 +40,11 @@ Source freshness for automatic values follows the actual endpoint fields and cov
 | `boros.equity_usd` | USD | number | derived | 3600 | Verified ETH/BTC account and independent collateral pools |
 | `boros.im_coverage` | ratio | number | derived | 3600 | Boros official selected cross group netBalance / initialMargin |
 | `boros.mm_health_ratio` | ratio | number | derived | 3600 | Boros official netBalance / (netBalance - availableMaintMargin) |
-| `boros.mtm_loss_equity_ratio` | ratio | number | derived | 3600 | asset-view markApr/entryApr/size/maturity |
+| `boros.mtm_loss_equity_ratio` | ratio | number | derived | 3600 | Sum of active Boros position unrealisedPnl valued at each collateral token USD quote, divided by total configured root/subaccount collateral equity |
 | `boros.pool_available_nonnegative` | bool | bool | derived | 3600 | Verified ETH/BTC account and independent collateral pools |
-| `boros.rate_mtm_usd` | USD | number | automatic | 3600 | asset-view markApr/entryApr/size/maturity |
+| `boros.rate_mtm_usd` | USD | number | automatic | 3600 | Sum of active Boros position unrealisedPnl valued at each collateral token USD quote for the configured root/subaccount |
 | `boros.settlement_net_24h_btc` | BTC/24h | number | derived | 3600 | Verified ETH/BTC account and independent collateral pools |
-| `boros.settlement_net_24h_eth` | ETH/24h | number | automatic | 3600 | Signed Boros settlement net across all ETH collateral pools for the configured root/subaccount, complete 24h pages |
+| `boros.settlement_net_24h_eth` | ETH/24h | number | automatic | 3600 | Signed ETH settlement totals by collateral pool for the configured root/subaccount, from complete 24h pages |
 | `boros.settlement_net_24h_usd` | USD/24h | number | derived | 3600 | Per-pool signed settlement totals converted by currency; USDT/USDC at 1:1, other tokens at verified USD quotes |
 | `collateral.eth_delta_usd` | USD | number | derived | 3600 | Verified total ETH exposure including other assets and hedges; current-price stress scenario |
 | `collateral.eth_net` | ETH | number | external | 3600 | Verified total ETH exposure including other assets and hedges; current-price stress scenario |
