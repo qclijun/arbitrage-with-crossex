@@ -55,7 +55,7 @@ const ledgerRow = (id: string, iso: string) => ({
   marketId: 155,
   timeSec: sec(iso),
   positionAbs: 1000,
-  settlementToken: 10,
+  settlementToken: '10',
   feeToken: 0,
   settlementRate: 0.07,
 });
