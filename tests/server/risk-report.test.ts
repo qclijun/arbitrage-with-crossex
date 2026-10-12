@@ -1,24 +1,64 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppDeps } from '../../src/server/app';
+import { TtlCache } from '../../src/server/cache';
 import { credentialIdentity } from '../../src/server/readScope';
+import { assetViewRoutes } from '../../src/server/routes/assetView';
 import { riskReportRoutes } from '../../src/server/routes/riskReport';
 import { evaluateRisk, visibleRiskChecks, type RiskScope } from '../../src/core/risk';
 import { riskMeasurements, type RiskInputs } from '../../web/src/lib/riskSources';
+import { borosStub } from '../helpers/boros-stub';
 import { HOST, makeTestApp } from './helpers/gate-nock';
 
 const now = 1800000000, address = '0x' + '1'.repeat(40), pool = address + '000002ffffff';
 let app: FastifyInstance;
-afterEach(async () => { await app?.close(); vi.useRealTimers(); });
+let tempDataDir: string | undefined;
+afterEach(async () => {
+  await app?.close();
+  if (tempDataDir) rmSync(tempDataDir, { recursive: true, force: true });
+  tempDataDir = undefined;
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
+});
 
-async function fixture() {
+function accountRiskBorosBodies(accountId: number): Record<string, unknown> {
+  const marketAcc = `${address}${accountId.toString(16).padStart(2, '0')}0002ffffff`;
+  const raw = (n: number) => String(n * 1e18);
+  const market = (marketId: number, venue: string) => ({ marketId, tokenId: 2,
+    imData: { name: `${venue} ETH`, maturity: now + 80 * 86400 },
+    extConfig: { settleFeeRate: '1000000000000000', paymentPeriod: 3600 },
+    config: { status: 2 }, platform: { platformId: venue }, metadata: { underlyingSymbol: 'ETH' },
+    data: { markApr: .05, floatingApr: .05, assetMarkPrice: 3000 } });
+  const positions = [
+    { marketId: 128, signedSize: raw(-3), initialMargin: raw(2), maintMargin: raw(1), liquidationApr: raw(.12), orders: [] },
+    { marketId: 129, signedSize: raw(3), initialMargin: raw(2), maintMargin: raw(1), liquidationApr: raw(.12), orders: [] },
+  ];
+  return {
+    '/apis/v1/markets': { results: [market(128, 'Hyperliquid'), market(129, 'OKX')], total: 2, skip: 0 },
+    '/apis/v1/accounts/market-acc-infos-by-root': { results: [{ marketAcc, netBalance: raw(200),
+      initialMargin: raw(4), availableInitialMargin: raw(196), positions }] },
+    '/apis/v1/accounts/active-positions': { results: [
+      { marketAcc, marketId: 128, side: 1, fixedApr: .05, signedSize: raw(-3), unrealisedPnl: raw(0), settlementPnl: raw(0) },
+      { marketAcc, marketId: 129, side: 0, fixedApr: .05, signedSize: raw(3), unrealisedPnl: raw(0), settlementPnl: raw(0) },
+    ] },
+    '/apis/v1/accounts/settlement-events': { results: [], resumeToken: null },
+    '/apis/v1/accounts/position-update-events': { results: [], resumeToken: null },
+  };
+}
+
+async function fixture(accountId = 0, actualAsset = false) {
+  vi.stubEnv('BOROS_ACCOUNT_ID', String(accountId));
   vi.spyOn(Date, 'now').mockReturnValue(now * 1000);
   const deps = {} as AppDeps;
-  const scope: RiskScope = { credentialId: credentialIdentity(deps), address, accountId: 0, pool: 'account' };
+  const accountPool = address + accountId.toString(16).padStart(2, '0') + '0002ffffff';
+  const scope: RiskScope = { credentialId: credentialIdentity(deps), address, accountId, pool: 'account' };
   const meta = { ts: now * 1000, observedAt: now * 1000, credentialId: scope.credentialId, coverageComplete: true };
   const legs = ['HYPERLIQUID', 'BINANCE'].map((exchange, i) => ({ exchange,
     symbol: exchange + '_FUTURE_ETH_' + (i ? 'USDT' : 'USDC'), quote: i ? 'USDT' : 'USDC', side: i ? 'LONG' : 'SHORT', qty: 3, value: 9000 }));
-  const boros = legs.map((p, i) => ({ marketAcc: pool, marketId: 128 + i, venue: p.exchange, side: p.side,
+  const boros = legs.map((p, i) => ({ marketAcc: accountPool, marketId: 128 + i, venue: p.exchange, side: p.side,
     base: 'ETH', tokenId: 2, sizeBase: 3.00013, sizeToken: 3.00013, maturity: now + 80 * 86400, entryApr: i ? .04 : .08, markApr: i ? .04 : .08,
     mtmUsd: 0, notionalUsd: 9000, settleFeeApr: .001 }));
   const snapshots: Record<string, any> = {
@@ -27,10 +67,10 @@ async function fixture() {
     positions: { positions: legs.map((p, i) => ({ symbol: p.symbol, positionQty: i ? '3' : '-3', markPrice: '3000', upnl: '0', updateTime: String(now * 1000) })),
       exposure: [{ base: 'ETH', legs }] },
     interest: { buckets: [{ coin: 'USDT', venue: 'BINANCE', borrow: 0, interestPerDayUsd: 0 }, { coin: 'USDC', venue: 'HYPERLIQUID', borrow: 0, interestPerDayUsd: 0 }] },
-    collateral: { address, accountId: 0, observedAt: now * 1000, stale: false, tokens: [{ symbol: 'ETH', tokenId: 2, priceUsd: 3000,
-      cross: { marketAcc: pool, activePositions: 2, netBalance: .1, initialMargin: .04, maintenanceMargin: .02, availableInitialMargin: .04, imCoverage: 2.5, mmCoverage: 5 }, isolated: [] }] },
+    collateral: { address, accountId, observedAt: now * 1000, stale: false, tokens: [{ symbol: 'ETH', tokenId: 2, priceUsd: 3000,
+      cross: { marketAcc: accountPool, activePositions: 2, netBalance: .1, initialMargin: .04, maintenanceMargin: .02, availableInitialMargin: .04, imCoverage: 2.5, mmCoverage: 5 }, isolated: [] }] },
     asset: { assets: [], warnings: [], coverage: { borosPositionsComplete: true, borosTxnsComplete: true, backfilling: false },
-      risk: { version: 2, address, accountId: 0, observedAt: now * 1000, stale: false, positionsComplete: true, positions: boros,
+      risk: { version: 2, address, accountId, observedAt: now * 1000, stale: false, positionsComplete: true, positions: boros,
         settlements: { pools: [], complete: true, fromSec: now - 86400, throughSec: now, reason: 'complete ledger' },
         settlement: { netEth: 0, complete: true, fromSec: now - 86400, throughSec: now, reason: 'complete ledger' } } },
     supplement: { scope, metrics: {}, baseline: null, fundingGapStartedAt: null, reason: '' },
@@ -43,16 +83,27 @@ async function fixture() {
   app.decorateReply('ok', function (data: unknown, options?: { observedAt?: number; coverageComplete?: boolean }) {
     return this.send({ ok: true, data, meta: { ...meta, ...options } });
   });
-  for (const [key, path] of Object.entries(paths)) app.get('/api' + path, async (_req, reply) => {
-    reads.push(key);
-    if (key === 'asset') assetUrls.push(_req.url);
-    if (failed.has(key)) return reply.code(503).send({ ok: false });
-    return reply.send({ ok: true, data: snapshots[key], meta: { ...meta, stale: stale.has(key) } });
-  });
+  for (const [key, routePath] of Object.entries(paths)) {
+    if (actualAsset && key === 'asset') continue;
+    app.get('/api' + routePath, async (_req, reply) => {
+      reads.push(key);
+      if (key === 'asset') assetUrls.push(_req.url);
+      if (failed.has(key)) return reply.code(503).send({ ok: false });
+      return reply.send({ ok: true, data: snapshots[key], meta: { ...meta, stale: stale.has(key) } });
+    });
+  }
+  const borosCalls: string[] = [];
+  if (actualAsset) {
+    tempDataDir = mkdtempSync(path.join(tmpdir(), 'risk-report-subaccount-'));
+    const crossEx = new Proxy({}, { get: () => async () => ({ body: [] }) });
+    Object.assign(deps, { cache: new TtlCache(), dataDir: tempDataDir,
+      getClients: () => ({ crossEx }), borosFetch: borosStub(accountRiskBorosBodies(accountId), borosCalls) });
+    app.register(assetViewRoutes(deps), { prefix: '/api' });
+  }
   app.register(riskReportRoutes(deps), { prefix: '/api' });
   await app.ready();
   const url = `/api/risk/report?address=${address}&fresh=1`;
-  return { scope, snapshots, meta, failed, stale, reads, assetUrls, url };
+  return { scope, snapshots, meta, failed, stale, reads, assetUrls, borosCalls, url };
 }
 
 describe('read-only shared Risk report', () => {
@@ -61,7 +112,7 @@ describe('read-only shared Risk report', () => {
   })).json().data;
   const metric = (r: any, id: string) => r.checks.flatMap((c: any) => Object.entries(c.metrics)).find(([k]: any) => k === id)?.[1] as any;
   const addBtc = (f: Awaited<ReturnType<typeof fixture>>) => {
-    const s = f.snapshots, acc = address + '000001ffffff';
+    const s = f.snapshots, acc = address + f.scope.accountId!.toString(16).padStart(2, '0') + '0001ffffff';
     s.collateral.tokens.push({ symbol: 'BTC', tokenId: 1, priceUsd: 50000,
       cross: { marketAcc: acc, activePositions: 2, netBalance: .01, initialMargin: .002, maintenanceMargin: .001,
         availableInitialMargin: .001, imCoverage: 5, mmCoverage: 10 }, isolated: [] });
@@ -95,6 +146,15 @@ describe('read-only shared Risk report', () => {
       expect(r.checks.find((c: any) => c.id === id).status).toBe('OK');
     }
     expect(metric(r, 'boros.buffer_runway_days')).toMatchObject({ value: null, applicability: 'NA', complete: true });
+  });
+  it('keeps complete Boros evidence on a configured nonzero subaccount', async () => {
+    const f = await fixture(3, true), r = await readReport(f);
+    expect(f.borosCalls.some(call => call.includes('active-positions?root=' + address + '&accountId=3'))).toBe(true);
+    expect(f.borosCalls.some(call => call.includes('settlement-events?root=' + address + '&accountId=3'))).toBe(true);
+    expect(r.scope.accountId).toBe(3);
+    expect(r.collection.farm.risk).toMatchObject({ accountId: 3, positionsComplete: true });
+    expect(metric(r, 'data.coverage_complete').value).toBe(true);
+    expect(r.complete).toBe(true);
   });
   it('does not require opposite Boros sides to balance within each maturity bucket', async () => {
     const f = await fixture();
@@ -148,7 +208,7 @@ describe('read-only shared Risk report', () => {
     const r = await readReport(f);
     expect(metric(r, 'boros.equity_usd').value).toBe(400);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(10);
-    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: symbol, value: 10, unit: `${symbol}/24h` });
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: `${symbol} cross`, value: 10, unit: `${symbol}/24h` });
   });
   it('keeps settlement USD unknown when a non-stablecoin quote is missing', async () => {
     const f = await fixture(), tokenId = 4, marketAcc = address + '000004ffffff';
@@ -158,8 +218,21 @@ describe('read-only shared Risk report', () => {
     f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: 2 });
     const r = await readReport(f);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBeNull();
-    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: 'HYPE', value: 2, unit: 'HYPE/24h' });
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual({ label: 'HYPE cross', value: 2, unit: 'HYPE/24h' });
     expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('UNKNOWN');
+  });
+  it('preserves opposite settlement flows as separate collateral-pool details', async () => {
+    const f = await fixture(), isolated = address + '000002000123';
+    f.snapshots.collateral.tokens[0].isolated.push({ marketAcc: isolated, activePositions: 0, netBalance: 1,
+      initialMargin: 0, maintenanceMargin: 0, availableInitialMargin: 1, imCoverage: null, mmCoverage: null });
+    f.snapshots.asset.risk.settlements.pools = [
+      { marketAcc: pool, tokenId: 2, netToken: 10 },
+      { marketAcc: isolated, tokenId: 2, netToken: -10 },
+    ];
+    const r = await readReport(f), details = metric(r, 'boros.settlement_net_24h_usd').details;
+    expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(0);
+    expect(details).toContainEqual({ label: 'ETH cross', value: 10, unit: 'ETH/24h' });
+    expect(details).toContainEqual({ label: 'ETH isolated 291', value: -10, unit: 'ETH/24h' });
   });
   it('supports BTC and keeps opposing ETH/BTC USD residuals from cancelling', async () => {
     const f = await fixture(); addBtc(f); const s = f.snapshots;

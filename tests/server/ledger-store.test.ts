@@ -95,6 +95,18 @@ const ethSettleUsd = (data: { assets: Array<{ base: string; borosHistory: Array<
   data.assets.find((a) => a.base === 'ETH')?.borosHistory[0]?.settleUsd;
 
 describe('the Boros settlement ledger on disk', () => {
+  it('keeps different Boros subaccount ledgers isolated for one root', () => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-'));
+    const store = new LedgerStore(dataDir);
+    const rootLedger = { rows: [ledgerRow('root-zero', '2026-09-10T00:00:00Z')], coversFromSec: 0 };
+    const subLedger = { rows: [{ ...ledgerRow('sub-three', '2026-09-10T00:00:00Z'),
+      marketAcc: `0x${ADDR.slice(2)}030003ffffff` }], coversFromSec: 0 };
+    store.write(ADDR, rootLedger);
+    store.write(ADDR, subLedger, 3);
+    expect(store.read(ADDR)?.rows.map(r => r.id)).toEqual(['root-zero']);
+    expect(store.read(ADDR, 3)?.rows.map(r => r.id)).toEqual(['sub-three']);
+  });
+
   it('restart reads only new rows', async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-'));
     new LedgerStore(dataDir).write(ADDR, {
