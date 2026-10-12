@@ -34,7 +34,7 @@ export interface RiskAssetEvidence {
   settlement: { netEth: number | null; complete: boolean; fromSec: number; throughSec: number; reason: string };
   version?: 2;
   settlements?: { complete: boolean; fromSec: number; throughSec: number; reason: string;
-    pools: Array<{ marketAcc: string; tokenId: number; netToken: number }> };
+    pools: Array<{ marketAcc: string; tokenId: number; netToken: string }> };
 }
 export interface RiskBaseline {
   boros: Record<string, number>; perps: Record<string, number>; opened_at: number;
@@ -137,9 +137,7 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
     const configured = settings?.thresholds[rule.id];
     // Legacy combinations use different denominators/units; never reinterpret them.
     const activeThresholds = configured?.length && configured.every(c => rule.metrics.includes(c[0])) ? configured : rule.conditions;
-    const legacyRecovery = scope.pool === 'account' ? original.conditions.filter(c => old?.criticalMetrics.includes(c[0])
-      && c[3] === 'CRITICAL' && rule.metrics.includes(c[0]) && !activeThresholds.some(t => t[0] === c[0] && t[3] === 'CRITICAL')) : [];
-    const thresholds = [...activeThresholds, ...legacyRecovery];
+    const thresholds = activeThresholds;
     for (const [id, op, threshold, level] of thresholds) {
       const value = metrics[id]?.value;
       if (value === null || value === undefined) continue;

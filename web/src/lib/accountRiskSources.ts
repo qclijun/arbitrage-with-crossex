@@ -3,6 +3,7 @@ import { contracts, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
 import { fx, fxStr, type Fx } from '../../../src/engine/fx';
+import { formatDecimal18 } from '../../../src/core/boros/decimal18';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const number = (v: unknown) => typeof v === 'string' || typeof v === 'number' ? gateNumber(v) : null;
@@ -13,6 +14,7 @@ const exactDecimal = (v: unknown): Fx | null => {
   try { return fx(String(v)); } catch { return null; }
 };
 const SCALE18 = 1_000_000_000_000_000_000n;
+const SCALE30 = 1_000_000_000_000_000_000_000_000_000_000n;
 const exact18 = (v: unknown): bigint | null => {
   if (typeof v !== 'string') return null;
   const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(v.trim());
@@ -30,11 +32,19 @@ const metricNumber18 = (v: bigint): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const metricNumber = (v: Fx) => Number(fxStr(v));
+const metricNumber30 = (v: bigint): number | null => {
+  const n = Number(v) / Number(SCALE30);
+  return Number.isFinite(n) ? n : null;
+};
 const bases = ['ETH', 'BTC'] as const;
 type Detail = NonNullable<MetricEvidence['details']>[number];
 const priceUsd = (token: { symbol: string; priceUsd?: number | null }) => {
   if (['USDT', 'USDC'].includes(token.symbol.toUpperCase())) return 1;
   return finite(token.priceUsd) && token.priceUsd > 0 ? token.priceUsd : null;
+};
+const settlementPriceFx = (token: { symbol: string; priceUsd?: number | null }): Fx | null => {
+  if (['USDT', 'USDC'].includes(token.symbol.toUpperCase())) return fx('1');
+  return finite(token.priceUsd) && token.priceUsd > 0 ? exactDecimal(String(token.priceUsd)) : null;
 };
 
 /** Account estimates never assign an aggregate venue position's PnL to a pair. */
@@ -112,7 +122,7 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     put(`hedge.perp_net_${base.toLowerCase()}`, perpsComplete ? metricNumber18(net) : null, positions?.time ?? null, perpsComplete, 'Incomplete or unsupported ETH/BTC perpetual contracts');
     residuals.push(usd);
     const markReason = selected?.row
-      ? `Selected highest fresh Gate /positions markPrice ${selected.row.markPrice} from ${selected.row.symbol}; observed at ${positions?.time}`
+      ? `Selected highest fresh Gate /positions markPrice ${selected.row.markPrice} from ${selected.row.symbol}${/_USDT$/.test(selected.row.symbol) ? '; USDT is valued at the fixed 1:1 USD assumption' : /_USDC$/.test(selected.row.symbol) ? '; USDC is valued at the fixed 1:1 USD assumption' : ''}; observed at ${positions?.time}`
       : ls.length ? `Missing complete fresh Gate /positions markPrice for ${base}` : `No active ${base} perpetual positions`;
     netDetails.push({ label: base, value: usd === null ? null : metricNumber(usd), unit: 'USD', reason: markReason });
   }
@@ -152,39 +162,46 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     collateral?.time ?? null, poolComplete, 'Incomplete independent collateral pools', pools.map(p => ({ label: poolLabel(p), value: p.availableInitialMargin, unit: p.token.symbol })));
 
   const window = risk?.settlements;
+  const windowPools = window?.pools ?? [];
   const settlementComplete = Boolean(subject(risk) && window?.complete && finite(window.throughSec) && window.throughSec <= now
     && now - window.throughSec <= 120 && window.throughSec - window.fromSec === 86400
-    && window.pools.every(p => poolIdentity(p.marketAcc, p.tokenId) && finite(p.netToken)));
+    && windowPools.every(p => poolIdentity(p.marketAcc, p.tokenId) && exact18(p.netToken) !== null));
   const settlementDetails: Detail[] = [], runways: Detail[] = [];
-  const money: unknown[] = [];
-  for (const p of window?.pools ?? []) {
+  const money: Array<bigint | null> = windowPools.map(p => {
+    const amount = exact18(p.netToken);
     const token = tokens.find(t => t.tokenId === p.tokenId);
-    const px = token ? priceUsd(token) : null;
-    money.push(p.netToken === 0 ? 0 : finite(p.netToken) && px !== null ? p.netToken * px : null);
-  }
+    const quote = token ? settlementPriceFx(token) : null;
+    return amount === null ? null : amount === 0n ? 0n : quote !== null ? amount * quote : null;
+  });
   const settlementPools = new Map<string, { marketAcc: string; tokenId: number }>();
   for (const p of pools) settlementPools.set(p.marketAcc.toLowerCase(), { marketAcc: p.marketAcc, tokenId: p.token.tokenId });
-  for (const p of window?.pools ?? []) settlementPools.set(p.marketAcc.toLowerCase(), { marketAcc: p.marketAcc, tokenId: p.tokenId });
+  for (const p of windowPools) settlementPools.set(p.marketAcc.toLowerCase(), { marketAcc: p.marketAcc, tokenId: p.tokenId });
   for (const pool of settlementPools.values()) {
     const token = tokens.find(t => t.tokenId === pool.tokenId);
     const collateralPool = pools.find(p => p.marketAcc.toLowerCase() === pool.marketAcc.toLowerCase());
     const symbol = token?.symbol ?? `token${pool.tokenId}`;
     const label = collateralPool ? poolLabel(collateralPool)
       : `${symbol} missing collateral pool`;
-    const net = window?.pools.find(p => p.marketAcc.toLowerCase() === pool.marketAcc.toLowerCase())?.netToken ?? 0;
-    const px = token ? priceUsd(token) : null;
-    const usd = net === 0 ? 0 : finite(net) && px !== null ? net * px : null;
+    const rawNet = windowPools.find(p => p.marketAcc.toLowerCase() === pool.marketAcc.toLowerCase())?.netToken;
+    const net = rawNet === undefined ? 0n : exact18(rawNet);
+    const px = token ? settlementPriceFx(token) : null;
+    const usdFx30 = net === 0n ? 0n : net !== null && px !== null ? net * px : null;
+    const usd = usdFx30 === null ? null : metricNumber30(usdFx30);
     const quoteReason = token && ['USDT', 'USDC'].includes(symbol.toUpperCase())
       ? `USD valuation ${usd ?? 'UNKNOWN'} uses the fixed 1:1 ${symbol} assumption; observed at ${collateral?.data.observedAt ?? 'UNKNOWN'}`
       : token && px !== null
         ? `USD valuation ${usd ?? 'UNKNOWN'} uses collateral token priceUsd ${token.priceUsd}; observed at ${collateral?.data.observedAt ?? 'UNKNOWN'}`
         : `USD valuation UNKNOWN because the collateral token priceUsd quote is missing; observed at ${collateral?.data.observedAt ?? 'UNKNOWN'}`;
-    settlementDetails.push({ label, value: settlementComplete ? net : null, unit: symbol + '/24h', reason: quoteReason });
+    settlementDetails.push({ label, value: settlementComplete && net !== null ? formatDecimal18(net) : null, unit: symbol + '/24h', reason: quoteReason });
   }
-  const allPoolIds = new Set([...pools.map(p => p.marketAcc.toLowerCase()), ...(window?.pools ?? []).map(p => p.marketAcc.toLowerCase())]);
+  const allPoolIds = new Set([...pools.map(p => p.marketAcc.toLowerCase()), ...windowPools.map(p => p.marketAcc.toLowerCase())]);
   for (const acc of allPoolIds) {
-    const p = pools.find(p => p.marketAcc.toLowerCase() === acc), n = window?.pools.find(p => p.marketAcc.toLowerCase() === acc)?.netToken ?? 0;
-    const days = n < 0 && p && finite(p.availableInitialMargin) ? Math.max(0, p.availableInitialMargin) / -n : n >= 0 ? 'NA' : null;
+    const p = pools.find(p => p.marketAcc.toLowerCase() === acc);
+    const rawNet = windowPools.find(p => p.marketAcc.toLowerCase() === acc)?.netToken;
+    const n = rawNet === undefined ? 0n : exact18(rawNet);
+    const available = p && finite(p.availableInitialMargin) ? exactDecimal(String(p.availableInitialMargin)) : null;
+    const days = n !== null && n < 0n && available !== null
+      ? metricNumber(available * SCALE18 / abs18(n)) : n !== null && n >= 0n ? 'NA' : null;
     runways.push({ label: p ? poolLabel(p) : 'Missing collateral pool', value: days, unit: 'days' });
   }
   const outflows = runways.filter(d => d.value !== 'NA'), runwayComplete = settlementComplete && poolComplete && outflows.every(d => finite(d.value));
@@ -192,12 +209,19 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   put('boros.buffer_runway_days', runway, window?.throughSec ?? null, runwayComplete, 'Missing complete per-pool net outflow / available collateral', runways);
   if (settlementComplete && !runwayComplete && runway !== null) { metrics['boros.buffer_runway_days'].upperBound = true; metrics['boros.buffer_runway_days'].reason = 'Incomplete coverage'; }
   if (runwayComplete && !outflows.length) metrics['boros.buffer_runway_days'].applicability = 'NA';
-  const settlementUsdComplete = settlementComplete && money.every(finite);
-  put('boros.settlement_net_24h_usd', settlementUsdComplete ? total(money) : null, window?.throughSec ?? null, settlementUsdComplete,
+  const settlementUsdExact = settlementComplete && money.every((v): v is bigint => v !== null)
+    ? money.reduce((n, v) => n + v, 0n) : null;
+  const settlementUsd = settlementUsdExact === null ? null : metricNumber30(settlementUsdExact);
+  const settlementUsdComplete = settlementUsd !== null;
+  put('boros.settlement_net_24h_usd', settlementUsd, window?.throughSec ?? null, settlementUsdComplete,
     'Missing complete signed settlement window / collateral prices', settlementDetails);
-  for (const [base, tokenId] of [['eth', 2], ['btc', 1]] as const) put(`boros.settlement_net_24h_${base}`,
-    settlementComplete ? window!.pools.filter(p => p.tokenId === tokenId).reduce((n, p) => n + p.netToken, 0) : null,
-    window?.throughSec ?? null, settlementComplete, 'Missing complete signed settlement window');
+  for (const [base, tokenId] of [['eth', 2], ['btc', 1]] as const) {
+    const exact = settlementComplete ? windowPools.filter(p => p.tokenId === tokenId)
+      .reduce((n, p) => n + exact18(p.netToken)!, 0n) : null;
+    const value = exact === null ? null : metricNumber18(exact);
+    put(`boros.settlement_net_24h_${base}`, value, window?.throughSec ?? null, value !== null,
+      'Missing complete signed settlement window');
+  }
 
   const matchComplete = borosComplete && perpsComplete;
   const keys = new Set([...legs.map(p => `${p.base}:${p.exchange}:${p.side}`), ...boros.map(b => `${b.base}:${b.venue}:${b.side}`)]);

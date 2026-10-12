@@ -19,7 +19,7 @@ let baseline: RiskBaseline | null = null;
 const clients: QueryClient[] = [];
 const response = (data: unknown) => HttpResponse.json(env(data, { observedAt: Date.now(), credentialId: scope.credentialId, coverageComplete: true }));
 const positions = () => ['HYPERLIQUID', 'BINANCE'].map((venue, i) => ({ marketAcc: pool, marketId: 128 + i, venue,
-  base: 'ETH', tokenId: 2, sizeBase: 3, maturity: Math.floor(Date.now() / 1000) + 20 * 86400, side: i ? 'LONG' : 'SHORT', sizeToken: 3,
+  base: 'ETH', tokenId: 2, sizeBase: '3', maturity: Math.floor(Date.now() / 1000) + 20 * 86400, side: i ? 'LONG' : 'SHORT', sizeToken: 3,
   entryApr: i ? .04 : .12, markApr: i ? .04 : .15, mtmUsd: -2, notionalUsd: 9000, settleFeeApr: .001 }));
 function Controls({ client }: { client: QueryClient }) {
   const wallet = useTrackedAddress();
@@ -36,6 +36,7 @@ function mount() {
 const check = (id: string) => Array.from(document.querySelectorAll('details')).find(d => d.querySelector('summary')?.textContent?.includes(id))!;
 beforeEach(() => {
   accountFails = false; margin = '100'; external = {}; baseline = null; scope.credentialId = 'account-a';
+  const nowSec = Math.floor(Date.now() / 1000);
   localStorage.setItem(STRATEGY_STORAGE_KEY, JSON.stringify({ address, walletUpgraded: true }));
   server.use(
     http.get('/api/credentials', () => response({ configured: true, keyMasked: 'test…1111', identity: scope.credentialId })),
@@ -55,11 +56,11 @@ beforeEach(() => {
         cross: { marketAcc: pool, netBalance: .1, initialMargin: .08, maintenanceMargin: .04, availableInitialMargin: .012,
           activePositions: 2, imCoverage: 1.25, mmCoverage: 2.5 }, isolated: [] }] });
     }),
-    http.get('/api/asset-view/:address', () => response({ sinceSec: 0, nowSec: Date.now() / 1000, assets: [], earliestSec: null,
+    http.get('/api/asset-view/:address', () => response({ sinceSec: 0, nowSec, assets: [], earliestSec: null,
       coverage: { borosPositionsComplete: true, borosTxnsComplete: true, backfilling: false, settlementsFromSec: 0, perpClosedFromSec: 0 }, warnings: [],
-      risk: { version: 2, address, accountId: 0, observedAt: Date.now(), stale: false, positionsComplete: true, positions: positions(),
-        settlements: { pools: [{ marketAcc: pool, tokenId: 2, netToken: -.006 }], complete: true, fromSec: Math.floor(Date.now() / 1000) - 86400, throughSec: Math.floor(Date.now() / 1000), reason: 'Complete incremental net window; fees included' },
-        settlement: { netEth: -.006, complete: true, fromSec: Date.now() / 1000 - 86400, throughSec: Date.now() / 1000, reason: 'Complete incremental net ETH window; fees included' } } })),
+      risk: { version: 2, address, accountId: 0, observedAt: nowSec * 1000, stale: false, positionsComplete: true, positions: positions(),
+        settlements: { pools: [{ marketAcc: pool, tokenId: 2, netToken: '-0.006' }], complete: true, fromSec: nowSec - 86400, throughSec: nowSec, reason: 'Complete incremental net window; fees included' },
+        settlement: { netEth: -.006, complete: true, fromSec: nowSec - 86400, throughSec: nowSec, reason: 'Complete incremental net ETH window; fees included' } } })),
   );
 });
 afterEach(() => { for (const c of clients.splice(0)) c.clear(); });
@@ -136,6 +137,12 @@ describe('rendered Risk / shared API evidence', () => {
     expect(check('monitor.heartbeat_age_s').querySelector('summary')).toHaveTextContent('UNKNOWN');
     expect(check('service.http_ok')).toHaveTextContent('Terminal HTTP availability');
     expect(check('boros.im_coverage')).toHaveTextContent('1.2500 ratio');
+  });
+  it('renders exact per-pool settlement amounts and their USD quote provenance', async () => {
+    mount();
+    await waitFor(() => expect(check('boros.settlement_net_24h_usd')).toHaveTextContent('ETH cross: -0.006 ETH/24h'));
+    expect(check('boros.settlement_net_24h_usd')).toHaveTextContent('USD valuation -18 uses collateral token priceUsd 3000');
+    expect(check('boros.settlement_net_24h_usd')).toHaveTextContent('observed at');
   });
   it('retains unresolved CRITICAL and historical values after background failure, then requires verified recovery', async () => {
     const { client } = mount();

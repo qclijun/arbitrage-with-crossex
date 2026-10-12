@@ -254,11 +254,11 @@ describe('read-only shared Risk report', () => {
     f.snapshots.collateral.tokens.push({ symbol, tokenId, priceUsd: null,
       cross: { marketAcc, activePositions: 0, netBalance: 100, initialMargin: 0, maintenanceMargin: 0,
         availableInitialMargin: 100, imCoverage: null, mmCoverage: null }, isolated: [] });
-    f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: 10 });
+    f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: '10' });
     const r = await readReport(f);
     expect(metric(r, 'boros.equity_usd').value).toBe(400);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(10);
-    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual(expect.objectContaining({ label: `${symbol} cross`, value: 10, unit: `${symbol}/24h` }));
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual(expect.objectContaining({ label: `${symbol} cross`, value: '10', unit: `${symbol}/24h` }));
     expect(metric(r, 'boros.settlement_net_24h_usd').details.find((d: any) => d.label === `${symbol} cross`).reason)
       .toContain('1:1');
   });
@@ -267,10 +267,10 @@ describe('read-only shared Risk report', () => {
     f.snapshots.collateral.tokens.push({ symbol: 'HYPE', tokenId, priceUsd: null,
       cross: { marketAcc, activePositions: 1, netBalance: 10, initialMargin: 1, maintenanceMargin: .5,
         availableInitialMargin: 1, imCoverage: 10, mmCoverage: 20 }, isolated: [] });
-    f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: 2 });
+    f.snapshots.asset.risk.settlements.pools.push({ marketAcc, tokenId, netToken: '2' });
     const r = await readReport(f);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBeNull();
-    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual(expect.objectContaining({ label: 'HYPE cross', value: 2, unit: 'HYPE/24h' }));
+    expect(metric(r, 'boros.settlement_net_24h_usd').details).toContainEqual(expect.objectContaining({ label: 'HYPE cross', value: '2', unit: 'HYPE/24h' }));
     expect(JSON.stringify(metric(r, 'boros.settlement_net_24h_usd').details)).not.toContain(marketAcc);
     expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('UNKNOWN');
   });
@@ -279,18 +279,34 @@ describe('read-only shared Risk report', () => {
     f.snapshots.collateral.tokens[0].isolated.push({ marketAcc: isolated, activePositions: 0, netBalance: 1,
       initialMargin: 0, maintenanceMargin: 0, availableInitialMargin: 1, imCoverage: null, mmCoverage: null });
     f.snapshots.asset.risk.settlements.pools = [
-      { marketAcc: pool, tokenId: 2, netToken: 10 },
-      { marketAcc: isolated, tokenId: 2, netToken: -10 },
+      { marketAcc: pool, tokenId: 2, netToken: '10' },
+      { marketAcc: isolated, tokenId: 2, netToken: '-10' },
     ];
     f.snapshots.collateral.tokens[0].priceUsd = 3000;
     const r = await readReport(f), details = metric(r, 'boros.settlement_net_24h_usd').details;
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(0);
-    expect(details).toContainEqual(expect.objectContaining({ label: 'ETH cross', value: 10, unit: 'ETH/24h' }));
-    expect(details).toContainEqual(expect.objectContaining({ label: 'ETH isolated 291', value: -10, unit: 'ETH/24h' }));
+    expect(details).toContainEqual(expect.objectContaining({ label: 'ETH cross', value: '10', unit: 'ETH/24h' }));
+    expect(details).toContainEqual(expect.objectContaining({ label: 'ETH isolated 291', value: '-10', unit: 'ETH/24h' }));
     expect(details.every((d: any) => d.reason?.includes('observed at'))).toBe(true);
     expect(details[0].reason).toContain('priceUsd');
     expect(details[0].reason).toContain('3000');
     expect(details[0].reason).toContain(String(now * 1000));
+  });
+  it('calculates signed settlement USD from exact per-pool decimal amounts', async () => {
+    const f = await fixture(), isolated = address + '000002000123';
+    f.snapshots.collateral.tokens[0].isolated.push({ marketAcc: isolated, activePositions: 0, netBalance: 1,
+      initialMargin: 0, maintenanceMargin: 0, availableInitialMargin: 1, imCoverage: null, mmCoverage: null });
+    f.snapshots.asset.risk.settlements.pools = [
+      { marketAcc: pool, tokenId: 2, netToken: '0.100000000000000001' },
+      { marketAcc: isolated, tokenId: 2, netToken: '-0.1' },
+    ];
+    f.snapshots.collateral.tokens[0].priceUsd = 3000;
+    const r = await readReport(f), usd = metric(r, 'boros.settlement_net_24h_usd');
+    expect(usd.value).toBeCloseTo(0.000000000000003, 25);
+    expect(usd.details).toContainEqual(expect.objectContaining({ label: 'ETH cross', value: '0.100000000000000001', unit: 'ETH/24h' }));
+    expect(usd.details).toContainEqual(expect.objectContaining({ label: 'ETH isolated 291', value: '-0.1', unit: 'ETH/24h' }));
+    expect(usd.details.every((d: any) => d.reason?.includes('observed at'))).toBe(true);
+    expect(metric(r, 'data.coverage_complete').value).toBe(true);
   });
   it('supports BTC and keeps opposing ETH/BTC USD residuals from cancelling', async () => {
     const f = await fixture(); addBtc(f); const s = f.snapshots;
@@ -309,6 +325,8 @@ describe('read-only shared Risk report', () => {
       .toContain('markPrice 3001');
     expect(metric(r, 'hedge.residual_usd').details.find((d: any) => d.label === 'ETH').reason)
       .toContain(String(now));
+    expect(metric(r, 'hedge.residual_usd').details.find((d: any) => d.label === 'ETH').reason)
+      .toContain('USDC is valued at the fixed 1:1 USD assumption');
   });
   it('values sub-12-place residual quantities before converting the USD metric to a number', async () => {
     const f = await fixture(), s = f.snapshots;
@@ -372,7 +390,7 @@ describe('read-only shared Risk report', () => {
   it('shows signed account inflow while an independent BTC outflow pool remains critical', async () => {
     const f = await fixture(), btc = addBtc(f), s = f.snapshots;
     s.collateral.tokens[1].cross.availableInitialMargin = .0001;
-    s.asset.risk.settlements.pools = [{ marketAcc: pool, tokenId: 2, netToken: .01 }, { marketAcc: btc, tokenId: 1, netToken: -.0001 }];
+    s.asset.risk.settlements.pools = [{ marketAcc: pool, tokenId: 2, netToken: '0.01' }, { marketAcc: btc, tokenId: 1, netToken: '-0.0001' }];
     const r = await readReport(f);
     expect(metric(r, 'boros.settlement_net_24h_usd').value).toBe(25);
     expect(metric(r, 'boros.settlement_net_24h_btc').value).toBe(-.0001);
@@ -445,6 +463,21 @@ describe('read-only shared Risk report', () => {
     expect(report.errors.positions).toBe('Read failed');
     expect(report.checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('CRITICAL');
     expect((await read({ ...f.scope, credentialId: 'other' })).checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('UNKNOWN');
+  });
+
+  it('clears the legacy ETH absolute threshold after complete account recovery evidence', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.account.marginBalance = '1000000';
+    s.positions.positions[1].positionQty = '3.02';
+    s.positions.exposure[0].legs[1].qty = 3.02;
+    const previous = { scope: f.scope, state: {
+      'hedge.perp_net_eth': { status: 'CRITICAL', criticalMetrics: ['hedge.perp_net_eth'] },
+    } };
+    const report = await readReport(f, previous);
+    expect(metric(report, 'hedge.perp_net_eth').value).toBeCloseTo(.02);
+    expect(metric(report, 'hedge.residual_equity_ratio').value).toBeCloseTo(.00006);
+    expect(report.checks.find((c: any) => c.id === 'hedge.perp_net_eth').status).toBe('OK');
+    expect(report.complete).toBe(true);
   });
 
   it('keeps stale collateral UNKNOWN and incomplete instead of reusing its healthy numbers', async () => {

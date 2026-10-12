@@ -1245,7 +1245,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
         continue;
       }
       seen(groupFor(h._base), ev.timeSec);
-      h.settleUsd += ev.settlementToken * px;
+      h.settleUsd += Number(ev.settlementToken) * px;
       h.settleFeeUsd += ev.feeToken * px;
       // Same floor as the settlement it belongs to (this event already passed
       // it above): a settlement outside the window contributes no rebate either.

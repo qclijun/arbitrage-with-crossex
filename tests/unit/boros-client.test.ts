@@ -422,6 +422,13 @@ describe('syncSettlementLedger', () => {
     expect(w.pairs.map((p) => p.marketId).sort()).toEqual([155, 156]);
     expect(w.coversFromSec).toBe(0);
   });
+
+  it('preserves the settlement amount as an exact 18-place decimal string', async () => {
+    const exact = await syncSettlementLedger(stub(() => ({ body: {
+      results: [{ ...row('exact', 300), settlement: '100000000000000001' }], resumeToken: null,
+    } })), ADDR, 0, undefined, FULL);
+    expect(exact.rows[0].settlementToken).toBe('0.100000000000000001');
+  });
 });
 
 describe('fetchBorosCollaterals', () => {
