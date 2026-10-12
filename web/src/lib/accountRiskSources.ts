@@ -119,9 +119,17 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     const px = token ? priceUsd(token) : null;
     money.push(p.netToken === 0 ? 0 : finite(p.netToken) && px !== null ? p.netToken * px : null);
   }
-  for (const token of tokens) {
-    const net = window?.pools.filter(p => p.tokenId === token.tokenId).reduce((n, p) => n + p.netToken, 0) ?? 0;
-    settlementDetails.push({ label: token.symbol, value: settlementComplete ? net : null, unit: token.symbol + '/24h' });
+  const settlementPools = new Map<string, { marketAcc: string; tokenId: number }>();
+  for (const p of pools) settlementPools.set(p.marketAcc.toLowerCase(), { marketAcc: p.marketAcc, tokenId: p.token.tokenId });
+  for (const p of window?.pools ?? []) settlementPools.set(p.marketAcc.toLowerCase(), { marketAcc: p.marketAcc, tokenId: p.tokenId });
+  for (const pool of settlementPools.values()) {
+    const token = tokens.find(t => t.tokenId === pool.tokenId);
+    const collateralPool = pools.find(p => p.marketAcc.toLowerCase() === pool.marketAcc.toLowerCase());
+    const symbol = token?.symbol ?? `token${pool.tokenId}`;
+    const label = collateralPool ? poolLabel(collateralPool)
+      : `${symbol} missing collateral pool ${pool.marketAcc}`;
+    const net = window?.pools.find(p => p.marketAcc.toLowerCase() === pool.marketAcc.toLowerCase())?.netToken ?? 0;
+    settlementDetails.push({ label, value: settlementComplete ? net : null, unit: symbol + '/24h' });
   }
   const allPoolIds = new Set([...pools.map(p => p.marketAcc.toLowerCase()), ...(window?.pools ?? []).map(p => p.marketAcc.toLowerCase())]);
   for (const acc of allPoolIds) {

@@ -45,15 +45,16 @@ export class LedgerStore {
     this.dir = dataDir;
   }
 
-  private fileFor(address: string): string {
-    return path.join(this.dir, `boros-ledger-${address.toLowerCase()}.json`);
+  private fileFor(address: string, accountId = 0): string {
+    const subaccount = accountId === 0 ? '' : `-${accountId.toString(16).padStart(2, '0')}`;
+    return path.join(this.dir, `boros-ledger-${address.toLowerCase()}${subaccount}.json`);
   }
 
-  read(address: string): BorosSettlementLedger | null {
-    return readOwnerJson(this.fileFor(address), parseLedger);
+  read(address: string, accountId = 0): BorosSettlementLedger | null {
+    return readOwnerJson(this.fileFor(address, accountId), parseLedger);
   }
 
-  write(address: string, ledger: BorosSettlementLedger): void {
-    writeOwnerOnlyJson(this.fileFor(address), ledger);
+  write(address: string, ledger: BorosSettlementLedger, accountId = 0): void {
+    writeOwnerOnlyJson(this.fileFor(address, accountId), ledger);
   }
 }
