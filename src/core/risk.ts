@@ -140,20 +140,14 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
     const legacyRecovery = scope.pool === 'account' ? original.conditions.filter(c => old?.criticalMetrics.includes(c[0])
       && c[3] === 'CRITICAL' && rule.metrics.includes(c[0]) && !activeThresholds.some(t => t[0] === c[0] && t[3] === 'CRITICAL')) : [];
     const thresholds = [...activeThresholds, ...legacyRecovery];
-    const recoveryMargin = settings?.recoveryMarginFraction ?? .03;
     for (const [id, op, threshold, level] of thresholds) {
       const value = metrics[id]?.value;
       if (value === null || value === undefined) continue;
       if (metrics[id].lowerBound && !metrics[id].complete && !['gt', 'abs_gt'].includes(op)) continue;
       if (metrics[id].upperBound && !metrics[id].complete && op !== 'lt') continue;
-      let boundary = threshold;
-      if (old && severity[old.status] >= severity[level] && typeof threshold === 'number') {
-        if (op === 'lt') boundary = threshold + Math.abs(threshold) * recoveryMargin;
-        if (op === 'gt' || op === 'abs_gt') boundary = threshold - Math.abs(threshold) * recoveryMargin;
-      }
       const hit = op === 'eq' ? value === threshold : op === 'ne' ? value !== threshold
-        : typeof value === 'number' && typeof boundary === 'number'
-          && (op === 'lt' ? value < boundary : op === 'gt' ? value > boundary : Math.abs(value) > boundary);
+          : typeof value === 'number' && typeof threshold === 'number'
+            && (op === 'lt' ? value < threshold : op === 'gt' ? value > threshold : Math.abs(value) > threshold);
       if (hit) {
         if (severity[level] > severity[status]) status = level;
         reasons.push(`${id} ${op} ${threshold}`);
