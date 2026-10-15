@@ -17,6 +17,7 @@
 import { BOROS_NETWORK } from '../../../web/src/lib/borosNetwork';
 import { prettyVenue } from '../../../web/src/lib/fmt';
 import { CoreError } from '../errors';
+import { rawInteger18ToDecimal } from './decimal18';
 import { BOOK_VENUES } from '../estimate/books';
 import { borosInitialMarginUsd } from './opportunities';
 import { normalizeVenue } from './venue';
@@ -823,7 +824,8 @@ export interface BorosSettlementEvent {
   positionAbs: number;
   /** Net settlement = yieldReceived − yieldPaid − fee, SIGNED (+ = received
    * by the account, a gain; − = paid). */
-  settlementToken: number;
+  /** Exact signed settlement amount as a canonical token decimal string. */
+  settlementToken: string;
   /** Settlement fee charged this period (positive cost). */
   feeToken: number;
   /** Annualized rate effectively applied this period. */
@@ -927,7 +929,7 @@ async function fetchSettlementPage(
       marketId: Number(r.marketId),
       timeSec,
       positionAbs: Math.abs(norm18(r.positionSize as string)),
-      settlementToken: norm18(r.settlement as string),
+      settlementToken: rawInteger18ToDecimal(r.settlement) ?? '',
       feeToken: Math.abs(norm18(r.fee as string)),
       settlementRate: Number(r.settlementRate ?? Number.NaN),
     });

@@ -1715,6 +1715,7 @@ export interface TelegramLinkStatus {
 export interface BorosCollateralPool {
   marketAcc: string;
   netBalance: number | null;
+  netBalanceExact: string | null;
   initialMargin: number | null;
   maintenanceMargin: number | null;
   availableInitialMargin: number | null;

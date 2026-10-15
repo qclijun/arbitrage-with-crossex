@@ -54,11 +54,21 @@ import { currentRebateClient, loggedInRoot } from '../borosRebate';
 import { GATE_HISTORY_FLOOR_MS, INTEREST_MAX_PAGES, INTEREST_PAGE_SIZE } from '../interestLedger';
 import { LedgerStore } from '../ledgerStore';
 import { accountSettlementWindow, netSettlementWindow } from '../../core/boros/riskSettlement';
+import { formatDecimal18, parseDecimal18, rawInteger18ToDecimal } from '../../core/boros/decimal18';
+import { FX_DECIMALS, fx } from '../../engine/fx';
 import type { RiskAssetEvidence, RiskBorosPosition } from '../../core/risk';
 import { earliestSupportedOpenMs, TrackingStartFile } from '../trackingStart';
 import { borosFeesKnown, currentBorosCycle } from '../borosTracking';
 
 const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+function configuredBorosAccountId(): number {
+  const accountId = Number(process.env.BOROS_ACCOUNT_ID ?? 0);
+  if (!Number.isInteger(accountId) || accountId < 0 || accountId > 255) {
+    throw new CoreError('Invalid Boros account ID.', 'validation');
+  }
+  return accountId;
+}
 
 /** Boros allows 200 computing units per IP per minute, measured against its live rate-limit headers on 2026-09-21. */
 export const BOROS_LIVE_TTL_MS = 60_000;
@@ -283,7 +293,7 @@ export interface AssetViewOut {
     /** Oldest closed-position row read when the page cap was hit; 0 = complete. */
     perpClosedFromSec: number;
     borosTxnsComplete: boolean;
-    /** All current subaccount-0 positions have valid sizes and market metadata. */
+    /** All current configured-subaccount positions have valid sizes and market metadata. */
     borosPositionsComplete: boolean;
     backfilling: boolean;
   };
@@ -406,6 +416,7 @@ async function fetchClosedPositions(
 
 export interface AssetViewParams {
   address: string;
+  accountId?: number;
   requestedSinceSec: number | null;
   legSince: Map<number, number>;
   fresh: boolean;
@@ -469,7 +480,7 @@ export function borosMarginOf(
 }
 
 export function createAssetViewBuilder(deps: AppDeps) {
-  // Last synced ledger per address — the next sync reads only rows newer than its head.
+  // Keep settlement evidence separate for every configured root/subaccount.
   const settlementLedgers = new Map<string, BorosSettlementLedger>();
   const backfills = new Set<string>();
   const lastFills = new Map<string, { txns: BorosTxn[]; complete: boolean }>();
@@ -481,54 +492,59 @@ export function createAssetViewBuilder(deps: AppDeps) {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   const fetchImpl: FetchLike = resolveBorosFetch(deps.borosFetch);
+  const scopeKey = (address: string, accountId: number) => `${address.toLowerCase()}:${accountId}`;
 
   const keepLedger = (
     address: string,
+    accountId: number,
     prev: BorosSettlementLedger | undefined,
     next: BorosSettlementLedger,
   ): void => {
-    settlementLedgers.set(address, next);
+    settlementLedgers.set(scopeKey(address, accountId), next);
     const unchanged =
       prev !== undefined &&
       prev.coversFromSec === next.coversFromSec &&
       prev.rows.length === next.rows.length &&
       prev.validationError === next.validationError &&
       prev.rows[0]?.id === next.rows[0]?.id;
-    if (!unchanged) ledgerStore.write(address, next);
+    if (!unchanged) ledgerStore.write(address, next, accountId);
   };
 
-  const startSync = (address: string, floorSec: number): void => {
-    if (backfills.has(address)) return;
-    const prev = settlementLedgers.get(address);
-    backfills.add(address);
-    syncSettlementLedger(fetchImpl, address, 0, prev, { floorSec, pace })
+  const startSync = (address: string, accountId: number, floorSec: number): void => {
+    const key = scopeKey(address, accountId);
+    if (backfills.has(key)) return;
+    const prev = settlementLedgers.get(key);
+    backfills.add(key);
+    syncSettlementLedger(fetchImpl, address, accountId, prev, { floorSec, pace })
       .then((next) => {
-        keepLedger(address, prev, next);
-        deps.cache.bust(`boros:settlements:${address}`);
+        keepLedger(address, accountId, prev, next);
+        deps.cache.bust(`boros:settlements:${key}`);
       })
       .catch(() => undefined)
-      .finally(() => backfills.delete(address));
+      .finally(() => backfills.delete(key));
   };
 
-  const syncHead = async (address: string, floorSec: number): Promise<BorosSettlementLedger> => {
-    const prev = settlementLedgers.get(address) ?? ledgerStore.read(address) ?? undefined;
-    const next = await readSettlementHead(fetchImpl, address, 0, prev, pace);
+  const syncHead = async (address: string, accountId: number, floorSec: number): Promise<BorosSettlementLedger> => {
+    const key = scopeKey(address, accountId);
+    const prev = settlementLedgers.get(key) ?? ledgerStore.read(address, accountId) ?? undefined;
+    const next = await readSettlementHead(fetchImpl, address, accountId, prev, pace);
     if (next !== null) {
-      if (!backfills.has(address)) keepLedger(address, prev, next);
+      if (!backfills.has(key)) keepLedger(address, accountId, prev, next);
       return next;
     }
-    if (prev) settlementLedgers.set(address, prev);
-    startSync(address, floorSec);
+    if (prev) settlementLedgers.set(key, prev);
+    startSync(address, accountId, floorSec);
     return prev ?? { rows: [], coversFromSec: Math.floor(Date.now() / 1000) };
   };
 
-  const readLedger = async (address: string, floorSec: number, fresh: boolean) => {
-    const running = backfills.has(address) ? settlementLedgers.get(address) : undefined;
+  const readLedger = async (address: string, accountId: number, floorSec: number, fresh: boolean) => {
+    const key = scopeKey(address, accountId);
+    const running = backfills.has(key) ? settlementLedgers.get(key) : undefined;
     if (running) return { ledger: running, observedAt: null, stale: true };
     const { value, observedAt, stale } = await deps.cache.get(
-      `boros:settlements:${address}`,
+      `boros:settlements:${key}`,
       BOROS_LIVE_TTL_MS,
-      () => syncHead(address, floorSec),
+      () => syncHead(address, accountId, floorSec),
       { fresh },
     );
     return { ledger: value, observedAt, stale };
@@ -573,6 +589,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
 
   return async function buildAssetView(params: AssetViewParams): Promise<AssetViewOut> {
     const { address, requestedSinceSec, legSince, fresh } = params;
+    const accountId = params.accountId ?? configuredBorosAccountId();
     const nowSec = Math.floor(Date.now() / 1000);
 
     const warnings: string[] = [];
@@ -667,12 +684,12 @@ export function createAssetViewBuilder(deps: AppDeps) {
       marketsP,
       marketsP.then((ms) =>
         deps.cache
-          .get(`boros:collaterals:strict:${address}`, TTL.boros, () => fetchBorosCollaterals(fetchImpl, address, ms, 0, true), {
+          .get(`boros:collaterals:strict:${address}:${accountId}`, TTL.boros, () => fetchBorosCollaterals(fetchImpl, address, ms, accountId, true), {
             fresh,
           })
           .then((r) => { collateralObservedAt = r.observedAt; sourceStale ||= r.stale; return r.value; }),
       ),
-      readLedger(address, sinceSec, fresh),
+      readLedger(address, accountId, sinceSec, fresh),
     ]);
     const ledger = ledgerRead.ledger;
     let settlements = settlementWindow(ledger, sinceSec);
@@ -1230,7 +1247,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
         continue;
       }
       seen(groupFor(h._base), ev.timeSec);
-      h.settleUsd += ev.settlementToken * px;
+      h.settleUsd += Number(ev.settlementToken) * px;
       h.settleFeeUsd += ev.feeToken * px;
       // Same floor as the settlement it belongs to (this event already passed
       // it above): a settlement outside the window contributes no rebate either.
@@ -1347,49 +1364,64 @@ export function createAssetViewBuilder(deps: AppDeps) {
       }
     }
 
-    if (ledger.coversFromSec !== 0 && ledger.coversFromSec > sinceSec) startSync(address, sinceSec);
+    if (ledger.coversFromSec !== 0 && ledger.coversFromSec > sinceSec) startSync(address, accountId, sinceSec);
 
     // Keep quantities and directions even when USD pricing is unavailable.
     const riskPositions: RiskBorosPosition[] = [];
     let riskPositionsComplete = zones.every(z => [...(z.cross ? [z.cross] : []), ...z.isolated].every(g => g.positionsComplete === true));
-    const amount18 = (v: unknown): number | null => typeof v === 'string' && /^-?\d+$/.test(v)
-      && Number.isFinite(Number(v)) ? Number(v) / 1e18 : null;
+    const usdNumber = (value: string | null): number | null => {
+      if (value === null) return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const priceFx = (value: number | null | undefined): bigint | null => {
+      if (value == null || !Number.isFinite(value) || value <= 0) return null;
+      try { return fx(String(value)); } catch { return null; }
+    };
     for (const zone of zones) {
       for (const group of [...(zone.cross ? [zone.cross] : []), ...zone.isolated]) {
-      const prefix = address.toLowerCase() + '00' + zone.tokenId.toString(16).padStart(4, '0');
-      if (!group.marketAcc.toLowerCase().startsWith(prefix) || !/^0x[a-f0-9]{52}$/i.test(group.marketAcc)) { riskPositionsComplete = false; continue; }
-      for (const position of group.marketPositions) {
-        const size = amount18(position.notionalSize);
-        if (size === null) { riskPositionsComplete = false; continue; }
-        if (size === 0) continue;
-        const market = marketById.get(position.marketId);
-        if (!market || !['ETH', 'BTC'].includes(market.base) || market.tokenId !== zone.tokenId || !Number.isFinite(market.maturity)) riskPositionsComplete = false;
-        const price = collateralPriceUsd.get(zone.tokenId);
-        const mtm = amount18(position.pnl.unrealisedPnl);
-        riskPositions.push({ marketAcc: group.marketAcc, marketId: position.marketId,
-          base: market?.base, tokenId: zone.tokenId,
-          sizeBase: market && ((market.base === 'ETH' && zone.tokenId === 2) || (market.base === 'BTC' && zone.tokenId === 1)) ? Math.abs(size) : null,
-          venue: market ? normalizeVenue(market.venue) : null, maturity: market?.maturity ?? null,
-          side: size > 0 ? 'LONG' : 'SHORT', sizeToken: Math.abs(size),
-          entryApr: position.fixedApr, markApr: Number.isFinite(position.markApr) ? position.markApr : null,
-          mtmUsd: mtm !== null && price && price > 0 ? mtm * price : null,
-          notionalUsd: price && price > 0 ? Math.abs(size) * price : null,
-          settleFeeApr: market?.settleFeeApr ?? null });
-      }
+        const prefix = address.toLowerCase() + accountId.toString(16).padStart(2, '0') + zone.tokenId.toString(16).padStart(4, '0');
+        if (!group.marketAcc.toLowerCase().startsWith(prefix) || !/^0x[a-f0-9]{52}$/i.test(group.marketAcc)) { riskPositionsComplete = false; continue; }
+        for (const position of group.marketPositions) {
+          const size = rawInteger18ToDecimal(position.notionalSize);
+          if (size === null) { riskPositionsComplete = false; continue; }
+          const rawSize = BigInt(position.notionalSize);
+          if (rawSize === 0n) continue;
+          const market = marketById.get(position.marketId);
+          if (!market || !['ETH', 'BTC'].includes(market.base) || market.tokenId !== zone.tokenId || !Number.isFinite(market.maturity)) riskPositionsComplete = false;
+          const price = collateralPriceUsd.get(zone.tokenId);
+          const mtm = rawInteger18ToDecimal(position.pnl.unrealisedPnl);
+          const size18 = parseDecimal18(size), mtm18 = mtm === null ? null : parseDecimal18(mtm);
+          const quote = priceFx(price);
+          const mtmUsdExact = mtm18 === null || quote === null ? null
+            : formatDecimal18(mtm18 * quote / (10n ** BigInt(FX_DECIMALS)));
+          const notionalUsdExact = size18 === null || quote === null ? null
+            : formatDecimal18((size18 < 0n ? -size18 : size18) * quote / (10n ** BigInt(FX_DECIMALS)));
+          const sizeNumber = Number(size);
+          const sizeBase = size.startsWith('-') ? size.slice(1) : size;
+          riskPositions.push({ marketAcc: group.marketAcc, marketId: position.marketId,
+            base: market?.base, tokenId: zone.tokenId,
+            sizeBase: market && ((market.base === 'ETH' && zone.tokenId === 2) || (market.base === 'BTC' && zone.tokenId === 1)) ? sizeBase : null,
+            venue: market ? normalizeVenue(market.venue) : null, maturity: market?.maturity ?? null,
+            side: rawSize > 0n ? 'LONG' : 'SHORT', sizeToken: Math.abs(sizeNumber),
+            entryApr: position.fixedApr, markApr: Number.isFinite(position.markApr) ? position.markApr : null,
+            mtmUsd: usdNumber(mtmUsdExact), notionalUsd: usdNumber(notionalUsdExact), mtmUsdExact, notionalUsdExact,
+            settleFeeApr: market?.settleFeeApr ?? null });
+        }
       }
     }
     const ledgerThrough = ledgerRead.observedAt === null ? nowSec : Math.floor(ledgerRead.observedAt / 1000);
-    const net = netSettlementWindow(ledger, address, 0, ledgerThrough);
+    const net = netSettlementWindow(ledger, address, accountId, ledgerThrough);
     const settlement = ledgerRead.stale ? { ...net, netEth: null, complete: false,
       reason: 'Settlement producer read incomplete / stale' } : net;
-    const allNet = accountSettlementWindow(ledger, address, 0, ledgerThrough);
+    const allNet = accountSettlementWindow(ledger, address, accountId, ledgerThrough);
     const accountSettlements = ledgerRead.stale ? { ...allNet, pools: [], complete: false,
       reason: 'Settlement producer read incomplete / stale' } : allNet;
     const out: AssetViewOut = {
       trackingStart: { complete: unknownCycles.size === 0 && txnsComplete.every(Boolean) && perpAvailable && closedAvailable
           && !sourceStale && borosPositionsComplete && perpClosedFromSec === 0,
         corrected: gateSinceSec !== null && defaultSinceSec !== null && defaultSinceSec < gateSinceSec },
-      risk: { version: 2, address, accountId: 0, observedAt: Math.min(marketObservedAt, collateralObservedAt),
+      risk: { version: 2, address, accountId, observedAt: Math.min(marketObservedAt, collateralObservedAt),
         stale: sourceStale, positionsComplete: riskPositionsComplete, positions: riskPositions, settlement, settlements: accountSettlements },
       sinceSec,
       nowSec,
@@ -1404,7 +1436,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
         perpClosedFromSec,
         borosTxnsComplete: txnsComplete.every(Boolean),
         borosPositionsComplete,
-        backfilling: backfills.has(address),
+        backfilling: backfills.has(scopeKey(address, accountId)),
       },
       warnings,
     };
@@ -1426,10 +1458,11 @@ export function assetViewRoutes(deps: AppDeps) {
       if (!EVM_ADDRESS_RE.test(address)) {
         throw new CoreError('invalid EVM address (expected 0x + 40 hex chars)', 'validation');
       }
+      const accountId = configuredBorosAccountId();
       const markets = (await deps.cache.get('boros:markets', TTL.boros, () => fetchBorosMarkets(fetchImpl))).value;
       const zones = (
-        await deps.cache.get(`boros:collaterals:${address}`, TTL.boros, () =>
-          fetchBorosCollaterals(fetchImpl, address, markets),
+        await deps.cache.get(`boros:collaterals:${address}:${accountId}`, TTL.boros, () =>
+          fetchBorosCollaterals(fetchImpl, address, markets, accountId),
         )
       ).value;
       return reply.ok({ borosMargin: borosMarginOf(zones, markets) });
@@ -1440,6 +1473,7 @@ export function assetViewRoutes(deps: AppDeps) {
       if (!EVM_ADDRESS_RE.test(raw)) {
         throw new CoreError('invalid EVM address (expected 0x + 40 hex chars)', 'validation');
       }
+      const accountId = configuredBorosAccountId();
       const query = req.query as { since?: string; fresh?: string; legSince?: string };
       /**
        * Per-market "counted from" floors: `legSince=<marketId>:<sec>,…`.
@@ -1474,6 +1508,7 @@ export function assetViewRoutes(deps: AppDeps) {
 
       const out = await buildAssetView({
         address: raw.toLowerCase(),
+        accountId,
         requestedSinceSec,
         legSince,
         fresh: query.fresh === '1',

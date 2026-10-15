@@ -56,7 +56,7 @@ const ledgerRow = (id: string, iso: string) => ({
   marketId: 155,
   timeSec: sec(iso),
   positionAbs: 1000,
-  settlementToken: 10,
+  settlementToken: '10',
   feeToken: 0,
   settlementRate: 0.07,
 });
@@ -95,6 +95,25 @@ const ethSettleUsd = (data: { assets: Array<{ base: string; borosHistory: Array<
   data.assets.find((a) => a.base === 'ETH')?.borosHistory[0]?.settleUsd;
 
 describe('the Boros settlement ledger on disk', () => {
+  it('rejects cached settlement rows that only contain lossy numeric amounts', () => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-'));
+    const legacy = { rows: [{ ...ledgerRow('legacy', '2026-09-10T00:00:00Z'), settlementToken: 10 }], coversFromSec: 0 };
+    fs.writeFileSync(path.join(dataDir, `boros-ledger-${ADDR.toLowerCase()}.json`), JSON.stringify(legacy));
+    expect(new LedgerStore(dataDir).read(ADDR)).toBeNull();
+  });
+
+  it('keeps different Boros subaccount ledgers isolated for one root', () => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-'));
+    const store = new LedgerStore(dataDir);
+    const rootLedger = { rows: [ledgerRow('root-zero', '2026-09-10T00:00:00Z')], coversFromSec: 0 };
+    const subLedger = { rows: [{ ...ledgerRow('sub-three', '2026-09-10T00:00:00Z'),
+      marketAcc: `0x${ADDR.slice(2)}030003ffffff` }], coversFromSec: 0 };
+    store.write(ADDR, rootLedger);
+    store.write(ADDR, subLedger, 3);
+    expect(store.read(ADDR)?.rows.map(r => r.id)).toEqual(['root-zero']);
+    expect(store.read(ADDR, 3)?.rows.map(r => r.id)).toEqual(['sub-three']);
+  });
+
   it('restart reads only new rows', async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-'));
     new LedgerStore(dataDir).write(ADDR, {

@@ -25,15 +25,22 @@ describe('read-only Boros collateral', () => {
     expect(res.statusCode).toBe(200);
     const eth = res.json().data.tokens[0];
     expect(eth.cross).toMatchObject({ netBalance: .1, initialMargin: .08,
-      availableInitialMargin: .012, activePositions: 1, imCoverage: 1.25 });
+      netBalanceExact: '0.1', availableInitialMargin: .012, activePositions: 1, imCoverage: 1.25 });
     expect(eth.cross.maintenanceMargin).toBeCloseTo(.04);
     expect(eth.cross.mmCoverage).toBeCloseTo(2.5);
     expect(eth.isolated[0].netBalance).toBe(.2);
     expect(res.json().data.tokens[1].cross).toBeNull();
   });
+  it('preserves all 18 raw collateral decimals in the account response', async () => {
+    const res = await read([{ ...row(), netBalance: '123456789012345678' }]);
+    const cross = res.json().data.tokens[0].cross;
+    expect(cross.netBalance).toBe(.12345678901234568);
+    expect(cross.netBalanceExact).toBe('0.123456789012345678');
+  });
   it('keeps missing fields UNKNOWN instead of fabricating zero', async () => {
     const res = await read([{ marketAcc: acc() }]);
     expect(res.json().data.tokens[0].cross).toMatchObject({ netBalance: null,
+      netBalanceExact: null,
       availableInitialMargin: null, initialMargin: null, maintenanceMargin: null,
       activePositions: null, imCoverage: null, mmCoverage: null });
   });

@@ -771,23 +771,15 @@ def evaluate(data, config, state, rules, now, errors=None):
         status = 'UNKNOWN' if missing else 'OK'
         reasons = ['missing/expired: ' + ', '.join(missing)] if missing else []
         conditions = overrides.get(rule['id'], rule.get('conditions', []))
-        previous = state.get('risk_status', {}).get(rule['id'])
         hits = []
         for condition in conditions:
             key, op, threshold, level = condition
             value = values.get(key, {}).get('value')
             if value is None:
                 continue
-            boundary = threshold
-            if previous and SEVERITY.get(previous, 0) >= SEVERITY[level] and isinstance(threshold, (int, float)) and not isinstance(threshold, bool):
-                margin = config.get('recovery_margin_fraction', .03)
-                if op == 'lt':
-                    boundary = threshold + abs(threshold) * margin
-                elif op in ('gt', 'abs_gt'):
-                    boundary = threshold - abs(threshold) * margin
             try:
-                hit = {'lt': lambda: value < boundary, 'gt': lambda: value > boundary,
-                       'abs_gt': lambda: abs(value) > boundary, 'eq': lambda: value == threshold,
+                hit = {'lt': lambda: value < threshold, 'gt': lambda: value > threshold,
+                       'abs_gt': lambda: abs(value) > threshold, 'eq': lambda: value == threshold,
                        'ne': lambda: value != threshold}[op]()
             except (TypeError, KeyError):
                 status = max((status, 'UNKNOWN'), key=SEVERITY.get)
@@ -795,7 +787,12 @@ def evaluate(data, config, state, rules, now, errors=None):
                 continue
             if hit:
                 status = max((status, level), key=SEVERITY.get)
-                reasons.append(f'{key} {op} {threshold}')
+                # The alert text must carry the observed value: a bare "gt 0"
+                # reads scarier than the transient 20-100 USDT wallet borrows
+                # that motivated this. Bools and strings keep their literal form.
+                unit = values.get(key, {}).get('unit') or ''
+                shown = value if isinstance(value, (bool, str)) else round(value, 6)
+                reasons.append(f'{key} {op} {threshold}（当前 {shown} {unit}）'.rstrip())
                 if level == 'CRITICAL':
                     hits.append(key)
         old_hits = state.get('critical_metrics', {}).get(rule['id'], [])

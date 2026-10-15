@@ -26,7 +26,8 @@ export interface RiskBorosPosition {
   marketAcc: string; marketId: number; venue: string | null; maturity: number | null;
   side: 'LONG' | 'SHORT'; sizeToken: number; entryApr: number | null; markApr: number | null;
   mtmUsd: number | null; notionalUsd: number | null; settleFeeApr: number | null;
-  base?: string; tokenId?: number; sizeBase?: number | null;
+  mtmUsdExact?: string | null; notionalUsdExact?: string | null;
+  base?: string; tokenId?: number; sizeBase?: string | null;
 }
 export interface RiskAssetEvidence {
   address: string; accountId: number; observedAt: number | null; stale: boolean;
@@ -34,7 +35,7 @@ export interface RiskAssetEvidence {
   settlement: { netEth: number | null; complete: boolean; fromSec: number; throughSec: number; reason: string };
   version?: 2;
   settlements?: { complete: boolean; fromSec: number; throughSec: number; reason: string;
-    pools: Array<{ marketAcc: string; tokenId: number; netToken: number }> };
+    pools: Array<{ marketAcc: string; tokenId: number; netToken: string }> };
 }
 export interface RiskBaseline {
   boros: Record<string, number>; perps: Record<string, number>; opened_at: number;
@@ -137,26 +138,23 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
     const configured = settings?.thresholds[rule.id];
     // Legacy combinations use different denominators/units; never reinterpret them.
     const activeThresholds = configured?.length && configured.every(c => rule.metrics.includes(c[0])) ? configured : rule.conditions;
-    const legacyRecovery = scope.pool === 'account' ? original.conditions.filter(c => old?.criticalMetrics.includes(c[0])
-      && c[3] === 'CRITICAL' && rule.metrics.includes(c[0]) && !activeThresholds.some(t => t[0] === c[0] && t[3] === 'CRITICAL')) : [];
-    const thresholds = [...activeThresholds, ...legacyRecovery];
-    const recoveryMargin = settings?.recoveryMarginFraction ?? .03;
+    const thresholds = activeThresholds;
     for (const [id, op, threshold, level] of thresholds) {
       const value = metrics[id]?.value;
       if (value === null || value === undefined) continue;
       if (metrics[id].lowerBound && !metrics[id].complete && !['gt', 'abs_gt'].includes(op)) continue;
       if (metrics[id].upperBound && !metrics[id].complete && op !== 'lt') continue;
-      let boundary = threshold;
-      if (old && severity[old.status] >= severity[level] && typeof threshold === 'number') {
-        if (op === 'lt') boundary = threshold + Math.abs(threshold) * recoveryMargin;
-        if (op === 'gt' || op === 'abs_gt') boundary = threshold - Math.abs(threshold) * recoveryMargin;
-      }
       const hit = op === 'eq' ? value === threshold : op === 'ne' ? value !== threshold
-        : typeof value === 'number' && typeof boundary === 'number'
-          && (op === 'lt' ? value < boundary : op === 'gt' ? value > boundary : Math.abs(value) > boundary);
+          : typeof value === 'number' && typeof threshold === 'number'
+            && (op === 'lt' ? value < threshold : op === 'gt' ? value > threshold : Math.abs(value) > threshold);
       if (hit) {
         if (severity[level] > severity[status]) status = level;
-        reasons.push(`${id} ${op} ${threshold}`);
+        // Alert text must carry the observed value: a bare "gt 0" hides whether
+        // the wallet borrow is a transient $5 flap or a real funding problem.
+        // Non-numeric values (bool / enum) keep their literal form.
+        const unit = contracts[id]?.unit ?? '';
+        const shown = typeof value === 'number' ? Math.round(value * 1e6) / 1e6 : value;
+        reasons.push(`${id} ${op} ${threshold}（当前 ${shown}${unit ? ' ' + unit : ''}）`);
         if (level === 'CRITICAL') criticalMetrics.push(id);
       }
     }

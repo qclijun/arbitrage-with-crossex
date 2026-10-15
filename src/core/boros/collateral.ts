@@ -1,8 +1,10 @@
 import type { BorosCollateralZone, BorosMarginGroup } from './client';
+import { rawInteger18ToDecimal } from './decimal18';
 
 export interface CollateralPool {
   marketAcc: string;
   netBalance: number | null;
+  netBalanceExact: string | null;
   initialMargin: number | null;
   maintenanceMargin: number | null;
   availableInitialMargin: number | null;
@@ -12,12 +14,14 @@ export interface CollateralPool {
 }
 
 function amount(value: unknown): number | null {
-  if (typeof value !== 'string' || !/^-?\d+$/.test(value)) return null;
-  const n = Number(value) / 1e18;
+  const exact = rawInteger18ToDecimal(value);
+  if (exact === null) return null;
+  const n = Number(exact);
   return Number.isFinite(n) ? n : null;
 }
 
 function pool(group: BorosMarginGroup): CollateralPool {
+  const netExact = rawInteger18ToDecimal(group.netBalance);
   const net = amount(group.netBalance);
   const rawIm = amount(group.initialMargin);
   const im = rawIm !== null && rawIm >= 0 ? rawIm : null;
@@ -29,6 +33,7 @@ function pool(group: BorosMarginGroup): CollateralPool {
   return {
     marketAcc: group.marketAcc,
     netBalance: net,
+    netBalanceExact: netExact,
     initialMargin: im,
     maintenanceMargin: mm,
     availableInitialMargin: available,

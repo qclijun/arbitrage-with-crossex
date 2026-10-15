@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import type { BorosSettlementLedger, BorosSettlementRow } from '../core/boros/client';
 import { readOwnerJson, writeOwnerOnlyJson } from './secretFile';
+import { parseDecimal18 } from '../core/boros/decimal18';
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
@@ -9,7 +10,8 @@ function parseRow(raw: unknown): BorosSettlementRow | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || typeof r.marketAcc !== 'string') return null;
   if (r.tokenId !== null && !isNumber(r.tokenId)) return null;
-  if (![r.marketId, r.timeSec, r.positionAbs, r.settlementToken, r.feeToken].every(isNumber)) return null;
+  if (![r.marketId, r.timeSec, r.positionAbs, r.feeToken].every(isNumber)
+    || parseDecimal18(r.settlementToken) === null) return null;
   return {
     id: r.id,
     marketAcc: r.marketAcc,
@@ -17,7 +19,7 @@ function parseRow(raw: unknown): BorosSettlementRow | null {
     marketId: r.marketId as number,
     timeSec: r.timeSec as number,
     positionAbs: r.positionAbs as number,
-    settlementToken: r.settlementToken as number,
+    settlementToken: r.settlementToken as string,
     feeToken: r.feeToken as number,
     settlementRate: isNumber(r.settlementRate) ? r.settlementRate : Number.NaN,
   };
@@ -45,15 +47,16 @@ export class LedgerStore {
     this.dir = dataDir;
   }
 
-  private fileFor(address: string): string {
-    return path.join(this.dir, `boros-ledger-${address.toLowerCase()}.json`);
+  private fileFor(address: string, accountId = 0): string {
+    const subaccount = accountId === 0 ? '' : `-${accountId.toString(16).padStart(2, '0')}`;
+    return path.join(this.dir, `boros-ledger-${address.toLowerCase()}${subaccount}.json`);
   }
 
-  read(address: string): BorosSettlementLedger | null {
-    return readOwnerJson(this.fileFor(address), parseLedger);
+  read(address: string, accountId = 0): BorosSettlementLedger | null {
+    return readOwnerJson(this.fileFor(address, accountId), parseLedger);
   }
 
-  write(address: string, ledger: BorosSettlementLedger): void {
-    writeOwnerOnlyJson(this.fileFor(address), ledger);
+  write(address: string, ledger: BorosSettlementLedger, accountId = 0): void {
+    writeOwnerOnlyJson(this.fileFor(address, accountId), ledger);
   }
 }

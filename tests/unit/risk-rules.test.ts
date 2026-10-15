@@ -16,11 +16,11 @@ describe('Risk catalog evaluation', () => {
     expect(report.checks.some(c => c.id === 'rollover.days_to_maturity')).toBe(true);
     expect(report.checks.some(c => c.id === 'data.age_seconds')).toBe(true);
   });
-  it('keeps strict boundaries and requires hysteresis for recovery', () => {
+  it('keeps strict boundaries and reapplies them after prior critical status', () => {
     expect(run(1.1).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('WARNING');
     const critical = run(1.09);
     expect(critical.checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('CRITICAL');
-    expect(run(1.11, critical.state).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('CRITICAL');
+    expect(run(1.11, critical.state).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('WARNING');
     const lost = run(null, critical.state);
     expect(lost.checks.find(c => c.id === 'gate.im_coverage')).toMatchObject({ status: 'CRITICAL', coverageComplete: false });
     expect(run(1.4, lost.state).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('OK');

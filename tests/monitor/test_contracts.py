@@ -90,17 +90,18 @@ class ContractTest(unittest.TestCase):
                 self.assertEqual(check['status'], 'UNKNOWN')
                 self.assertFalse(check['coverageComplete'])
 
-    def test_exact_boundary_and_recovery_hysteresis(self):
+    def test_exact_boundary_and_same_threshold_recovery(self):
         rule = next(r for r in self.rules if r['id'] == 'boros.im_coverage')
+        self.config['recovery_margin_fraction'] = .5
         def run(value, state):
             save(self.config['observations_file'], {'metrics': {'boros.im_coverage': self.observation(value)}})
             return evaluate({}, self.config, state, [rule], NOW)['checks'][0]['status']
         self.assertEqual(run(1.15, {}), 'WARNING')
         state = {}
         self.assertEqual(run(1.1, state), 'CRITICAL')
-        self.assertEqual(run(1.16, state), 'CRITICAL')
+        self.assertEqual(run(1.16, state), 'WARNING')
         self.assertEqual(run(1.19, state), 'WARNING')
-        self.assertEqual(run(1.31, state), 'WARNING')
+        self.assertEqual(run(1.31, state), 'OK')
         self.assertEqual(run(1.35, state), 'OK')
 
     def test_event_evidence_is_not_a_safety_guarantee(self):

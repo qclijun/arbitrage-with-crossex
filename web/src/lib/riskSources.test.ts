@@ -16,9 +16,10 @@ async function snapshot<T>(data: T, coverageComplete = true) {
 async function fixture() {
   const boros = ['HYPERLIQUID', 'BINANCE'].map((venue, i) => ({ marketAcc: pool, marketId: 128 + i, venue,
     maturity: now + 10 * 86400, side: i ? 'LONG' : 'SHORT', sizeToken: 3,
-    entryApr: i ? .04 : .12, markApr: i ? .04 : .15, mtmUsd: -2, notionalUsd: 9000, settleFeeApr: .001 }));
+    entryApr: i ? .04 : .12, markApr: i ? .04 : .15, mtmUsd: -2, mtmUsdExact: '-2', notionalUsd: 9000, settleFeeApr: .001,
+    base: 'ETH', tokenId: 2, sizeBase: '3' }));
   const legs = ['HYPERLIQUID', 'BINANCE'].map((exchange, i) => ({ symbol: exchange + '_FUTURE_ETH_' + (i ? 'USDT' : 'USDC'),
-    exchange, side: i ? 'LONG' : 'SHORT', qty: 3, value: 9000 }));
+    exchange, base: 'ETH', quote: i ? 'USDT' : 'USDC', side: i ? 'LONG' : 'SHORT', qty: 3, value: 9000 }));
   const rows = legs.map((p, i) => ({ symbol: p.symbol, positionQty: i ? '3' : '-3', markPrice: '3000', upnl: '-1', updateTime: String(now * 1000) }));
   const assets = [{ coin: 'USDT', exchangeType: 'BINANCE', liability: '10' }, { coin: 'USDC', exchangeType: 'HYPERLIQUID', liability: '0' }];
   const input = {
@@ -26,10 +27,10 @@ async function fixture() {
     interest: await snapshot({ buckets: [{ coin: 'USDT', venue: 'BINANCE', borrow: 10, ratePerYear: .1752, interestPerDayUsd: .0048 },
       { coin: 'USDC', venue: 'HYPERLIQUID', borrow: 0, ratePerYear: null, interestPerDayUsd: 0 }] }),
     positions: await snapshot({ positions: rows, exposure: [{ base: 'ETH', legs }] }),
-    collateral: await snapshot({ address, accountId: 0, observedAt: now * 1000, stale: false, tokens: [{ tokenId: 2, priceUsd: 3000,
-      cross: { marketAcc: pool, netBalance: .1, initialMargin: .04, maintenanceMargin: .02, availableInitialMargin: .04, imCoverage: 2.5, mmCoverage: 5 }, isolated: [] }] }),
+    collateral: await snapshot({ address, accountId: 0, observedAt: now * 1000, stale: false, tokens: [{ symbol: 'ETH', tokenId: 2, priceUsd: 3000,
+      cross: { marketAcc: pool, netBalance: .1, netBalanceExact: '0.1', initialMargin: .04, maintenanceMargin: .02, availableInitialMargin: .04, imCoverage: 2.5, mmCoverage: 5 }, isolated: [] }] }),
     asset: await snapshot({ assets: [], warnings: [], coverage: { borosPositionsComplete: true, borosTxnsComplete: true, backfilling: false },
-      risk: { address, accountId: 0, observedAt: now * 1000, stale: false, positionsComplete: true, positions: boros,
+      risk: { version: 2, address, accountId: 0, observedAt: now * 1000, stale: false, positionsComplete: true, positions: boros,
         settlement: { netEth: -.01, complete: true, fromSec: now - 86400, throughSec: now, reason: 'complete net ledger' } } }),
     supplement: await snapshot({ scope, metrics: {}, baseline: { boros: { '128': -3, '129': 3 }, perps: Object.fromEntries(legs.map(p => [p.symbol, p.side === 'SHORT' ? -3 : 3])),
       opened_at: now - 86400, observed_at: now - 100, evidence: 'explicit verified baseline' }, fundingGapStartedAt: null, reason: '' }),
@@ -56,6 +57,64 @@ async function basisFixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Risk shared-snapshot acceptance', () => {
+  it('sums Gate and Boros account PnL from exact decimal strings', async () => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    input.account.data!.assets[0].upnl = '0.1';
+    input.account.data!.assets[1].upnl = '0.2';
+    input.asset.data!.risk!.positions[0].mtmUsd = 900;
+    input.asset.data!.risk!.positions[0].mtmUsdExact = '-0.1';
+    input.asset.data!.risk!.positions[1].mtmUsd = 900;
+    input.asset.data!.risk!.positions[1].mtmUsdExact = '-0.2';
+    const metrics = riskMeasurements(accountScope, input, now).metrics;
+    expect(metrics['gate.upnl_usd']).toMatchObject({ value: 0.3, complete: true });
+    expect(metrics['boros.rate_mtm_usd'].value).toBe(-0.3);
+  });
+
+  it('sums Gate account PnL beyond 12 decimals without losing the exact residue', async () => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    input.account.data!.assets[0].upnl = '123.00000000000000000001';
+    input.account.data!.assets[1].upnl = '-123.00000000000000000002';
+    const metric = riskMeasurements(accountScope, input, now).metrics['gate.upnl_usd'];
+    expect(metric).toMatchObject({ value: -1e-20, complete: true });
+  });
+
+  it('keeps Gate account PnL unknown when its account field is invalid', async () => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    input.account.data!.assets[0].upnl = 'invalid';
+    const metric = riskMeasurements(accountScope, input, now).metrics['gate.upnl_usd'];
+    expect(metric).toMatchObject({ value: null, complete: false });
+  });
+
+  it('sums Boros collateral equity with fixed point arithmetic', async () => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    const token = input.collateral.data!.tokens[0];
+    token.priceUsd = 1;
+    token.cross!.netBalance = .1;
+    token.cross!.netBalanceExact = '0.100000000000000001';
+    token.cross!.activePositions = 0;
+    token.isolated = [{ ...token.cross!, marketAcc: address + '000002000001', netBalance: .2, netBalanceExact: '0.2' }];
+    const metric = riskMeasurements(accountScope, input, now).metrics['boros.equity_usd'];
+    expect(metric).toMatchObject({ value: .3, complete: true });
+  });
+
+  it('keeps valid 18-decimal collateral equity complete', async () => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    const token = input.collateral.data!.tokens[0];
+    token.priceUsd = 1;
+    token.cross!.netBalance = .12345678901234568;
+    token.cross!.netBalanceExact = '0.123456789012345678';
+    token.cross!.activePositions = 0;
+    const metric = riskMeasurements(accountScope, input, now).metrics['boros.equity_usd'];
+    expect(metric).toMatchObject({ value: .12345678901234568, complete: true });
+  });
+
+  it('keeps Boros equity unknown when exact collateral balance evidence is absent', async () => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    input.collateral.data!.tokens[0].cross!.netBalanceExact = null;
+    const metric = riskMeasurements(accountScope, input, now).metrics['boros.equity_usd'];
+    expect(metric).toMatchObject({ value: null, complete: false });
+  });
+
   it('measures actual ETH perp neutrality without a baseline or Boros read', async () => {
     const input = await fixture();
     input.supplement.data!.baseline = null;
