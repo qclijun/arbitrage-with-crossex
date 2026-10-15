@@ -92,6 +92,37 @@ def fetch_json(url, token, timeout):
         return json.loads(raw)
 
 
+def normalize_pair(pair):
+    # v1.7.5 separates perpetual legs from Boros markets and their IM values.
+    # Preserve this report's two-market model; spread plans need their own model.
+    if 'borosLegs' not in pair:
+        return pair, []
+    boros = pair['borosLegs']
+    if (not isinstance(boros, list) or len(boros) != 2 or
+            any(not isinstance(leg, dict) or type(leg.get('marketId')) is not int or leg.get('side') not in ('SHORT', 'LONG') or leg.get('spreadVenues') is not None for leg in boros) or
+            {leg.get('side') for leg in boros} != {'SHORT', 'LONG'} or
+            len({leg['marketId'] for leg in boros}) != 2):
+        return pair, ['unsupported or incomplete Boros market plan for two-market screening']
+    result = dict(pair)
+    selected = {leg['side']: leg for leg in boros}
+    for side in ('short', 'long'):
+        perp = pair.get(side + 'Leg')
+        market = selected[side.upper()]
+        if not isinstance(perp, dict) or label(perp.get('venue')) != label(market.get('venue')):
+            return pair, ['Boros and perpetual venue mismatch']
+        result[side + 'Leg'] = dict(perp, marketId=market['marketId'], execApr=market.get('execApr'))
+    capital = pair.get('capital')
+    ims = capital.get('borosIms') if isinstance(capital, dict) else None
+    if (not isinstance(ims, list) or len(ims) != 2 or
+            any(not isinstance(item, dict) or type(item.get('marketId')) is not int for item in ims) or
+            {item['marketId'] for item in ims} != {leg['marketId'] for leg in boros}):
+        return result, ['missing or mismatched Boros capital evidence']
+    by_market = {item['marketId']: item.get('imUsd') for item in ims}
+    result['capital'] = dict(capital, borosShortImUsd=by_market[selected['SHORT']['marketId']],
+                             borosLongImUsd=by_market[selected['LONG']['marketId']])
+    return result, []
+
+
 def identity(group, pair):
     short = pair.get('shortLeg') if isinstance(pair.get('shortLeg'), dict) else {}
     long = pair.get('longLeg') if isinstance(pair.get('longLeg'), dict) else {}
@@ -218,6 +249,8 @@ def normalize(envelope, mode, args, now):
             if not isinstance(pair, dict):
                 excluded.append(dict(status='UNKNOWN', reasons=['invalid pair evidence'], **pair_context(group, {})))
                 continue
+            pair, contract_issues = normalize_pair(pair)
+            issues.extend(contract_issues)
             key = identity(group, pair)
             if not label(group.get('underlying')) or not label(group.get('collateral')) or type(group.get('tokenId')) is not int or not number(group.get('maturity')):
                 issues.append('invalid group identity')

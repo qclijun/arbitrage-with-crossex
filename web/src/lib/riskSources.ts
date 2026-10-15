@@ -321,8 +321,8 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
       if (candidate) {
         const statuses = new Map(candidate.g.markets.map(m => [m.marketId, m.bookStatus]));
         put('rollover.next_net_apr', q.warnings.some(w => w.includes('fees assume')) ? null : candidate.p.netFixedApr, 'Existing actual-size later-maturity quote, APR on notional', quoteRead!.observedAt! / 1000);
-        const books = [candidate.p.shortLeg, candidate.p.longLeg].map(l => statuses.get(l.marketId));
-        put('rollover.depth_coverage_ratio', books.every(s => s === 'ok') ? 1 : books.some(s => s === 'insufficient-depth') ? 0 : null, 'Existing actual-size executable book coverage', quoteRead!.observedAt! / 1000);
+        const books = candidate.p.borosLegs.map(l => statuses.get(l.marketId));
+        put('rollover.depth_coverage_ratio', books.length > 0 && books.every(s => s === 'ok') ? 1 : books.some(s => s === 'insufficient-depth') ? 0 : null, 'Existing actual-size executable book coverage', quoteRead!.observedAt! / 1000);
       }
     }
   }

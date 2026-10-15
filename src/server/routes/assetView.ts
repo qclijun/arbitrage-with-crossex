@@ -161,6 +161,7 @@ export interface AssetBorosOpenOut {
   tradeFeesComplete?: boolean;
   marketId: number;
   venue: string;
+  spreadVenues: [string, string] | null;
   maturity: number;
   collateral: string;
   /** LONG = pays fixed, receives floating (hedges a LONG perp's funding). */
@@ -199,6 +200,7 @@ export interface AssetBorosHistoryOut {
   tradeFeesComplete?: boolean;
   marketId: number;
   venue: string;
+  spreadVenues: [string, string] | null;
   maturity: number;
   /** Σ settlement amounts, net of per-settlement fees (the venue reports net). */
   settleUsd: number;
@@ -1166,7 +1168,8 @@ export function createAssetViewBuilder(deps: AppDeps) {
           g.borosOpen.push({
             tradeFeesComplete: feesComplete.get(p.marketId) !== false,
             marketId: p.marketId,
-            venue: normalizeVenue(market.venue),
+            venue: normalizeVenue(market.spreadVenues?.[0] ?? market.venue),
+            spreadVenues: market.spreadVenues,
             maturity: market.maturity,
             collateral: BOROS_TOKEN_SYMBOLS[zone.tokenId] ?? `token${zone.tokenId}`,
             side: p.side === 0 || sizeSigned > 0 ? 'LONG' : 'SHORT',
@@ -1206,7 +1209,8 @@ export function createAssetViewBuilder(deps: AppDeps) {
       h = {
         tradeFeesComplete: feesComplete.get(marketId) !== false,
         marketId,
-        venue: normalizeVenue(market.venue),
+        venue: normalizeVenue(market.spreadVenues?.[0] ?? market.venue),
+        spreadVenues: market.spreadVenues,
         maturity: market.maturity,
         settleUsd: 0,
         settleFeeUsd: 0,

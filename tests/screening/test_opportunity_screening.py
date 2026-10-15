@@ -65,6 +65,48 @@ class ScreeningTest(unittest.TestCase):
         for file in pathlib.Path(self.temp.name).glob('*/report.*'):
             self.assertEqual(file.stat().st_mode & 0o777, 0o600)
 
+    def current_response(self, mode='close'):
+        envelope = response(mode)
+        pair = envelope['data']['groups'][0]['pairs'][0]
+        pair['borosLegs'] = []
+        for side in ('short', 'long'):
+            leg = pair[side + 'Leg']
+            pair['borosLegs'].append(dict(marketId=leg.pop('marketId'), side=side.upper(),
+                                         venue=leg['venue'], spreadVenues=None, execApr=leg.pop('execApr')))
+        capital = pair['capital']
+        capital['borosIms'] = [dict(marketId=1, imUsd=capital.pop('borosShortImUsd')),
+                               dict(marketId=2, imUsd=capital.pop('borosLongImUsd'))]
+        return envelope
+
+    def test_current_api_separate_boros_legs_preserve_values_and_roll_matching(self):
+        code, report = self.run_scan(self.current_response(), self.current_response('roll'))
+        self.assertEqual(code, 0)
+        row = report['candidates'][0]
+        self.assertEqual(row['shortLeg']['marketId'], 1)
+        self.assertEqual(row['longLeg']['marketId'], 2)
+        self.assertEqual(row['estProfitUsd'], 50)
+        self.assertEqual(row['capital']['borosShortImUsd'], 100)
+        self.assertEqual(row['roll']['costs']['totalUsd'], 8)
+
+    def test_current_api_unsupported_or_incomplete_boros_plans_remain_unknown(self):
+        for kind in ('empty', 'spread', 'capital', 'venue'):
+            with self.subTest(kind=kind):
+                close = self.current_response()
+                pair = close['data']['groups'][0]['pairs'][0]
+                if kind == 'empty':
+                    pair['borosLegs'] = []
+                elif kind == 'spread':
+                    pair['borosLegs'][0]['spreadVenues'] = ['OKX', 'BINANCE']
+                    pair['borosLegs'].pop()
+                elif kind == 'capital':
+                    pair['capital']['borosIms'][0]['marketId'] = 999
+                else:
+                    pair['borosLegs'][0]['venue'] = 'HYPERLIQUID'
+                code, report = self.run_scan(close, self.current_response('roll'))
+                self.assertEqual(code, 2)
+                self.assertEqual(report['candidates'], [])
+                self.assertEqual(report['excluded'][0]['status'], 'UNKNOWN')
+
     def test_assumed_fees_are_reference_only_unknown(self):
         close = response()
         close['data']['warnings'] = ['Perp fees assume the VIP0 Gate CrossEx schedule — secret synthetic-token']

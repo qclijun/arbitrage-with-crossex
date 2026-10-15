@@ -390,13 +390,17 @@ describe('Risk shared-snapshot acceptance', () => {
     input.deals = await snapshot([{ pair: { mode: 'RUNNING', a: { contract: 'BINANCE_FUTURE_ETH_USDT' } }, orders: [] }]) as unknown as RiskInputs['deals'];
     expect(check(input, 'execution.unhedged_eth').status).toBe('UNKNOWN');
   });
-  it.each(['valid', 'venue', 'symbol', 'size', 'maturity', 'depth', 'fees', 'unequal-legs', 'direction', 'baseline-market'] as const)('requires an actual-size matching later rollover quote: %s', async kind => {
+  it.each(['valid', 'spread', 'empty-boros', 'missing-book', 'venue', 'symbol', 'size', 'maturity', 'depth', 'fees', 'unequal-legs', 'direction', 'baseline-market'] as const)('requires an actual-size matching later rollover quote: %s', async kind => {
     const input = await fixture();
     const quote = { meta: { notionalUsd: 9000, exitMode: 'roll', borosEntry: 'market' }, warnings: kind === 'fees' ? ['fees assume tier'] : [],
       groups: [{ tokenId: 2, underlying: 'ETH', maturity: now + 30 * 86400,
         markets: [{ marketId: 130, bookStatus: kind === 'depth' ? 'insufficient-depth' : 'ok' }, { marketId: 131, bookStatus: 'ok' }],
-        pairs: [{ base: 'ETH', netFixedApr: .04, shortLeg: { marketId: 130, venue: 'HYPERLIQUID', crossexSymbol: 'HYPERLIQUID_FUTURE_ETH_USDC' },
-          longLeg: { marketId: 131, venue: 'BINANCE', crossexSymbol: 'BINANCE_FUTURE_ETH_USDT' } }] }] };
+        pairs: [{ base: 'ETH', netFixedApr: .04, shortLeg: { venue: 'HYPERLIQUID', crossexSymbol: 'HYPERLIQUID_FUTURE_ETH_USDC' },
+          longLeg: { venue: 'BINANCE', crossexSymbol: 'BINANCE_FUTURE_ETH_USDT' },
+          borosLegs: [{ marketId: 130, side: 'SHORT' }, { marketId: 131, side: 'LONG' }] }] }] };
+    if (kind === 'spread') quote.groups[0].pairs[0].borosLegs.pop();
+    if (kind === 'empty-boros') quote.groups[0].pairs[0].borosLegs.length = 0;
+    if (kind === 'missing-book') quote.groups[0].markets.pop();
     if (kind === 'venue') quote.groups[0].pairs[0].shortLeg.venue = 'OKX';
     if (kind === 'symbol') quote.groups[0].pairs[0].shortLeg.crossexSymbol = 'HYPERLIQUID_FUTURE_ETH_USDT';
     if (kind === 'size') quote.meta.notionalUsd = 10000;
@@ -413,7 +417,7 @@ describe('Risk shared-snapshot acceptance', () => {
     if (kind === 'baseline-market') input.asset.data!.risk!.positions[0].marketId = 132;
     input.opportunities = await snapshot(quote) as unknown as RiskInputs['opportunities'];
     const c = check(input, 'rollover.next_net_apr');
-    expect(c.status).toBe(kind === 'valid' ? 'OK' : kind === 'depth' ? 'WARNING' : 'UNKNOWN');
+    expect(c.status).toBe(kind === 'valid' || kind === 'spread' ? 'OK' : kind === 'depth' ? 'WARNING' : 'UNKNOWN');
     expect(check(input, 'rollover.incremental_margin_usd').status).toBe('UNKNOWN');
   });
   it('accepts valid reviewed evidence for every enabled metric and retains every missing check', async () => {

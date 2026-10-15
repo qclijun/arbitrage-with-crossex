@@ -39,6 +39,8 @@ python3 scripts/opportunity_screening.py \
 
 ## 1. 候选来源与固定请求口径
 
+兼容 v1.7.5 将永续腿与 `borosLegs`、`capital.borosIms` 分开返回的结构，按市场身份核对普通双市场组合。脚本仍使用双市场四腿模型；单个 spread 市场及不完整的市场/保证金证据明确记为 `UNKNOWN`，不作为有效候选。
+
 1. 输入是两份 Opportunity 响应的 `data.groups[].pairs[]`，分别按 close、roll 处理。脚本遍历所有组中的所有组合，不只读取 `bestPair`，也不沿用服务端已有排序作为最终排序。
 2. 两次请求使用同一 `notionalUsd`，固定 `entryMode=maker-hedge`、`borosEntry=market`；close 为主榜，roll 仅作同组合对照。请求不带 `fresh=1`，复用终端现有缓存，并检查返回的观察时间。
 3. 上游 Opportunity 当前只接纳 ETH、HYPE、BTC；按抵押品 `tokenId`、到期日、归一化标的分组。只有状态为 `Normal`、尚未到期的市场参与分组，少于两个市场的组不输出。

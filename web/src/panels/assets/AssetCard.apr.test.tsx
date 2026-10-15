@@ -34,6 +34,7 @@ const perp = (venue: string, side: 'LONG' | 'SHORT', fundingApr7d: number): Asse
 });
 
 const yu = (marketId: number, venue: string, side: 'LONG' | 'SHORT', sizeToken: number, entryApr: number): AssetBorosOpen => ({
+  spreadVenues: null,
   marketId,
   venue,
   side,
@@ -91,7 +92,7 @@ beforeEach(() => {
 describe('the asset hero APR', () => {
   it('shows corrected Boros entry fees in the pair popup', () => {
     const group = book(100);
-    group.borosHistory = [1, 2].map((marketId) => ({ marketId, venue: marketId === 1 ? 'GATE' : 'HYPERLIQUID',
+    group.borosHistory = [1, 2].map((marketId) => ({ marketId, spreadVenues: null, venue: marketId === 1 ? 'GATE' : 'HYPERLIQUID',
       maturity: group.borosOpen[0].maturity, settleUsd: 0, settleFeeUsd: 0, tradePnlUsd: -1.0392806574200926,
       tradeFeeUsd: 1.0392806574200926, firstEventSec: group.earliestSec!, tradeFeesComplete: true }));
     renderCard(group);
