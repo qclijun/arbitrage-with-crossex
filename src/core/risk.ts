@@ -149,7 +149,12 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
             && (op === 'lt' ? value < threshold : op === 'gt' ? value > threshold : Math.abs(value) > threshold);
       if (hit) {
         if (severity[level] > severity[status]) status = level;
-        reasons.push(`${id} ${op} ${threshold}`);
+        // Alert text must carry the observed value: a bare "gt 0" hides whether
+        // the wallet borrow is a transient $5 flap or a real funding problem.
+        // Non-numeric values (bool / enum) keep their literal form.
+        const unit = contracts[id]?.unit ?? '';
+        const shown = typeof value === 'number' ? Math.round(value * 1e6) / 1e6 : value;
+        reasons.push(`${id} ${op} ${threshold}（当前 ${shown}${unit ? ' ' + unit : ''}）`);
         if (level === 'CRITICAL') criticalMetrics.push(id);
       }
     }

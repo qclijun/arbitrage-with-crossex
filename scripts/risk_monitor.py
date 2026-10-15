@@ -787,7 +787,12 @@ def evaluate(data, config, state, rules, now, errors=None):
                 continue
             if hit:
                 status = max((status, level), key=SEVERITY.get)
-                reasons.append(f'{key} {op} {threshold}')
+                # The alert text must carry the observed value: a bare "gt 0"
+                # reads scarier than the transient 20-100 USDT wallet borrows
+                # that motivated this. Bools and strings keep their literal form.
+                unit = values.get(key, {}).get('unit') or ''
+                shown = value if isinstance(value, (bool, str)) else round(value, 6)
+                reasons.append(f'{key} {op} {threshold}（当前 {shown} {unit}）'.rstrip())
                 if level == 'CRITICAL':
                     hits.append(key)
         old_hits = state.get('critical_metrics', {}).get(rule['id'], [])
