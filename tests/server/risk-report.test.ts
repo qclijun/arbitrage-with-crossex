@@ -393,6 +393,25 @@ describe('read-only shared Risk report', () => {
     expect(metric(r, 'hedge.residual_usd').value).toBe(0);
     expect(metric(r, 'data.coverage_complete').value).toBe(true);
   });
+  it('calculates outflow runway with the live Boros collateral precision', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.collateral.tokens[0].cross.availableInitialMargin = .05665684587164302;
+    s.asset.risk.settlements.pools = [{ marketAcc: pool, tokenId: 2, netToken: '-0.000001546202165018' }];
+    const r = await readReport(f);
+    const runway = metric(r, 'boros.buffer_runway_days');
+    expect(runway.complete).toBe(true);
+    expect(runway.value).toBeCloseTo(36642.58604306343, 8);
+    expect(runway.details[0].value).toBe(runway.value);
+    expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('OK');
+  });
+  it.each([null, NaN])('keeps missing or invalid outflow collateral %s UNKNOWN', async available => {
+    const f = await fixture(), s = f.snapshots;
+    s.collateral.tokens[0].cross.availableInitialMargin = available;
+    s.asset.risk.settlements.pools = [{ marketAcc: pool, tokenId: 2, netToken: '-0.000001546202165018' }];
+    const r = await readReport(f);
+    expect(metric(r, 'boros.buffer_runway_days')).toMatchObject({ value: null, complete: false });
+    expect(r.checks.find((c: any) => c.id === 'boros.settlement_net_24h_eth').status).toBe('UNKNOWN');
+  });
   it('shows signed account inflow while an independent BTC outflow pool remains critical', async () => {
     const f = await fixture(), btc = addBtc(f), s = f.snapshots;
     s.collateral.tokens[1].cross.availableInitialMargin = .0001;

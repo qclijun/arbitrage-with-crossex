@@ -220,9 +220,10 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     const p = pools.find(p => p.marketAcc.toLowerCase() === acc);
     const rawNet = windowPools.find(p => p.marketAcc.toLowerCase() === acc)?.netToken;
     const n = rawNet === undefined ? 0n : exact18(rawNet);
-    const available = p && finite(p.availableInitialMargin) ? exactDecimal(String(p.availableInitialMargin)) : null;
+    // Boros collateral uses token precision, not the engine's 12-place scale.
+    const available = p && finite(p.availableInitialMargin) ? exact18(String(p.availableInitialMargin)) : null;
     const days = n !== null && n < 0n && available !== null
-      ? metricNumber(available * SCALE18 / abs18(n)) : n !== null && n >= 0n ? 'NA' : null;
+      ? metricNumber18(available * SCALE18 / abs18(n)) : n !== null && n >= 0n ? 'NA' : null;
     runways.push({ label: p ? poolLabel(p) : 'Missing collateral pool', value: days, unit: 'days' });
   }
   const outflows = runways.filter(d => d.value !== 'NA'), runwayComplete = settlementComplete && poolComplete && outflows.every(d => finite(d.value));
