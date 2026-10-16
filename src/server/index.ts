@@ -11,6 +11,7 @@ import fastifyStatic from '@fastify/static';
 import { fetchBorosMarkets, resolveBorosFetch, resolveCollateralPricesUsd, setClientTagContext } from '../core/boros/client';
 import { makeClientsIfConfigured, requireClients, type Clients } from '../core/clients';
 import { Store } from '../engine/db';
+import { EngineObservation } from '../engine/observation';
 import { startLoop, type LoopDeps } from '../engine/loop';
 import { gateVenue } from '../engine/venueGate';
 import type { Clock, VenuePort } from '../engine/types';
@@ -152,6 +153,10 @@ let loopDeps: LoopDeps | undefined;
   }
 
   loopDeps = {
+    observation: process.env.ENGINE_OBSERVATION === '1'
+      ? new EngineObservation(path.join(dataDir, 'engine-observation'), message =>
+        store.alert('warn', null, message, Date.now()))
+      : undefined,
     store,
     venue: gateVenue(getClients),
     clock: { now: () => Date.now() },
@@ -281,6 +286,7 @@ const appDeps = {
   },
 };
 const app = buildApp(appDeps);
+app.addHook('onClose', async () => { await loopDeps?.observation?.close(); });
 
 // Serve the built SPA when present (`yarn start`); in dev, Vite proxies /api here.
 if (fs.existsSync(path.join(webDist, 'index.html'))) {

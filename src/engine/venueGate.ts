@@ -6,6 +6,8 @@
  * error, timeout, ANY 5xx, unmatched label — is UNKNOWN (per Binance's own
  * doctrine: "execution status is UNKNOWN and could have been a success").
  */
+import { performance } from 'node:perf_hooks';
+import { type ObservationContext, observeCall, recordObservation } from './observation';
 import { CrossexOrderRequest } from 'gate-api';
 import type { Clients } from '../core/clients';
 import { fetchVenueBook } from '../core/estimate/books';
@@ -93,19 +95,26 @@ export function gateVenue(getClients: () => Clients): VenuePort {
   // adds no value but can stall the whole loop on a slow venue. 1s keeps prices
   // fresh enough for sizing/pegging while making back-to-back ticks cheap.
   const PRICE_TTL_MS = 1_000;
-  const priceCache = new Map<string, { at: number; value: string | null }>();
-  const cachedPrice = async (key: string, fetch: () => Promise<string | null>): Promise<string | null> => {
+  const priceCache = new Map<string, { at: number; receivedAt: number; storedMono: number; value: string | null }>();
+  const cachedPrice = async (key: string, contract: string, fetch: () => Promise<string | null>, evidence?: ObservationContext): Promise<string | null> => {
     const hit = priceCache.get(key);
     const nowMs = Date.now();
-    if (hit && nowMs - hit.at < PRICE_TTL_MS) return hit.value;
+    if (hit && nowMs - hit.at < PRICE_TTL_MS) {
+      recordObservation(evidence, 'cache', { contract, cacheKey: key, cacheHit: true, cacheWrittenUtcMs: hit.receivedAt,
+        cacheResidenceMs: performance.now() - hit.storedMono, outcome: hit.value === null ? 'unknown' : 'ok' });
+      return hit.value;
+    }
     const value = await fetch();
-    priceCache.set(key, { at: nowMs, value });
+    const receivedAt = Date.now();
+    priceCache.set(key, { at: nowMs, receivedAt, storedMono: performance.now(), value });
+    recordObservation(evidence, 'cache', { contract, cacheKey: key, cacheHit: false, cacheWrittenUtcMs: receivedAt,
+      receivedUtcMs: receivedAt, cacheResidenceMs: 0, outcome: value === null ? 'unknown' : 'ok' });
     return value;
   };
 
-  const getByVenueId = async (venueOrderId: string): Promise<ReadOutcome> => {
+  const getByVenueId = async (venueOrderId: string, evidence?: ObservationContext): Promise<ReadOutcome> => {
     try {
-      const { body } = await crossEx().getCrossexOrder(venueOrderId);
+      const { body } = await observeCall(evidence, 'sdk-order-read', { order: venueOrderId }, () => crossEx().getCrossexOrder(venueOrderId));
       return { kind: 'found', snapshot: snapshotOf(body) };
     } catch (err) {
       const label = labelOf(err);
@@ -115,7 +124,7 @@ export function gateVenue(getClients: () => Clients): VenuePort {
   };
 
   return {
-    async create(req): Promise<CreateOutcome> {
+    async create(req, evidence): Promise<CreateOutcome> {
       const order = new CrossexOrderRequest();
       order.symbol = req.contract;
       order.side = req.side === 'BUY' ? CrossexOrderRequest.Side.BUY : CrossexOrderRequest.Side.SELL;
@@ -127,13 +136,16 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       if (req.reduceOnly) order.reduceOnly = CrossexOrderRequest.ReduceOnly.True;
       order.text = req.clientText;
       try {
-        const { body } = await crossEx().createCrossexOrder({ crossexOrderRequest: order });
+        const { body } = await observeCall(evidence, 'sdk-create', { client: req.clientText, contract: req.contract, quantity: req.qty },
+          () => crossEx().createCrossexOrder({ crossexOrderRequest: order }));
         // The create response carries ONLY {orderId, text} (CrossexOrderActionResponse)
         // — no status/fill. Follow up with one read so the loop gets a real
         // snapshot (this is also what detects a POC accepted-then-insta-cancel).
         const venueOrderId = String(body.orderId ?? '');
+        recordObservation(evidence, 'order-linked', { client: req.clientText, order: venueOrderId });
         try {
-          const { body: full } = await crossEx().getCrossexOrder(venueOrderId);
+          const { body: full } = await observeCall(evidence, 'sdk-confirm', { client: req.clientText, order: venueOrderId },
+            () => crossEx().getCrossexOrder(venueOrderId));
           return { kind: 'ok', snapshot: snapshotOf(full) };
         } catch {
           // The order IS accepted (create succeeded); the confirm read just
@@ -153,10 +165,10 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       }
     },
 
-    async cancel(ref): Promise<CancelOutcome> {
+    async cancel(ref, evidence): Promise<CancelOutcome> {
       const id = ref.venueOrderId ?? ref.clientText;
       try {
-        await crossEx().cancelCrossexOrder(id);
+        await observeCall(evidence, 'sdk-cancel', { client: ref.clientText, order: ref.venueOrderId }, () => crossEx().cancelCrossexOrder(id));
         return { kind: 'ok' };
       } catch (err) {
         const label = labelOf(err);
@@ -165,15 +177,15 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       }
     },
 
-    async getOrder(ref): Promise<ReadOutcome> {
+    async getOrder(ref, evidence): Promise<ReadOutcome> {
       // Live-verified (2026-07-23 smoke): getCrossexOrder accepts the client
       // text as the order-id path param — while the order is live AND well past
       // the documented 60s post-terminal window. One authoritative GET either
       // way; no listing scans in the hot path.
-      return getByVenueId(ref.venueOrderId ?? ref.clientText);
+      return getByVenueId(ref.venueOrderId ?? ref.clientText, evidence);
     },
 
-    async sweepForOrder(contract, clientText, fromMs): Promise<SweepResult> {
+    async sweepForOrder(contract, clientText, fromMs, evidence): Promise<SweepResult> {
       // Live-verified (2026-07-23 smoke, both runs): /crossex/history_orders
       // takes `from` in MILLISECONDS — seconds get 400/COMMON_PARAM_BIND_ERROR.
       // Symbol-filtered + ms-time-bounded + paginated to exhaustion: 'covered'
@@ -181,7 +193,7 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       // (the listing provably spanned [fromMs, now]). The direct GET-by-text
       // pre-check resolves most in-doubt orders before any listing is touched.
       try {
-        const byText = await getByVenueId(clientText); // cheap authoritative pre-check
+        const byText = await getByVenueId(clientText, evidence); // cheap authoritative pre-check
         if (byText.kind === 'found') return { covered: true, found: byText.snapshot };
         const open = (await crossEx().listCrossexOpenOrders({ symbol: contract })).body ?? [];
         const liveHit = open.find((o) => String(o.text ?? '') === clientText);
@@ -201,11 +213,11 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       }
     },
 
-    async touch(contract: string, side: Side, tick: string): Promise<string | null> {
-      return cachedPrice(`touch:${contract}:${side}:${tick}`, async () => {
+    async touch(contract: string, side: Side, tick: string, evidence?: ObservationContext): Promise<string | null> {
+      return cachedPrice(`touch:${contract}:${side}:${tick}`, contract, async () => {
       try {
         const { exchange, base, quote } = parseSymbol(contract);
-        const book = await fetchVenueBook(exchange, base, quote);
+        const book = await observeCall(evidence, 'public-book', { contract }, () => fetchVenueBook(exchange, base, quote));
         const bid = Number(book?.bids?.[0]?.[0]);
         const ask = Number(book?.asks?.[0]?.[0]);
         // The maker rests ONE bid–ask gap BEHIND the touch: BUY at
@@ -231,17 +243,17 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       } catch {
         return null;
       }
-      });
+      }, evidence);
     },
 
-    async bestQuote(contract: string, side: Side, tick: string): Promise<string | null> {
+    async bestQuote(contract: string, side: Side, tick: string, evidence?: ObservationContext): Promise<string | null> {
       // Deliberately a SEPARATE cache key from `touch`: same raw levels, but the
       // 'best' price is the bare best (no one-gap offset), and the two policies
       // may coexist on the same contract across deals.
-      return cachedPrice(`best:${contract}:${side}:${tick}`, async () => {
+      return cachedPrice(`best:${contract}:${side}:${tick}`, contract, async () => {
       try {
         const { exchange, base, quote } = parseSymbol(contract);
-        const book = await fetchVenueBook(exchange, base, quote);
+        const book = await observeCall(evidence, 'public-book', { contract }, () => fetchVenueBook(exchange, base, quote));
         // The shared availability predicate: both sides present, both positive
         // finite, and ask > bid. A degenerate book (one-sided, crossed) is NOT
         // quotable — return null so the loop places/replaces nothing rather than
@@ -250,14 +262,14 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       } catch {
         return null;
       }
-      });
+      }, evidence);
     },
 
-    async refPrice(contract: string, requireQuotableBook = false): Promise<string | null> {
-      return cachedPrice(`${requireQuotableBook ? 'quotable-ref' : 'ref'}:${contract}`, async () => {
+    async refPrice(contract: string, requireQuotableBook = false, evidence?: ObservationContext): Promise<string | null> {
+      return cachedPrice(`${requireQuotableBook ? 'quotable-ref' : 'ref'}:${contract}`, contract, async () => {
       try {
         const { exchange, base, quote } = parseSymbol(contract);
-        const book = await fetchVenueBook(exchange, base, quote);
+        const book = await observeCall(evidence, 'public-book', { contract }, () => fetchVenueBook(exchange, base, quote));
         if (requireQuotableBook) {
           const top = topOf(book?.bids?.[0]?.[0], book?.asks?.[0]?.[0]);
           return isQuotableBook(top) ? numToDec((top.bid + top.ask) / 2) : null;
@@ -271,7 +283,7 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       } catch {
         return null;
       }
-      });
+      }, evidence);
     },
   };
 }

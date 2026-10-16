@@ -8,6 +8,7 @@
  * recovery module, no adopt-window, no repeg protocol.
  */
 import { fx, fxStr } from './fx';
+import { type EngineObservation, type ObservationContext, observeCall, recordObservation } from './observation';
 import { POC_REASON, decide, project, sizeFor, type DecideCtx } from './decide';
 import type { Store } from './db';
 import {
@@ -21,6 +22,8 @@ import {
 } from './types';
 
 export interface LoopDeps {
+  observation?: EngineObservation;
+  evidence?: ObservationContext;
   store: Store;
   venue: VenuePort;
   clock: Clock;
@@ -146,6 +149,9 @@ function applySnapshot(deps: LoopDeps, pair: PairRow, o: OrderRow, snap: OrderSn
     }
   }
   deps.store.updateOrder(o.pairId, o.leg, o.seq, patch);
+  if (newCum > oldCum) recordObservation(deps.evidence, 'fill-confirmed', { leg: o.leg, client: o.clientId,
+    order: snap.venueOrderId, fill: `${o.clientId}:${fxStr(newCum)}`, contract: o.leg === 'A' ? pair.a.contract : pair.b?.contract,
+    quantity: fxStr(newCum - oldCum), cumulative: fxStr(newCum) });
 
   // Terminal side effects on the PAIR (backoffs/streaks) — committed levels.
   if (patch.state === 'CLOSED') {
@@ -274,10 +280,10 @@ function bumpHedgeWall(deps: LoopDeps, pair: PairRow, now: number): void {
  */
 async function resolvePending(deps: LoopDeps, pair: PairRow, o: OrderRow): Promise<void> {
   const now = deps.clock.now();
-  const read = await deps.venue.getOrder({
+  const read = await observeCall(deps.evidence, 'order-read', { leg: o.leg, client: o.clientId, order: o.venueOrderId }, () => deps.venue.getOrder({
     venueOrderId: o.venueOrderId ?? undefined,
     clientText: o.clientId,
-  });
+  }, deps.evidence));
   if (read.kind === 'error') {
     // Same escalation as observeOpen: a PENDING order may be live and filling.
     const streak = o.readFailStreak + 1;
@@ -307,7 +313,8 @@ async function resolvePending(deps: LoopDeps, pair: PairRow, o: OrderRow): Promi
   // symbol-filtered and paginated so the cost is trivial, and a tight bound
   // would let local-vs-venue clock skew exclude the order from its own sweep —
   // a false DEAD verdict is an I1 violation, the one thing we never risk.
-  const sweep = await deps.venue.sweepForOrder(contract, o.clientId, o.createdAt - 600_000);
+  const sweep = await observeCall(deps.evidence, 'history-sweep', { leg: o.leg, client: o.clientId, contract },
+    () => deps.venue.sweepForOrder(contract, o.clientId, o.createdAt - 600_000, deps.evidence));
   if (sweep.found) {
     applySnapshot(deps, pair, o, sweep.found);
     return;
@@ -334,10 +341,10 @@ async function resolvePending(deps: LoopDeps, pair: PairRow, o: OrderRow): Promi
 
 /** Re-read an OPEN order (fills accrue; cancels land; statuses change). */
 async function observeOpen(deps: LoopDeps, pair: PairRow, o: OrderRow): Promise<void> {
-  const read = await deps.venue.getOrder({
+  const read = await observeCall(deps.evidence, 'order-read', { leg: o.leg, client: o.clientId, order: o.venueOrderId }, () => deps.venue.getOrder({
     venueOrderId: o.venueOrderId ?? undefined,
     clientText: o.clientId,
-  });
+  }, deps.evidence));
   if (read.kind === 'error') {
     // A failed read resolves NOTHING, and this order is live on the venue: it
     // keeps filling while our cum_qty freezes at its last good value. project()
@@ -395,6 +402,8 @@ async function performPlace(
     tif: a.tif,
     now,
   });
+  recordObservation(deps.evidence, 'registered', { leg: o.leg, client: o.clientId, contract: leg.contract,
+    quantity: o.qty, cumulative: o.cumQty });
   // Maker placements update the price intent: "maker price ≠ intent" is exactly
   // the re-peg trigger, so the intent must track what we actually placed. The
   // PLACEMENT TIME is recorded here too — it is the clock the 15 s reprice
@@ -406,10 +415,11 @@ async function performPlace(
       limitPrice: a.price,
       ...(pair.autoPricePolicy === 'best' ? { lastMakerPlacementAt: now } : {}),
     });
+    recordObservation(deps.evidence, 'intent-changed', { mode: pair.mode, policy: pair.pricePolicy, price: a.price });
   }
   if (deps.crashAfterCommit?.()) return; // simulated crash between commit and wire
 
-  const out = await deps.venue.create({
+  const out = await observeCall(deps.evidence, 'create', { leg: o.leg, client: o.clientId, contract: leg.contract, quantity: a.qty }, () => deps.venue.create({
     contract: leg.contract,
     side: leg.side,
     qty: a.qty,
@@ -417,7 +427,7 @@ async function performPlace(
     tif: a.tif,
     reduceOnly: leg.reduceOnly,
     clientText: o.clientId,
-  });
+  }, deps.evidence));
   if (out.kind === 'ok') {
     // Streak resets happen in applySnapshot only when a hedge actually FILLED
     // something — a submit-ok that whiffs must still count toward the wall.
@@ -462,7 +472,7 @@ async function performCancel(deps: LoopDeps, pair: PairRow, o: OrderRow, reprice
     // its outcome. There is no pre-send quota charge and no partial DB commit.
     // A crash before this commit leaves no provenance: observation stops the
     // deal honestly if the venue canceled, rather than replacing it uncounted.
-    request = deps.venue.cancel(ref);
+    request = observeCall(deps.evidence, 'cancel', { leg: o.leg, client: o.clientId, order: o.venueOrderId }, () => deps.venue.cancel(ref, deps.evidence));
     // A failed DB commit or simulated crash can abandon this outcome.
     void request.catch(() => undefined);
     deps.store.recordRepriceCancel(o);
@@ -470,7 +480,7 @@ async function performCancel(deps: LoopDeps, pair: PairRow, o: OrderRow, reprice
   } else {
     deps.store.updateOrder(o.pairId, o.leg, o.seq, { cancelRequested: 1 });
     if (deps.crashAfterCommit?.()) return;
-    request = deps.venue.cancel(ref);
+    request = observeCall(deps.evidence, 'cancel', { leg: o.leg, client: o.clientId, order: o.venueOrderId }, () => deps.venue.cancel(ref, deps.evidence));
   }
   // Cancel needs no state machine: "not found / already finished" is success
   // (no further fills can land), an unknown outcome is irrelevant — the loop
@@ -493,10 +503,10 @@ async function performCancel(deps: LoopDeps, pair: PairRow, o: OrderRow, reprice
   // exists to honour, and let the deal keep trading on a status we cannot read.
   if (pair.mode !== 'STOPPING' && pair.mode !== 'HALTED') return;
   if (outcome.kind !== 'ok' || !o.quarantinedStatus) return;
-  const read = await deps.venue.getOrder({
+  const read = await observeCall(deps.evidence, 'order-read', { leg: o.leg, client: o.clientId, order: o.venueOrderId }, () => deps.venue.getOrder({
     venueOrderId: o.venueOrderId ?? undefined,
     clientText: o.clientId,
-  });
+  }, deps.evidence));
   if (read.kind === 'found') applySnapshot(deps, pair, o, read.snapshot);
   const fresh = deps.store.listOrders(o.pairId).find((x) => x.leg === o.leg && x.seq === o.seq) ?? o;
   if (fresh.state === 'CLOSED' || !fresh.quarantinedStatus) return; // it resolved itself
@@ -525,6 +535,7 @@ async function perform(deps: LoopDeps, pair: PairRow, action: Action): Promise<v
         mode: action.mode,
         ...(action.haltReason ? { haltReason: action.haltReason } : {}),
       });
+      recordObservation(deps.evidence, 'intent-changed', { mode: action.mode });
       if (action.mode === 'HALTED') deps.onFinish?.(pair.id);
       return;
     case 'cancel':
@@ -541,6 +552,7 @@ async function perform(deps: LoopDeps, pair: PairRow, action: Action): Promise<v
         bAvgFill: deps.store.avgFillPrice(pair.id, 'B'),
       };
       deps.store.updatePair(pair.id, { mode: 'DONE', reportJson: JSON.stringify(report) });
+      recordObservation(deps.evidence, 'intent-changed', { mode: 'DONE' });
 
       // A deal can legitimately finish holding exposure the hedge venue will not
       // accept - below its lot is a true rounding remainder, and [R1] settled
@@ -568,10 +580,15 @@ async function perform(deps: LoopDeps, pair: PairRow, action: Action): Promise<v
 }
 
 /** One tick for one pair. At most ONE wire mutation leaves this function. */
-export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> {
+export function tickPair(deps: LoopDeps, pairId: string): Promise<Action> {
+  return deps.observation ? deps.observation.tickPair(pairId, evidence => tickPairCore({ ...deps, evidence }, pairId)) : tickPairCore(deps, pairId);
+}
+
+async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
   const pair0 = deps.store.getPair(pairId);
   if (!pair0 || pair0.mode === 'DONE') return { type: 'idle', reason: 'done' };
 
+  recordObservation(deps.evidence, 'intent', { mode: pair0.mode, policy: pair0.pricePolicy, price: pair0.limitPrice });
   // ---- OBSERVE ----
   for (const o of deps.store.listOrders(pairId)) {
     const pair = deps.store.getPair(pairId)!;
@@ -585,6 +602,9 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
   const pair = deps.store.getPair(pairId)!;
   const orders = deps.store.listOrders(pairId);
   const proj = project(pair, orders);
+  recordObservation(deps.evidence, 'projection', { aFilled: proj.aFilled, bFilled: proj.bFilled,
+    aReserved: proj.aReserved, bReserved: proj.bReserved, unreserved: proj.unhedged,
+    outcome: orders.some(o => o.readFailStreak > 0 || o.state === 'PENDING' || o.quarantinedStatus) ? 'unknown' : 'ok' });
 
   // Fetch venue prices ONLY when this tick's decision will actually use one —
   // these are slow public-API calls (esp. Hyperliquid), and a blanket fetch
@@ -639,12 +659,12 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
     deps.store.updatePair(pairId, { bookOutageStartedAt: outageStart });
   }
   const ctx: DecideCtx = {
-    touchA: needTouch ? await deps.venue.touch(pair.a.contract, pair.a.side, pair.a.tick) : null,
-    bestA: needBest ? await deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick) : null,
+    touchA: needTouch ? await observeCall(deps.evidence, 'touch', { leg: 'A', contract: pair.a.contract }, () => deps.venue.touch(pair.a.contract, pair.a.side, pair.a.tick, deps.evidence)) : null,
+    bestA: needBest ? await observeCall(deps.evidence, 'bestQuote', { leg: 'A', contract: pair.a.contract }, () => deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick, deps.evidence)) : null,
     bookOutageObservedAt: outageObservedAt,
     // '0' (unused) when no hedge is owed; a real fetch only when one is.
-    refB: needRefB ? await deps.venue.refPrice(pair.b!.contract, pair.autoPricePolicy === 'best') : '0',
-    refA: needRefA ? await deps.venue.refPrice(pair.a.contract, pair.autoPricePolicy === 'best') : '0',
+    refB: needRefB ? await observeCall(deps.evidence, 'refPrice', { leg: 'B', contract: pair.b!.contract }, () => deps.venue.refPrice(pair.b!.contract, pair.autoPricePolicy === 'best', deps.evidence)) : '0',
+    refA: needRefA ? await observeCall(deps.evidence, 'refPrice', { leg: 'A', contract: pair.a.contract }, () => deps.venue.refPrice(pair.a.contract, pair.autoPricePolicy === 'best', deps.evidence)) : '0',
     maxClip: pair.maxClip ?? tuning(deps).MAX_CLIP,
   };
   // The book answered with a valid two-sided top: the outage, if any, is OVER.
@@ -703,6 +723,8 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
     intent.limitPrice !== pair.limitPrice ||
     intent.pricePolicy !== pair.pricePolicy
   ) {
+    recordObservation(deps.evidence, 'intent-changed', { mode: intent.mode, policy: intent.pricePolicy, price: intent.limitPrice });
+    recordObservation(deps.evidence, 'decision', { action: 'idle', reason: 'intent changed mid-tick', operation: 'intent-changed' });
     return { type: 'idle', reason: 'intent changed mid-tick — deferring to a fresh tick' };
   }
   // Decide against the outage marker THIS tick established, not the pre-update
@@ -711,6 +733,9 @@ export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> 
   const pairForDecide: PairRow = { ...pair, bookOutageStartedAt: bookRecovered ? 0 : outageStart };
   const action = decide(pairForDecide, proj, deps.clock.now(), ctx);
 
+  recordObservation(deps.evidence, 'decision', { action: action.type, reason: 'reason' in action ? action.reason : action.type,
+    operation: proj.anyPending ? 'pending' : proj.anyQuarantined ? 'quarantine' : needRefB && ctx.refB === null
+      ? 'hedge-price-unavailable' : needBest && ctx.bestA === null ? 'maker-price-unavailable' : 'decide' });
   // ---- ACT (≤ 1 wire mutation) ----
   await perform(deps, pair, action);
   return action;

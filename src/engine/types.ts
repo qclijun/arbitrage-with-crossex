@@ -1,3 +1,5 @@
+import type { ObservationContext } from './observation';
+
 /**
  * execution engine — shared contracts. THE execution engine of the app:
  * every trade (maker+hedge pair, both-market pair, single open, close) is a
@@ -199,26 +201,26 @@ export interface VenuePort {
     tif: 'poc' | 'ioc';
     reduceOnly?: boolean;
     clientText: string;
-  }): Promise<CreateOutcome>;
-  cancel(ref: { venueOrderId?: string; clientText: string }): Promise<CancelOutcome>;
-  getOrder(ref: { venueOrderId?: string; clientText: string }): Promise<ReadOutcome>;
-  sweepForOrder(contract: string, clientText: string, fromMs: number): Promise<SweepResult>;
+  }, evidence?: ObservationContext): Promise<CreateOutcome>;
+  cancel(ref: { venueOrderId?: string; clientText: string }, evidence?: ObservationContext): Promise<CancelOutcome>;
+  getOrder(ref: { venueOrderId?: string; clientText: string }, evidence?: ObservationContext): Promise<ReadOutcome>;
+  sweepForOrder(contract: string, clientText: string, fromMs: number, evidence?: ObservationContext): Promise<SweepResult>;
   /** Best same-side touch price for a resting maker, formatted for the venue
    * (tick-snapped + Hyperliquid 5-sig-fig cap — `tick` is the leg's tick size);
    * null when the book is unavailable. NOTE: this is the OLD `'touch'` semantics
    * — the price rests ONE bid–ask gap BEHIND the same-side touch. It is NOT the
    * `'best'` price; see `bestQuote`. */
-  touch(contract: string, side: Side, tick: string): Promise<string | null>;
+  touch(contract: string, side: Side, tick: string, evidence?: ObservationContext): Promise<string | null>;
   /** Best same-side price for a `'best'` quote — the BARE best bid (BUY) / best
    * ask (SELL), with no spread offset, formatted through `formatRestPrice` so
    * the directional tick snap and the Hyperliquid 5-sig-fig cap both apply in
    * the safe direction (BUY down, SELL up). null when the book is unavailable
    * OR degenerate (one-sided, crossed, non-positive levels) — the caller then
    * places nothing rather than quoting off a broken book. */
-  bestQuote(contract: string, side: Side, tick: string): Promise<string | null>;
+  bestQuote(contract: string, side: Side, tick: string, evidence?: ObservationContext): Promise<string | null>;
   /** Reference price for min-notional checks; null when unavailable. Four-leg
    * deals require a valid positive, uncrossed two-sided book. */
-  refPrice(contract: string, requireQuotableBook?: boolean): Promise<string | null>;
+  refPrice(contract: string, requireQuotableBook?: boolean, evidence?: ObservationContext): Promise<string | null>;
 }
 
 export interface Clock {
