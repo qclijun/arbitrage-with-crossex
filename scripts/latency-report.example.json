@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "baseline": "baseline",
+  "operations": ["sdk-order-read", "public-book"],
+  "observationOverheadEvidence": null,
+  "configurations": {
+    "baseline": {
+      "version": "REPLACE_WITH_OBSERVATION_COMMIT",
+      "configuration": "observation-only",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias"
+    }
+  },
+  "windows": [
+    {
+      "group": 1,
+      "config": "baseline",
+      "startUtcMs": 1000,
+      "endUtcMs": 2000,
+      "files": ["../tests/fixtures/latency/requests.jsonl"],
+      "statusFiles": [],
+      "evidence": {}
+    }
+  ]
+}

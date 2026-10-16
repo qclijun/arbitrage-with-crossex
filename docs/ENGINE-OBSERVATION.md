@@ -14,7 +14,8 @@ The collector owns only `<dataDir>/engine-observation/`:
 
 - `details/obs-<UTC-ms>-<run>-<sequence>.jsonl`: structured evidence.
 - `reports/obs-<UTC-ms>-<run>-<sequence>.jsonl`: reserved namespace for the next
-  reporting ticket. This ticket does not generate aggregate or live baseline reports.
+  reporting ticket. For the separate passive-index/replay report tool, see
+  [LATENCY-REPORT.md](LATENCY-REPORT.md); it uses its own output directory.
 - `status.json`: latest persisted sequence and cumulative resource/gap counters.
 
 New directories use mode 0700 and files use 0600. The SQLite ledger and existing
