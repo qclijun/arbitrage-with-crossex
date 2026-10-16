@@ -129,3 +129,7 @@ v1 没有原生成交身份、跨 venue 校准时钟、POC 拒绝标签、确定
 重放限制所有输入合计 100 MiB/100000 行、每行 16 KiB、manifest/采集索引各 256 KiB，
 最多 256 时段，每时段或每次采集最多 256 个文件。超限拒绝，按时段缩小输入后重放。资源限制作用于独立离线工具，
 不占用引擎的异步 1 MiB 缓冲，也不证明交易进程 RSS 达标。
+
+9 号票的 `hedge-wait` 明细会显示在新增 `hedgeWait` 摘要中，按 run/deal 保留最新状态。
+`confirmedUnhedgedBase` 与 `unreservedBase` 分开；缺失时长/数量保持 null，
+`actualEconomicStatus` 和 `sourceTimeStatus` 仍 UNKNOWN。详见 [等待说明](HEDGE-DEPENDENCY.md)。

@@ -140,3 +140,10 @@ repeated-batch regression provide additional structural evidence.
 These checks establish finite-run offline evidence, not a live latency or
 unhedged-exposure improvement. Live baselines, reporting, transport pooling and
 removing unrelated quote waits remain separate tickets.
+
+## Hedge dependency diagnostics
+
+Ticket 09 adds bounded `hedge-wait` events with waitState/waitMs, actualUnhedged and
+unreserved quantities kept separate. Source time and exact economic exposure stay UNKNOWN.
+See [HEDGE-DEPENDENCY.md](HEDGE-DEPENDENCY.md) for default-off dependency selection,
+reconfirmation, alert throttling, diagnostic capacity and recovery semantics.

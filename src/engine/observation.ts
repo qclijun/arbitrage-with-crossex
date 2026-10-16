@@ -16,6 +16,9 @@ export interface ObservationFields {
   aReserved?: string;
   bReserved?: string;
   unreserved?: string;
+  actualUnhedged?: string | null;
+  waitState?: 'blocked' | 'recovered' | 'not-required' | 'unverified';
+  waitMs?: number | null;
   outcome?: 'ok' | 'reject' | 'unknown' | 'notFound';
   operation?: string;
   mode?: string;
@@ -42,9 +45,9 @@ const MiB = 1024 * 1024;
 const DAY = 86_400_000;
 const WRITE_DEADLINE_MS = 5000;
 const stages = new Set(['tick-start', 'tick-end', 'fill-confirmed', 'registered', 'send-entry', 'receipt',
-  'intent', 'intent-changed', 'projection', 'decision', 'cache', 'order-linked']);
+  'intent', 'intent-changed', 'projection', 'decision', 'cache', 'order-linked', 'hedge-wait']);
 const fieldKeys = ['client', 'order', 'fill', 'cacheKey', 'reason', 'contract',
-  'quantity', 'cumulative', 'aFilled', 'bFilled', 'aReserved', 'bReserved', 'unreserved', 'price',
+  'quantity', 'cumulative', 'aFilled', 'bFilled', 'aReserved', 'bReserved', 'unreserved', 'price', 'actualUnhedged', 'waitState', 'waitMs',
   'leg', 'outcome', 'operation', 'mode', 'policy', 'action', 'errorCategory',
   'cacheHit', 'cacheWrittenUtcMs', 'receivedUtcMs', 'cacheResidenceMs', 'startedMonoMs', 'httpStatus'] as const;
 

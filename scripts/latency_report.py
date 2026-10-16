@@ -124,11 +124,38 @@ def summarize(rows, samples=False):
     return {'requests': output, 'gaps': sorted(gaps), 'records': len(clean),
             'inputRecords': len(rows), 'invalidOrDuplicateRecords': len(rows) - len(clean),
             'requestDenominatorStatus': UNKNOWN if gaps else 'COMPLETE',
-            'execution': execution_report(clean, gaps),
+            'execution': execution_report(clean, gaps), 'hedgeWait': hedge_wait_report(clean),
             'sampleUtcMs': [min((r['utcMs'] for r in clean), default=None),
                             max((r['utcMs'] for r in clean), default=None)],
             'queueMs': {'status': UNKNOWN, 'reason': 'not independently observed by v1 writer'},
             'resources': {'status': UNKNOWN, 'reason': 'no process RSS/FD/socket samples in v1 records'}}
+
+
+def hedge_wait_report(rows):
+    latest = {}
+    for row in rows:
+        if row.get('stage') != 'hedge-wait' or not isinstance(row.get('deal'), str):
+            continue
+        key = (row['run'], row['deal'])
+        if key not in latest or latest[key]['seq'] < row['seq']:
+            latest[key] = row
+    result = []
+    for (run, deal), row in sorted(latest.items()):
+        def decimal_field(key):
+            try:
+                return str(quantity(row.get(key)))
+            except (ValueError, InvalidOperation):
+                return None
+        duration = row.get('waitMs')
+        result.append({'run': run, 'deal': deal,
+                       'state': row.get('waitState') if row.get('waitState') in
+                           ('blocked', 'recovered', 'not-required', 'unverified') else 'unverified',
+                       'waitMs': duration if number(duration) and duration >= 0 else None,
+                       'unreservedBase': decimal_field('unreserved'),
+                       'confirmedUnhedgedBase': decimal_field('actualUnhedged'),
+                       'actualEconomicStatus': UNKNOWN, 'sourceTimeStatus': UNKNOWN,
+                       'boundary': 'process-local observed wait; reservations are not fills'})
+    return result
 
 
 def pool_budget(baseline, candidate):

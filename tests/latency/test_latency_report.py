@@ -332,5 +332,25 @@ class ReportTest(unittest.TestCase):
             self.assertEqual(reporter.build_report(manifest, root)['status'], 'UNKNOWN')
 
 
+    def test_wait_report_keeps_reserved_exposure_and_missing_evidence_separate(self):
+        common = dict(version=1, run='r', deal='d', tick=1, stage='hedge-wait',
+                      dropped=0, writeFailures=0, rotationFailures=0)
+        rows = [dict(common, seq=1, monoMs=1, utcMs=1001, waitState='blocked', waitMs=0,
+                     unreserved='0.05', actualUnhedged='0.05'),
+                dict(common, seq=2, monoMs=30001, utcMs=31001, waitState='not-required', waitMs=30000,
+                     unreserved='0', actualUnhedged='0.05')]
+        wait = reporter.summarize(rows + rows)['hedgeWait'][0]
+        self.assertEqual(wait['state'], 'not-required')
+        self.assertEqual(wait['unreservedBase'], '0')
+        self.assertEqual(wait['confirmedUnhedgedBase'], '0.05')
+        self.assertEqual(wait['waitMs'], 30000)
+        self.assertEqual(wait['actualEconomicStatus'], 'UNKNOWN')
+        unknown = dict(rows[-1], seq=3, monoMs=30002, utcMs=31002,
+                       waitState='unverified', waitMs=None, actualUnhedged=None)
+        wait = reporter.summarize(rows + [unknown])['hedgeWait'][0]
+        self.assertIsNone(wait['confirmedUnhedgedBase'])
+        self.assertIsNone(wait['waitMs'])
+
+
 if __name__ == '__main__':
     unittest.main()

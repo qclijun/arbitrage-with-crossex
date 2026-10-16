@@ -25,18 +25,19 @@ function encode(entry, stats) {
   for (const key of ['client', 'order', 'fill', 'cacheKey', 'reason']) {
     if (fields[key] != null) row[key] = fields[key];
   }
-  for (const key of ['quantity', 'cumulative', 'aFilled', 'bFilled', 'aReserved', 'bReserved', 'unreserved', 'price']) {
+  for (const key of ['quantity', 'cumulative', 'aFilled', 'bFilled', 'aReserved', 'bReserved', 'unreserved', 'price', 'actualUnhedged']) {
     const value = fields[key];
     if (value === null || typeof value === 'string' && /^-?\d{1,40}(\.\d{1,18})?$/.test(value)) row[key] = value;
   }
-  for (const key of ['leg', 'outcome', 'operation', 'mode', 'policy', 'action', 'errorCategory']) {
+  for (const key of ['leg', 'outcome', 'operation', 'mode', 'policy', 'action', 'errorCategory', 'waitState']) {
     if (typeof fields[key] === 'string' && /^[a-zA-Z-]{1,48}$/.test(fields[key])) row[key] = fields[key];
   }
   if (fields.contract && /^[A-Z0-9_]{1,120}$/.test(fields.contract)) {
     row.market = fields.contract; row.venue = fields.contract.split('_')[0];
   }
-  for (const key of ['cacheHit', 'cacheWrittenUtcMs', 'receivedUtcMs', 'cacheResidenceMs', 'startedMonoMs', 'httpStatus']) {
-    if (typeof fields[key] === 'boolean' || typeof fields[key] === 'number' && Number.isFinite(fields[key])) row[key] = fields[key];
+  for (const key of ['cacheHit', 'cacheWrittenUtcMs', 'receivedUtcMs', 'cacheResidenceMs', 'startedMonoMs', 'httpStatus', 'waitMs']) {
+    if (key === 'waitMs' && fields[key] === null) row[key] = null;
+    else if (typeof fields[key] === 'boolean' || typeof fields[key] === 'number' && Number.isFinite(fields[key])) row[key] = fields[key];
   }
   return JSON.stringify(row) + '\n';
 }

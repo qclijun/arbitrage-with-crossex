@@ -7,9 +7,10 @@
  * committed durable state plus current venue state. There is deliberately no
  * recovery module, no adopt-window, no repeg protocol.
  */
+import { forgetHedgeWait, reportHedgeWait } from './hedge-wait';
 import { fx, fxStr } from './fx';
 import { type EngineObservation, type ObservationContext, observeCall, recordObservation } from './observation';
-import { POC_REASON, decide, project, sizeFor, type DecideCtx } from './decide';
+import { POC_REASON, decide, decideBeforeMakerPrices, project, sizeFor, type DecideCtx } from './decide';
 import type { Store } from './db';
 import {
   TUNING,
@@ -22,6 +23,10 @@ import {
 } from './types';
 
 export interface LoopDeps {
+  /** Independent, default-off dependency optimization; rollout remains gated. */
+  skipUnrelatedMakerWait?: boolean;
+  /** Diagnostic clock only; production defaults to performance.now(). */
+  waitMonotonicNow?: () => number;
   observation?: EngineObservation;
   evidence?: ObservationContext;
   store: Store;
@@ -584,9 +589,21 @@ export function tickPair(deps: LoopDeps, pairId: string): Promise<Action> {
   return deps.observation ? deps.observation.tickPair(pairId, evidence => tickPairCore({ ...deps, evidence }, pairId)) : tickPairCore(deps, pairId);
 }
 
+function changedPriceIntent(deps: LoopDeps, pair: PairRow): Action | null {
+  const intent = deps.store.getPair(pair.id) ?? pair;
+  if (intent.mode === pair.mode && intent.limitPrice === pair.limitPrice &&
+      intent.pricePolicy === pair.pricePolicy && intent.autoPricePolicy === pair.autoPricePolicy) return null;
+  recordObservation(deps.evidence, 'intent-changed', { mode: intent.mode, policy: intent.pricePolicy, price: intent.limitPrice });
+  recordObservation(deps.evidence, 'decision', { action: 'idle', reason: 'intent changed mid-tick', operation: 'intent-changed' });
+  return { type: 'idle', reason: 'intent changed mid-tick — deferring to a fresh tick' };
+}
+
 async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
   const pair0 = deps.store.getPair(pairId);
-  if (!pair0 || pair0.mode === 'DONE') return { type: 'idle', reason: 'done' };
+  if (!pair0 || pair0.mode === 'DONE') {
+    forgetHedgeWait(deps.store, pairId);
+    return { type: 'idle', reason: 'done' };
+  }
 
   recordObservation(deps.evidence, 'intent', { mode: pair0.mode, policy: pair0.pricePolicy, price: pair0.limitPrice });
   // ---- OBSERVE ----
@@ -599,9 +616,37 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
   }
 
   // ---- PROJECT + DECIDE (pure) ----
-  const pair = deps.store.getPair(pairId)!;
-  const orders = deps.store.listOrders(pairId);
-  const proj = project(pair, orders);
+  let pair = deps.store.getPair(pairId)!;
+  let orders = deps.store.listOrders(pairId);
+  let proj = project(pair, orders);
+  const optimized = deps.skipUnrelatedMakerWait === true;
+  const readRefB = () => observeCall(deps.evidence, 'refPrice', { leg: 'B', contract: pair.b!.contract },
+    () => deps.venue.refPrice(pair.b!.contract, pair.autoPricePolicy === 'best', deps.evidence));
+  let earlyRefB: string | null | undefined;
+  if (optimized && !proj.anyPending && !proj.anyQuarantined && pair.b &&
+      fx(proj.unhedged) > 0n && fx(pair.b.minNotional) > 0n) {
+    earlyRefB = await readRefB();
+    const changed = changedPriceIntent(deps, pair);
+    if (changed) return changed;
+    // Adapter-valid, positive reference only. Never use the unused-price sentinel.
+    if (earlyRefB !== null && fx(earlyRefB) <= 0n) earlyRefB = null;
+    if (earlyRefB !== null) {
+      // Reconfirm after the price await, independently of reporting state.
+      // New fills/cancel races and unknown reads must affect this tick's projection.
+      for (const order of deps.store.listOrders(pairId)) {
+        const current = deps.store.getPair(pairId)!;
+        if (order.state === 'PENDING') await resolvePending(deps, current, order);
+        else if (order.state === 'OPEN' || (order.quarantinedStatus && order.state !== 'DEAD')) {
+          await observeOpen(deps, current, order);
+        }
+      }
+      const changedAfterRead = changedPriceIntent(deps, pair);
+      if (changedAfterRead) return changedAfterRead;
+      pair = deps.store.getPair(pairId)!;
+      orders = deps.store.listOrders(pairId);
+      proj = project(pair, orders);
+    }
+  }
   recordObservation(deps.evidence, 'projection', { aFilled: proj.aFilled, bFilled: proj.bFilled,
     aReserved: proj.aReserved, bReserved: proj.bReserved, unreserved: proj.unhedged,
     outcome: orders.some(o => o.readFailStreak > 0 || o.state === 'PENDING' || o.quarantinedStatus) ? 'unknown' : 'ok' });
@@ -633,6 +678,15 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
     fx(proj.residualA) > 0n &&
     (fx(pair.a.minNotional) > 0n || pair.clipBandBp !== null);
 
+  const skipMaker = optimized && (needTouch || needBest || needRefA) && decideBeforeMakerPrices(pair, proj, deps.clock.now(), {
+    touchA: null, bestA: null, bookOutageObservedAt: null,
+    refB: earlyRefB === undefined ? '0' : earlyRefB, refA: '0',
+    maxClip: pair.maxClip ?? tuning(deps).MAX_CLIP,
+  }) !== null;
+  const fetchTouch = needTouch && !skipMaker;
+  const fetchBest = needBest && !skipMaker;
+  const fetchRefA = needRefA && !skipMaker;
+
   // ---- book-outage pause (ticket 04) -------------------------------------
   // Sample the observable BEFORE the (possibly slow) book fetch: a book call
   // that HANGS must not understate the outage's age. `bookOutageStartedAt` is a
@@ -642,7 +696,7 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
   // older than the last successful placement) is discarded: recovering and
   // later failing again starts a NEW window, and the pause always grades from
   // the CURRENT outage.
-  let outageObservedAt = needBest ? deps.clock.now() : null;
+  let outageObservedAt = fetchBest ? deps.clock.now() : null;
   // "The book endpoint is down" and "the whole venue is unreachable" are
   // DIFFERENT states, and only the first makes a cancel a safe action. A failed
   // ORDER read on any order means we cannot even confirm what the venue holds —
@@ -654,26 +708,31 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
     pair.bookOutageStartedAt > 0 && pair.bookOutageStartedAt >= pair.lastMakerPlacementAt
       ? pair.bookOutageStartedAt
       : 0;
-  const outageStart = !needBest ? 0 : carriedStart > 0 ? carriedStart : (outageObservedAt ?? deps.clock.now());
+  const outageStart = !fetchBest ? (optimized ? pair.bookOutageStartedAt : 0)
+    : carriedStart > 0 ? carriedStart : (outageObservedAt ?? deps.clock.now());
   if (outageStart !== pair.bookOutageStartedAt) {
     deps.store.updatePair(pairId, { bookOutageStartedAt: outageStart });
   }
   const ctx: DecideCtx = {
-    touchA: needTouch ? await observeCall(deps.evidence, 'touch', { leg: 'A', contract: pair.a.contract }, () => deps.venue.touch(pair.a.contract, pair.a.side, pair.a.tick, deps.evidence)) : null,
-    bestA: needBest ? await observeCall(deps.evidence, 'bestQuote', { leg: 'A', contract: pair.a.contract }, () => deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick, deps.evidence)) : null,
+    touchA: fetchTouch ? await observeCall(deps.evidence, 'touch', { leg: 'A', contract: pair.a.contract }, () => deps.venue.touch(pair.a.contract, pair.a.side, pair.a.tick, deps.evidence)) : null,
+    bestA: fetchBest ? await observeCall(deps.evidence, 'bestQuote', { leg: 'A', contract: pair.a.contract }, () => deps.venue.bestQuote(pair.a.contract, pair.a.side, pair.a.tick, deps.evidence)) : null,
     bookOutageObservedAt: outageObservedAt,
     // '0' (unused) when no hedge is owed; a real fetch only when one is.
-    refB: needRefB ? await observeCall(deps.evidence, 'refPrice', { leg: 'B', contract: pair.b!.contract }, () => deps.venue.refPrice(pair.b!.contract, pair.autoPricePolicy === 'best', deps.evidence)) : '0',
-    refA: needRefA ? await observeCall(deps.evidence, 'refPrice', { leg: 'A', contract: pair.a.contract }, () => deps.venue.refPrice(pair.a.contract, pair.autoPricePolicy === 'best', deps.evidence)) : '0',
+    refB: needRefB ? (earlyRefB === undefined ? await readRefB() : earlyRefB) : '0',
+    refA: fetchRefA ? await observeCall(deps.evidence, 'refPrice', { leg: 'A', contract: pair.a.contract }, () => deps.venue.refPrice(pair.a.contract, pair.autoPricePolicy === 'best', deps.evidence)) : '0',
     maxClip: pair.maxClip ?? tuning(deps).MAX_CLIP,
   };
+  // Never mix pre-await prices with a Stop/Convert/quote-mode edit committed during IO.
+  const changedAfterPrices = changedPriceIntent(deps, pair);
+  if (changedAfterPrices) return changedAfterPrices;
   // The book answered with a valid two-sided top: the outage, if any, is OVER.
   // Every consumer of `ctx.bestA` treats a non-null value as a fresh valid book
   // (decide only ever reprices off one), so this is the correct recovery edge.
-  const bookRecovered = needBest && ctx.bestA !== null;
+  const bookRecovered = fetchBest && ctx.bestA !== null;
   if (bookRecovered && outageStart !== 0) {
     deps.store.updatePair(pairId, { bookOutageStartedAt: 0 });
   }
+  reportHedgeWait(deps, pair, proj, orders, needRefB ? ctx.refB : undefined);
   // A hedge that cannot be SIZED is a hedge wall like any other. refPrice()
   // returns null on any failure — unsupported venue, a wrong native symbol, a
   // venue outage, a book slower than the 2.5s timeout — and with a positive
@@ -703,30 +762,6 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
     bumpHedgeWall(deps, pair, deps.clock.now());
   }
 
-  // Re-read the intent row: the fetches above are real network calls (a
-  // Hyperliquid book can take ~1s), Fastify handlers share this event loop, and
-  // a user command is a one-row edit that COMMITS during them. Deciding on the
-  // snapshot taken before the awaits would ignore a Stop/Convert/Re-peg the API
-  // already acknowledged with a 200 — and then place an order against the mode
-  // the user just left. But deciding on the FRESH intent with THIS tick's ctx
-  // is just as wrong: the fetch predicates above were computed from the old
-  // mode, so a Convert committing mid-await would run CONVERTING with refA
-  // still at the '0' sentinel — which sizeFor reads as a real price, sizing a
-  // zero-notional clip to FX_ZERO and finishing the deal DONE "converted" with
-  // the target unacquired. A changed intent invalidates this tick's context
-  // wholesale, so the only safe action is NO action: the command's own wake()
-  // has already queued an immediate next tick (wakeQueued in startLoop), which
-  // recomputes the predicates from the fresh row.
-  const intent = deps.store.getPair(pairId) ?? pair;
-  if (
-    intent.mode !== pair.mode ||
-    intent.limitPrice !== pair.limitPrice ||
-    intent.pricePolicy !== pair.pricePolicy
-  ) {
-    recordObservation(deps.evidence, 'intent-changed', { mode: intent.mode, policy: intent.pricePolicy, price: intent.limitPrice });
-    recordObservation(deps.evidence, 'decision', { action: 'idle', reason: 'intent changed mid-tick', operation: 'intent-changed' });
-    return { type: 'idle', reason: 'intent changed mid-tick — deferring to a fresh tick' };
-  }
   // Decide against the outage marker THIS tick established, not the pre-update
   // snapshot: `outageStart` is the committed start (or 0 on the recovery tick),
   // and decide() must grade the pause from exactly that.
@@ -738,6 +773,7 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
       ? 'hedge-price-unavailable' : needBest && ctx.bestA === null ? 'maker-price-unavailable' : 'decide' });
   // ---- ACT (≤ 1 wire mutation) ----
   await perform(deps, pair, action);
+  if (deps.store.getPair(pairId)?.mode === 'DONE') forgetHedgeWait(deps.store, pairId);
   return action;
 }
 

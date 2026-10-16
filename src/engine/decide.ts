@@ -210,7 +210,18 @@ function finishIfSettled(pair: PairRow, p: Projection, reason: string, hedgeSize
  *   3. per-mode convergence (place/cancel/finish)
  * Returns exactly ONE action; the loop performs at most one wire mutation per tick.
  */
+/** Full decision: all required prices have been attempted. */
 export function decide(pair: PairRow, p: Projection, now: number, ctx: DecideCtx): Action {
+  return decideCore(pair, p, now, ctx, false)!;
+}
+
+/** Same priority rules, stopping before OPENING quotes or CONVERTING A-clip pricing.
+ * null means fetch Maker prices; an Action is independent of them. */
+export function decideBeforeMakerPrices(pair: PairRow, p: Projection, now: number, ctx: DecideCtx): Action | null {
+  return decideCore(pair, p, now, ctx, true);
+}
+
+function decideCore(pair: PairRow, p: Projection, now: number, ctx: DecideCtx, deferMaker: boolean): Action | null {
   if (pair.mode === 'DONE') return { type: 'idle', reason: 'done' };
 
   const m = p.makerOrder;
@@ -332,6 +343,7 @@ export function decide(pair: PairRow, p: Projection, now: number, ctx: DecideCtx
       // (or while we cannot prove it isn't).
       if (hedgeOwed) return { type: 'idle', reason: 'convert paused: hedge owed first' };
       if (now < pair.makerNotBefore) return { type: 'idle', reason: 'clip backoff' };
+      if (deferMaker) return null;
       const clipRaw = fxMin(fx(p.residualA), fx(ctx.maxClip));
       const clip = sizeFor(clipRaw, pair.a, ctx.refA);
       if (clip === null) return { type: 'idle', reason: 'clip deferred: no reference price' };
@@ -389,6 +401,7 @@ export function decide(pair: PairRow, p: Projection, now: number, ctx: DecideCtx
         if (m && m.state === 'OPEN') return { type: 'cancel', order: m };
         return { type: 'idle', reason: 'acquisition paused: hedge failed, waiting out its backoff' };
       }
+      if (deferMaker) return null;
       if (m && m.state === 'OPEN') {
         // Re-peg is an intent edit: live maker price ≠ intent price → converge.
         if (pair.limitPrice !== null && m.price !== pair.limitPrice) {
