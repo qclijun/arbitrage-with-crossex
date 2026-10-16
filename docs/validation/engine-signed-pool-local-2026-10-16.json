@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "measuredUtc": "2026-10-16T09:04:21.602Z",
+  "node": "v24.19.0",
+  "scope": "local synthetic TLS/CONNECT only",
+  "productionEnablement": "UNKNOWN",
+  "steadyRssAcceptance": "UNKNOWN",
+  "candidates": [
+    {
+      "maxSockets": 1,
+      "outcomes": [
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found"
+      ],
+      "maxQueued": 7,
+      "maxConnections": 1,
+      "maxFd": 32,
+      "rssStart": 115458048,
+      "maxRss": 117932032,
+      "latencyMs": {
+        "n": 16,
+        "p50": 157.43649400000004,
+        "p95": 295.36389599999995,
+        "max": 295.36389599999995
+      },
+      "afterClose": {
+        "maxSockets": null,
+        "retiringSessions": 0,
+        "socketLimitAcrossSessions": 0,
+        "inFlight": 0,
+        "sockets": 0,
+        "freeSockets": 0,
+        "queued": 0
+      },
+      "timeoutCoverage": "queue/CONNECT/TLS E2E UNKNOWN"
+    },
+    {
+      "maxSockets": 4,
+      "outcomes": [
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found"
+      ],
+      "maxQueued": 4,
+      "maxConnections": 4,
+      "maxFd": 28,
+      "rssStart": 98562048,
+      "maxRss": 102522880,
+      "latencyMs": {
+        "n": 16,
+        "p50": 68.08488599999998,
+        "p95": 106.98130900000001,
+        "max": 106.98130900000001
+      },
+      "afterClose": {
+        "maxSockets": null,
+        "retiringSessions": 0,
+        "socketLimitAcrossSessions": 0,
+        "inFlight": 0,
+        "sockets": 0,
+        "freeSockets": 0,
+        "queued": 0
+      },
+      "timeoutCoverage": "queue/CONNECT/TLS E2E UNKNOWN"
+    },
+    {
+      "maxSockets": 8,
+      "outcomes": [
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found",
+        "found"
+      ],
+      "maxQueued": 0,
+      "maxConnections": 8,
+      "maxFd": 32,
+      "rssStart": 96382976,
+      "maxRss": 100519936,
+      "latencyMs": {
+        "n": 16,
+        "p50": 35.215236000000004,
+        "p95": 77.182976,
+        "max": 77.182976
+      },
+      "afterClose": {
+        "maxSockets": null,
+        "retiringSessions": 0,
+        "socketLimitAcrossSessions": 0,
+        "inFlight": 0,
+        "sockets": 0,
+        "freeSockets": 0,
+        "queued": 0
+      },
+      "timeoutCoverage": "queue/CONNECT/TLS E2E UNKNOWN"
+    }
+  ],
+  "competingLoad": "Collected during yarn verify parallel offline suites; not a controlled performance comparison."
+}

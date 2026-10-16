@@ -10,6 +10,8 @@ import { performance } from 'node:perf_hooks';
 import { type ObservationContext, observeCall, recordObservation } from './observation';
 import { CrossexOrderRequest } from 'gate-api';
 import type { Clients } from '../core/clients';
+import type { CrossExApi } from 'gate-api';
+import type { WithEngineClient } from '../core/engine-transport';
 import { fetchVenueBook } from '../core/estimate/books';
 import { formatRestPrice, parseSymbol } from '../core/numbers';
 import { bestQuotePrice, isQuotableBook, topOf } from './bookQuality';
@@ -87,8 +89,8 @@ function numToDec(px: unknown): string | null {
   return s === '0' ? null : s;
 }
 
-export function gateVenue(getClients: () => Clients): VenuePort {
-  const crossEx = () => getClients().crossEx;
+export function gateVenue(getClients: () => Clients,
+  withClient: WithEngineClient = async fn => fn(getClients().crossEx)): VenuePort {
 
   // Short-TTL memo for the slow public book fetches (esp. Hyperliquid): the loop
   // may re-tick every ~150ms while actively hedging, and a fresh book that often
@@ -112,9 +114,9 @@ export function gateVenue(getClients: () => Clients): VenuePort {
     return value;
   };
 
-  const getByVenueId = async (venueOrderId: string, evidence?: ObservationContext): Promise<ReadOutcome> => {
+  const getByVenueId = async (client: CrossExApi, venueOrderId: string, evidence?: ObservationContext): Promise<ReadOutcome> => {
     try {
-      const { body } = await observeCall(evidence, 'sdk-order-read', { order: venueOrderId }, () => crossEx().getCrossexOrder(venueOrderId));
+      const { body } = await observeCall(evidence, 'sdk-order-read', { order: venueOrderId }, () => client.getCrossexOrder(venueOrderId));
       return { kind: 'found', snapshot: snapshotOf(body) };
     } catch (err) {
       const label = labelOf(err);
@@ -125,56 +127,60 @@ export function gateVenue(getClients: () => Clients): VenuePort {
 
   return {
     async create(req, evidence): Promise<CreateOutcome> {
-      const order = new CrossexOrderRequest();
-      order.symbol = req.contract;
-      order.side = req.side === 'BUY' ? CrossexOrderRequest.Side.BUY : CrossexOrderRequest.Side.SELL;
-      order.type = req.price ? CrossexOrderRequest.Type.LIMIT : CrossexOrderRequest.Type.MARKET;
-      order.timeInForce =
-        req.tif === 'poc' ? CrossexOrderRequest.TimeInForce.POC : CrossexOrderRequest.TimeInForce.IOC;
-      order.qty = req.qty;
-      if (req.price) order.price = req.price;
-      if (req.reduceOnly) order.reduceOnly = CrossexOrderRequest.ReduceOnly.True;
-      order.text = req.clientText;
-      try {
-        const { body } = await observeCall(evidence, 'sdk-create', { client: req.clientText, contract: req.contract, quantity: req.qty },
-          () => crossEx().createCrossexOrder({ crossexOrderRequest: order }));
-        // The create response carries ONLY {orderId, text} (CrossexOrderActionResponse)
-        // — no status/fill. Follow up with one read so the loop gets a real
-        // snapshot (this is also what detects a POC accepted-then-insta-cancel).
-        const venueOrderId = String(body.orderId ?? '');
-        recordObservation(evidence, 'order-linked', { client: req.clientText, order: venueOrderId });
+      return withClient<CreateOutcome>(async client => {
+        const order = new CrossexOrderRequest();
+        order.symbol = req.contract;
+        order.side = req.side === 'BUY' ? CrossexOrderRequest.Side.BUY : CrossexOrderRequest.Side.SELL;
+        order.type = req.price ? CrossexOrderRequest.Type.LIMIT : CrossexOrderRequest.Type.MARKET;
+        order.timeInForce =
+          req.tif === 'poc' ? CrossexOrderRequest.TimeInForce.POC : CrossexOrderRequest.TimeInForce.IOC;
+        order.qty = req.qty;
+        if (req.price) order.price = req.price;
+        if (req.reduceOnly) order.reduceOnly = CrossexOrderRequest.ReduceOnly.True;
+        order.text = req.clientText;
         try {
-          const { body: full } = await observeCall(evidence, 'sdk-confirm', { client: req.clientText, order: venueOrderId },
-            () => crossEx().getCrossexOrder(venueOrderId));
-          return { kind: 'ok', snapshot: snapshotOf(full) };
-        } catch {
-          // The order IS accepted (create succeeded); the confirm read just
-          // failed. 'NEW' is safe: the loop marks it OPEN and observes the real
-          // state next tick.
-          return {
-            kind: 'ok',
-            snapshot: { venueOrderId, rawStatus: 'NEW', cumQty: '0', avgFillPrice: '0', reason: '' },
-          };
+          const { body } = await observeCall(evidence, 'sdk-create', { client: req.clientText, contract: req.contract, quantity: req.qty },
+            () => client.createCrossexOrder({ crossexOrderRequest: order }));
+          // The create response carries ONLY {orderId, text} (CrossexOrderActionResponse)
+          // — no status/fill. Follow up with one read so the loop gets a real
+          // snapshot (this is also what detects a POC accepted-then-insta-cancel).
+          const venueOrderId = String(body.orderId ?? '');
+          recordObservation(evidence, 'order-linked', { client: req.clientText, order: venueOrderId });
+          try {
+            const { body: full } = await observeCall(evidence, 'sdk-confirm', { client: req.clientText, order: venueOrderId },
+              () => client.getCrossexOrder(venueOrderId));
+            return { kind: 'ok', snapshot: snapshotOf(full) };
+          } catch {
+            // The order IS accepted (create succeeded); the confirm read just
+            // failed. 'NEW' is safe: the loop marks it OPEN and observes the real
+            // state next tick.
+            return {
+              kind: 'ok',
+              snapshot: { venueOrderId, rawStatus: 'NEW', cumQty: '0', avgFillPrice: '0', reason: '' },
+            };
+          }
+        } catch (err) {
+          const label = labelOf(err);
+          if (label && DEFINITE_REJECT.some((re) => re.test(label))) {
+            return { kind: 'reject', label, message: (err as GateErr).response?.data?.message ?? label };
+          }
+          return { kind: 'unknown', message: (err as Error).message ?? String(err) };
         }
-      } catch (err) {
-        const label = labelOf(err);
-        if (label && DEFINITE_REJECT.some((re) => re.test(label))) {
-          return { kind: 'reject', label, message: (err as GateErr).response?.data?.message ?? label };
-        }
-        return { kind: 'unknown', message: (err as Error).message ?? String(err) };
-      }
+      }).catch(err => ({ kind: 'unknown' as const, message: (err as Error).message }));
     },
 
     async cancel(ref, evidence): Promise<CancelOutcome> {
-      const id = ref.venueOrderId ?? ref.clientText;
-      try {
-        await observeCall(evidence, 'sdk-cancel', { client: ref.clientText, order: ref.venueOrderId }, () => crossEx().cancelCrossexOrder(id));
-        return { kind: 'ok' };
-      } catch (err) {
-        const label = labelOf(err);
-        if (label && CANCEL_GONE.test(label)) return { kind: 'ok' }; // already terminal = success
-        return { kind: 'unknown', message: (err as Error).message ?? String(err) };
-      }
+      return withClient<CancelOutcome>(async client => {
+        const id = ref.venueOrderId ?? ref.clientText;
+        try {
+          await observeCall(evidence, 'sdk-cancel', { client: ref.clientText, order: ref.venueOrderId }, () => client.cancelCrossexOrder(id));
+          return { kind: 'ok' };
+        } catch (err) {
+          const label = labelOf(err);
+          if (label && CANCEL_GONE.test(label)) return { kind: 'ok' }; // already terminal = success
+          return { kind: 'unknown', message: (err as Error).message ?? String(err) };
+        }
+      }).catch(err => ({ kind: 'unknown' as const, message: (err as Error).message }));
     },
 
     async getOrder(ref, evidence): Promise<ReadOutcome> {
@@ -182,35 +188,38 @@ export function gateVenue(getClients: () => Clients): VenuePort {
       // text as the order-id path param — while the order is live AND well past
       // the documented 60s post-terminal window. One authoritative GET either
       // way; no listing scans in the hot path.
-      return getByVenueId(ref.venueOrderId ?? ref.clientText, evidence);
+      return withClient(client => getByVenueId(client, ref.venueOrderId ?? ref.clientText, evidence))
+        .catch(err => ({ kind: 'error' as const, message: (err as Error).message }));
     },
 
     async sweepForOrder(contract, clientText, fromMs, evidence): Promise<SweepResult> {
-      // Live-verified (2026-07-23 smoke, both runs): /crossex/history_orders
-      // takes `from` in MILLISECONDS — seconds get 400/COMMON_PARAM_BIND_ERROR.
-      // Symbol-filtered + ms-time-bounded + paginated to exhaustion: 'covered'
-      // is true only when every read succeeded and the final page was short
-      // (the listing provably spanned [fromMs, now]). The direct GET-by-text
-      // pre-check resolves most in-doubt orders before any listing is touched.
-      try {
-        const byText = await getByVenueId(clientText, evidence); // cheap authoritative pre-check
-        if (byText.kind === 'found') return { covered: true, found: byText.snapshot };
-        const open = (await crossEx().listCrossexOpenOrders({ symbol: contract })).body ?? [];
-        const liveHit = open.find((o) => String(o.text ?? '') === clientText);
-        if (liveHit) return { covered: true, found: snapshotOf(liveHit) };
-        const limit = 100;
-        for (let page = 1; page <= 50; page++) {
-          const rows =
-            (await crossEx().listCrossexHistoryOrders({ symbol: contract, from: fromMs, limit, page }))
-              .body ?? [];
-          const hit = rows.find((o) => String(o.text ?? '') === clientText);
-          if (hit) return { covered: true, found: snapshotOf(hit) };
-          if (rows.length < limit) return { covered: true }; // exhausted the window
+      return withClient(async client => {
+        // Live-verified (2026-07-23 smoke, both runs): /crossex/history_orders
+        // takes `from` in MILLISECONDS — seconds get 400/COMMON_PARAM_BIND_ERROR.
+        // Symbol-filtered + ms-time-bounded + paginated to exhaustion: 'covered'
+        // is true only when every read succeeded and the final page was short
+        // (the listing provably spanned [fromMs, now]). The direct GET-by-text
+        // pre-check resolves most in-doubt orders before any listing is touched.
+        try {
+          const byText = await getByVenueId(client, clientText, evidence); // cheap authoritative pre-check
+          if (byText.kind === 'found') return { covered: true, found: byText.snapshot };
+          const open = (await client.listCrossexOpenOrders({ symbol: contract })).body ?? [];
+          const liveHit = open.find((o) => String(o.text ?? '') === clientText);
+          if (liveHit) return { covered: true, found: snapshotOf(liveHit) };
+          const limit = 100;
+          for (let page = 1; page <= 50; page++) {
+            const rows =
+              (await client.listCrossexHistoryOrders({ symbol: contract, from: fromMs, limit, page }))
+                .body ?? [];
+            const hit = rows.find((o) => String(o.text ?? '') === clientText);
+            if (hit) return { covered: true, found: snapshotOf(hit) };
+            if (rows.length < limit) return { covered: true }; // exhausted the window
+          }
+          return { covered: false }; // page cap hit — do NOT claim absence
+        } catch {
+          return { covered: false };
         }
-        return { covered: false }; // page cap hit — do NOT claim absence
-      } catch {
-        return { covered: false };
-      }
+      }).catch(() => ({ covered: false }));
     },
 
     async touch(contract: string, side: Side, tick: string, evidence?: ObservationContext): Promise<string | null> {

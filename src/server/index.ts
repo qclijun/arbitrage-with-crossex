@@ -9,7 +9,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import { fetchBorosMarkets, resolveBorosFetch, resolveCollateralPricesUsd, setClientTagContext } from '../core/boros/client';
-import { makeClientsIfConfigured, requireClients, type Clients } from '../core/clients';
+import { gateProxy, makeClientsIfConfigured, requireClients, type Clients } from '../core/clients';
+import { EngineTransport } from '../core/engine-transport';
 import { Store } from '../engine/db';
 import { EngineObservation } from '../engine/observation';
 import { startLoop, type LoopDeps } from '../engine/loop';
@@ -96,6 +97,8 @@ const clientsRef: { current: Clients | null } = {
   current: makeClientsIfConfigured(),
 };
 const getClients = () => requireClients(clientsRef.current);
+// Remains disabled until the measured rollout gate selects explicit parameters.
+const engineTransport = new EngineTransport(getClients, gateProxy);
 
 // Stamp the version onto every Boros API request, and mark this user "active" when credentials are
 // already configured. The credentials route flips active:true on a later
@@ -158,7 +161,7 @@ let loopDeps: LoopDeps | undefined;
         store.alert('warn', null, message, Date.now()))
       : undefined,
     store,
-    venue: gateVenue(getClients),
+    venue: gateVenue(getClients, fn => engineTransport.use(fn)),
     clock: { now: () => Date.now() },
     onFinish: () => telegramSync.requestSync('deal'),
   };
@@ -281,12 +284,16 @@ const appDeps = {
     envPath,
     hardenConfigDir,
     setClients: (clients: Clients) => {
+      engineTransport.invalidate();
       clientsRef.current = clients;
     },
   },
 };
 const app = buildApp(appDeps);
-app.addHook('onClose', async () => { await loopDeps?.observation?.close(); });
+app.addHook('onClose', async () => {
+  await engineTransport.close();
+  await loopDeps?.observation?.close();
+});
 
 // Serve the built SPA when present (`yarn start`); in dev, Vite proxies /api here.
 if (fs.existsSync(path.join(webDist, 'index.html'))) {

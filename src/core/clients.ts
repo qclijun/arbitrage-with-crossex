@@ -1,14 +1,15 @@
 import 'dotenv/config';
-import axios, { type AxiosProxyConfig } from 'axios';
+import axios, { type AxiosInstance, type AxiosProxyConfig } from 'axios';
 import { ApiClient, CrossExApi, FuturesApi, SpotApi } from 'gate-api';
 import { CoreError } from './errors';
 
-/** Hard HTTP deadline on every Gate call. The SDK's default axios instance has
+/** Axios timeout on every Gate call; queue/CONNECT/TLS coverage is not a proven
+ * end-to-end deadline. The SDK's default axios instance has
  * NO timeout — one hung request would stall the reconcile loop (and with it
  * every deal's convergence, e.g. a pending Stop) indefinitely. A timed-out call
  * surfaces as a network error → the engine's UNKNOWN/error paths, which are
  * safe by design (probe-and-resolve, never guess). */
-const HTTP_TIMEOUT_MS = 15_000;
+export const GATE_HTTP_TIMEOUT_MS = 15_000;
 
 /** Gate Broker Program channel id, sent as X-Gate-Channel-Id on every signed
  * request so Gate can attribute this tool's order flow (the same mechanism
@@ -21,6 +22,8 @@ export interface Clients {
   crossEx: CrossExApi;
   spot: SpotApi;
   futures: FuturesApi;
+  /** Lazy engine-only SDK factory; never used by credential validation. */
+  engineClient?: (http: AxiosInstance) => CrossExApi;
 }
 
 export interface Credentials {
@@ -60,13 +63,21 @@ export function makeClients(creds?: Credentials): Clients {
       'Missing GATE_API_KEY / GATE_API_SECRET. Add them to a .env file in the project root.',
     );
   }
-  const api = new ApiClient(undefined, axios.create({ timeout: HTTP_TIMEOUT_MS, proxy: gateProxy() }));
-  api.setApiKeySecret(key, secret);
-  // Mutate rather than assign: the SDK's defaultHeaders setter replaces the
-  // whole object, which would drop its stock X-Gate-Size-Decimal header.
-  api.defaultHeaders['X-Gate-Channel-Id'] = GATE_CHANNEL_ID;
+  const signedApi = (http: AxiosInstance): ApiClient => {
+    const api = new ApiClient(undefined, http);
+    api.setApiKeySecret(key, secret);
+    // Mutate rather than replace the stock decimal header.
+    api.defaultHeaders['X-Gate-Channel-Id'] = GATE_CHANNEL_ID;
+    return api;
+  };
+  const api = signedApi(axios.create({ timeout: GATE_HTTP_TIMEOUT_MS, proxy: gateProxy() }));
   return {
     api,
+    engineClient: http => {
+      const engineApi = signedApi(http);
+      engineApi.basePath = api.basePath;
+      return new CrossExApi(engineApi);
+    },
     crossEx: new CrossExApi(api),
     spot: new SpotApi(api),
     futures: new FuturesApi(api),
@@ -95,7 +106,7 @@ export function makeClientsIfConfigured(): Clients | null {
  */
 let publicClient: CrossExApi | undefined;
 export function publicCrossEx(): CrossExApi {
-  publicClient ??= new CrossExApi(new ApiClient(undefined, axios.create({ timeout: HTTP_TIMEOUT_MS, proxy: gateProxy() })));
+  publicClient ??= new CrossExApi(new ApiClient(undefined, axios.create({ timeout: GATE_HTTP_TIMEOUT_MS, proxy: gateProxy() })));
   return publicClient;
 }
 
