@@ -26,7 +26,7 @@ const bodies = (): Record<string, unknown> => ({
         initialMargin: raw(1_000),
         availableInitialMargin: raw(19_000),
         positions: [
-          { marketId: 59, signedSize: raw(-1_000), initialMargin: raw(500), maintMargin: raw(300), liquidationApr: raw(0.2), orders: [] },
+          { marketId: 59, signedSize: '-1000000000000000000000', initialMargin: raw(500), maintMargin: raw(300), liquidationApr: raw(0.2), orders: [] },
         ],
       },
     ],
@@ -38,7 +38,7 @@ const bodies = (): Record<string, unknown> => ({
         marketId: 59,
         side: 1,
         fixedApr: 0.06,
-        signedSize: raw(-1_000),
+        signedSize: '-1000000000000000000000',
         unrealisedPnl: raw(1),
         settlementPnl: raw(2),
       },
@@ -82,6 +82,9 @@ describe('GET /api/asset-view/:address on a spread market', () => {
 
     const res = await app.inject({ method: 'GET', url: `/api/asset-view/${ADDR}?since=0`, headers: HOST });
     expect(res.statusCode).toBe(200);
+    expect(res.json().data.risk.positions[0]).toMatchObject({
+      marketId: 59, spreadVenues: ['HYPERLIQUID', 'GATE'], side: 'SHORT',
+    });
     const eth = res.json().data.assets.find((a: { base: string }) => a.base === 'ETH');
     expect(eth.borosOpen).toHaveLength(1);
     expect(eth.borosOpen[0]).toMatchObject({ marketId: 59, venue: 'HYPERLIQUID', spreadVenues: ['HYPERLIQUID', 'GATE'] });

@@ -28,6 +28,7 @@ export interface RiskBorosPosition {
   mtmUsd: number | null; notionalUsd: number | null; settleFeeApr: number | null;
   mtmUsdExact?: string | null; notionalUsdExact?: string | null;
   base?: string; tokenId?: number; sizeBase?: string | null;
+  spreadVenues?: [string, string] | null;
 }
 export interface RiskAssetEvidence {
   address: string; accountId: number; observedAt: number | null; stale: boolean;
@@ -58,6 +59,14 @@ export interface RiskCheck {
 }
 export const rules = catalog as RiskRule[];
 export const contracts = metricContracts as Record<string, MetricContract>;
+export const FUNDING_GAP_MIN_USD = 10;
+export function fundingQuantityVerified(ratio: number, unmatched: boolean, directionMatch: boolean,
+  conditions = rules.find(r => r.id === 'hedge.hl_size_gap_eth')!.account!.conditions): boolean {
+  return !unmatched && directionMatch && !conditions.some(([id, op, threshold]) =>
+    id === 'hedge.funding_material_gap_ratio' && typeof threshold === 'number'
+      && (op === 'gt' ? ratio > threshold : op === 'abs_gt' ? Math.abs(ratio) > threshold
+        : op === 'lt' ? ratio < threshold : op === 'eq' ? ratio === threshold : ratio !== threshold));
+}
 export const severity: Record<RiskStatus, number> = { PAUSED: -1, OK: 0, UNKNOWN: 1, WARNING: 2, CRITICAL: 3 };
 export function effectiveRiskRule(rule: RiskRule, scope: RiskScope): RiskRule {
   return scope.pool === 'account' && rule.account ? { ...rule, ...rule.account } : rule;
@@ -130,15 +139,24 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
       metrics[id] = error ? { ...entry, value: usableBound ? entry.value : null, complete: false, reason: error,
         historicalValue: entry.historicalValue ?? entry.value } : entry;
     }
+    const configured = settings?.thresholds[rule.id];
+    // Legacy combinations use different denominators/units; never reinterpret them.
+    const fundingRule = scope.pool === 'account' && rule.id === 'hedge.hl_size_gap_eth';
+    const compatible = configured?.length && configured.every(c => rule.metrics.includes(c[0])
+      && (!fundingRule || !['hedge.hl_size_gap_eth', 'hedge.binance_size_gap_eth', 'hedge.quantity_verified'].includes(c[0])));
+    const activeThresholds = compatible ? [...configured] : rule.conditions;
+    if (fundingRule && compatible) {
+      for (const condition of rule.conditions.filter(c => ['hedge.direction_match', 'hedge.funding_unmatched'].includes(c[0]))) {
+        activeThresholds.push(condition);
+      }
+    }
     const missing = rule.metrics.filter(id => (!metrics[id].applicability && metrics[id].value === null) || !metrics[id].complete);
     const old = previous[rule.id];
     let status: RiskStatus = missing.length ? 'UNKNOWN' : 'OK';
     const reasons = missing.map(id => `${id}: ${metrics[id].reason}`);
     const criticalMetrics: string[] = [];
-    const configured = settings?.thresholds[rule.id];
-    // Legacy combinations use different denominators/units; never reinterpret them.
-    const activeThresholds = configured?.length && configured.every(c => rule.metrics.includes(c[0])) ? configured : rule.conditions;
     const thresholds = activeThresholds;
+    let fundingMismatch = false;
     for (const [id, op, threshold, level] of thresholds) {
       const value = metrics[id]?.value;
       if (value === null || value === undefined) continue;
@@ -148,6 +166,7 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
           : typeof value === 'number' && typeof threshold === 'number'
             && (op === 'lt' ? value < threshold : op === 'gt' ? value > threshold : Math.abs(value) > threshold);
       if (hit) {
+        fundingMismatch = true;
         if (severity[level] > severity[status]) status = level;
         // Alert text must carry the observed value: a bare "gt 0" hides whether
         // the wallet borrow is a transient $5 flap or a real funding problem.
@@ -157,6 +176,9 @@ export function evaluateRisk(scope: RiskScope, measurements: Record<string, Metr
         reasons.push(`${id} ${op} ${threshold}（当前 ${shown}${unit ? ' ' + unit : ''}）`);
         if (level === 'CRITICAL') criticalMetrics.push(id);
       }
+    }
+    if (fundingRule && metrics['hedge.quantity_verified']?.complete) {
+      metrics['hedge.quantity_verified'] = { ...metrics['hedge.quantity_verified'], value: !fundingMismatch };
     }
     const unresolved = old?.criticalMetrics.filter(id => !rule.metrics.includes(id) || (!metrics[id]?.applicability && metrics[id]?.value === null) || !metrics[id]?.complete) ?? [];
     if (unresolved.length) { status = 'CRITICAL'; reasons.push('Previous CRITICAL cannot be verified: ' + unresolved.join(', ')); }

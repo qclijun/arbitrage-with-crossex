@@ -387,6 +387,7 @@ export interface PositionsResponse {
   positions: CrossexPosition[];
   exposure: ExposureGroup[];
   marginTiers?: MarginTiers;
+  quantitySteps?: Record<string, { lotSize: string; observedAt: number }>;
 }
 
 // ---------------------------------------------------------------------------

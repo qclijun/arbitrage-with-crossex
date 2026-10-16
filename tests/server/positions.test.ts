@@ -63,6 +63,21 @@ describe('GET /api/positions', () => {
     await app?.close();
   });
 
+  it('attaches only unique live venue quantity steps with their actual observation time', async () => {
+    const at = Date.UTC(2026, 9, 16);
+    vi.useFakeTimers({ toFake: ['Date'], now: at });
+    app = makeTestApp();
+    mockGateGet('/positions', { body: hypeBook('40') });
+    mockGateGet('/rule/risk_limits', { fixture: 'risk-limits.json' });
+    mockGateGet('/rule/symbols', { body: [
+      { symbol: 'GATE_FUTURE_HYPE_USDT', business_type: 'FUTURE', state: 'live', lot_size: '0.01' },
+      { symbol: 'HYPERLIQUID_FUTURE_HYPE_USDC', business_type: 'FUTURE', state: 'live', lot_size: '1' },
+      { symbol: 'HYPERLIQUID_FUTURE_HYPE_USDC', business_type: 'FUTURE', state: 'live', lot_size: '2' },
+    ] });
+    const res = await app.inject({ method: 'GET', url: '/api/positions', headers: HOST });
+    expect(res.json().data.quantitySteps).toEqual({ GATE_FUTURE_HYPE_USDT: { lotSize: '0.01', observedAt: at } });
+  });
+
   it("serves Gate's maintenance margin tiers for the symbols held", async () => {
     app = makeTestApp();
     mockGateGet('/positions', { body: hypeBook('40') });

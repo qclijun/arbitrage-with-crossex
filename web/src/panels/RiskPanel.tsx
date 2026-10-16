@@ -7,7 +7,8 @@ import { useTrackedAddress } from './trackedAddress';
 
 const tones: Record<RiskStatus, string> = { CRITICAL: 'text-negative', WARNING: 'text-warning', UNKNOWN: 'text-ink-400', OK: 'text-positive', PAUSED: 'text-ink-500' };
 const featured = ['gate.equity_usd', 'gate.upnl_usd', 'gate.loss_equity_ratio', 'boros.equity_usd', 'boros.rate_mtm_usd',
-  'boros.mtm_loss_equity_ratio', 'hedge.perp_net_eth', 'hedge.perp_net_btc', 'hedge.residual_equity_ratio', 'boros.settlement_net_24h_usd', 'boros.buffer_runway_days', 'rollover.days_to_maturity'];
+  'boros.mtm_loss_equity_ratio', 'hedge.perp_net_eth', 'hedge.perp_net_btc', 'hedge.residual_equity_ratio',
+  'hedge.funding_gap_ratio', 'hedge.funding_gap_usd', 'boros.settlement_net_24h_usd', 'boros.buffer_runway_days', 'rollover.days_to_maturity'];
 
 export function RiskPanel() {
   const { address } = useTrackedAddress();
@@ -68,7 +69,8 @@ export function RiskPanel() {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Key risk values">
       {featured.map(id => {
         const metric = checks.flatMap(c => Object.entries(c.metrics)).find(([k]) => k === id)?.[1];
-        return <div key={id} className="rounded-lg border border-ink-700 bg-ink-900 p-4"><p className="text-xs text-ink-400">{id}</p><p className="num mt-2 break-words text-lg text-ink-50">{metric?.applicability === 'NA' ? 'NA' : formatRiskValue(metric?.value, contracts[id].unit)} <span className="text-xs text-ink-500">{contracts[id].unit}</span></p></div>;
+        return <div key={id} className="rounded-lg border border-ink-700 bg-ink-900 p-4"><p className="text-xs text-ink-400">{id}</p><p className="num mt-2 break-words text-lg text-ink-50">{id === 'hedge.funding_gap_ratio' && typeof metric?.value === 'number'
+          ? `${(metric.value * 100).toFixed(4)}%` : <>{metric?.applicability === 'NA' ? 'NA' : formatRiskValue(metric?.value, contracts[id].unit)} <span className="text-xs text-ink-500">{contracts[id].unit}</span></>}</p></div>;
       })}
     </div>
     <div className="space-y-3" aria-label="All enabled risk checks">

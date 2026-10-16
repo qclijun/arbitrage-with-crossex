@@ -1,5 +1,5 @@
 import { readEvidence, type ReadEvidence } from '../api/client';
-import { contracts, type MetricEvidence, type RiskScope } from './risk';
+import { contracts, FUNDING_GAP_MIN_USD, fundingQuantityVerified, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
 import { fx, fxStr, type Fx } from '../../../src/engine/fx';
@@ -119,6 +119,7 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   put('gate.loss_equity_ratio', equity !== null && equity > 0 && gatePnl !== null ? Math.max(0, -gatePnl) / equity : null,
     seenAt, gatePnlComplete, 'Missing account PnL / positive equity or incomplete positions');
   const residuals: (Fx | null)[] = [], netDetails: Detail[] = [];
+  const fundingPrices = new Map<string, Fx | null>();
   for (const base of bases) {
     const ls = exactLegs.filter(p => p.base === base);
     const net = ls.reduce((n, p) => n + (p.signedQty18 ?? 0n), 0n);
@@ -128,6 +129,9 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     });
     const selected = marks.length && marks.every(m => m.row && m.price !== null && m.price > 0n)
       ? marks.reduce((max, m) => m.price! > max.price! ? m : max) : null;
+    const collateralQuote = collateral?.data.tokens.find(t => t.symbol === base)?.priceUsd;
+    fundingPrices.set(base, selected?.price ?? (!ls.length && finite(collateralQuote) && collateralQuote > 0
+      ? exactDecimal(String(collateralQuote)) : null));
     // The largest verified mark is conservative for absolute residual USD.
     const usd = !ls.length ? 0n : selected === null ? null : abs18(net) * selected.price! / SCALE18;
     put(`hedge.perp_net_${base.toLowerCase()}`, perpsComplete ? metricNumber18(net) : null, positions?.time ?? null, perpsComplete, 'Incomplete or unsupported ETH/BTC perpetual contracts');
@@ -245,14 +249,25 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
       'Missing complete signed settlement window');
   }
 
-  const matchComplete = borosComplete && perpsComplete;
-  const keys = new Set([...legs.map(p => `${p.base}:${p.exchange}:${p.side}`), ...boros.map(b => `${b.base}:${b.venue}:${b.side}`)]);
-  const gaps: Detail[] = [], exactGaps = new Map<string, bigint | null>();
+  const fundingSourcesComplete = boros.every(b => b.spreadVenues == null
+    ? Boolean(b.venue && /^[A-Z0-9]+$/.test(b.venue))
+    : b.spreadVenues.length === 2 && b.spreadVenues.every(v => /^[A-Z0-9]+$/.test(v))
+      && b.spreadVenues[0] !== b.spreadVenues[1]);
+  // Spread funding is venue 1 minus venue 2. Keep each market once for
+  // collateral/PnL/maturity, and expand only its funding coverage.
+  const fundingSources = boros.flatMap(b => b.spreadVenues?.length === 2
+    ? [{ ...b, venue: b.spreadVenues[0] }, { ...b, venue: b.spreadVenues[1],
+      side: b.side === 'SHORT' ? 'LONG' as const : 'SHORT' as const }]
+    : [b]);
+  const matchComplete = borosComplete && perpsComplete && fundingSourcesComplete;
+  const keys = new Set([...legs.map(p => `${p.base}:${p.exchange}:${p.side}`), ...fundingSources.map(b => `${b.base}:${b.venue}:${b.side}`)]);
+  const gaps: Detail[] = [], ratios: Detail[] = [], dollars: Detail[] = [], exactGaps = new Map<string, bigint | null>();
+  let maxRatio = 0, maxMaterialRatio = 0, maxGapUsd = 0n, pricesComplete = true, unmatched = false;
   for (const key of keys) {
     const [base, venue, side] = key.split(':');
     const actual = exactLegs.filter(p => p.base === base && p.exchange === venue && p.side === side)
       .reduce((n, p) => n + (p.qty18 ?? 0n), 0n);
-    const fundingLegs = boros.filter(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now);
+    const fundingLegs = fundingSources.filter(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now);
     const funding = fundingLegs.reduce<bigint | null>((n, b) => {
       const size = exact18(b.sizeBase);
       return n === null || size === null ? null : n + size;
@@ -260,19 +275,47 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     const gap = funding === null ? null : actual - funding;
     exactGaps.set(key, gap);
     gaps.push({ label: key, value: gap === null ? null : metricNumber18(gap), unit: base });
+    if (gap === null) continue;
+    const ratio = actual > 0n ? Number(abs18(gap)) / Number(actual) : funding! > 0n ? 1 : 0;
+    if (ratio > maxRatio) maxRatio = ratio;
+    // A missing side is an independent danger, including tiny orphan positions.
+    unmatched ||= actual === 0n && funding! > 0n || actual > 0n && funding === 0n;
+    const price = fundingPrices.get(base);
+    const gapUsd = gap === 0n ? 0n : price === null || price === undefined ? null : abs18(gap) * price;
+    if (gapUsd === null) pricesComplete = false;
+    else if (gapUsd > maxGapUsd) maxGapUsd = gapUsd;
+    const sourceLegs = exactLegs.filter(p => p.base === base && p.exchange === venue && p.side === side);
+    const steps = sourceLegs.map(p => {
+      const rule = positions?.data.quantitySteps?.[p.symbol];
+      const step = rule && finite(rule.observedAt) && rule.observedAt <= now * 1000 && now * 1000 - rule.observedAt <= 600_000
+        ? exact18(rule.lotSize) : null;
+      return step !== null && step > 0n && p.qty18 !== null && p.qty18 % step === 0n ? step : null;
+    });
+    const step = steps.length && steps.every((v): v is bigint => v !== null) ? steps.reduce((n, v) => n + v, 0n) : null;
+    const material = gapUsd !== null && gapUsd > BigInt(FUNDING_GAP_MIN_USD) * SCALE30
+      && (step === null || abs18(gap) > step);
+    if (material && ratio > maxMaterialRatio) maxMaterialRatio = ratio;
+    ratios.push({ label: key, value: finite(ratio) ? ratio : null, unit: 'ratio',
+      reason: `Perpetual ${formatDecimal18(actual)} ${base}; Boros ${formatDecimal18(funding!)} ${base}; signed gap ${formatDecimal18(gap)} ${base}; ${(ratio * 100).toFixed(6)}%; verified executable lot ${step === null ? 'unavailable (no lot exemption)' : formatDecimal18(step) + ' ' + base}; minimum gap $${FUNDING_GAP_MIN_USD}; material ${material}` });
+    dollars.push({ label: key, value: gapUsd === null ? null : metricNumber30(gapUsd), unit: 'USD' });
   }
   const mismatchedDirection = keys.size > 0 && [...keys].some(key => {
     const [base, venue, side] = key.split(':');
     const opposite = side === 'LONG' ? 'SHORT' : 'LONG';
     return legs.some(p => p.base === base && p.exchange === venue && p.side === side)
-      && boros.some(b => b.base === base && b.venue === venue && b.side === opposite && b.maturity! > now)
-      && !boros.some(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now);
+      && fundingSources.some(b => b.base === base && b.venue === venue && b.side === opposite && b.maturity! > now)
+      && !fundingSources.some(b => b.base === base && b.venue === venue && b.side === side && b.maturity! > now);
   });
-  const quantityComplete = matchComplete && [...exactGaps.entries()].every(([key, gap]) => gap !== null
-    && (key.startsWith('BTC:') ? gap === 0n : true));
-  put('hedge.quantity_verified', quantityComplete ? [...exactGaps.entries()].every(([key, gap]) => gap !== null
-    && (key.startsWith('BTC:') ? gap === 0n : abs18(gap) <= 1_000_000_000_000_000n)) : null,
-    seenAt, quantityComplete, 'BTC funding quantity tolerance is not configured; nonzero BTC differences remain UNKNOWN', gaps);
+  const ratioComplete = matchComplete && ratios.every(d => finite(d.value));
+  const quantityComplete = ratioComplete && pricesComplete && finite(maxMaterialRatio) && metricNumber30(maxGapUsd) !== null
+    && [...exactGaps.values()].every(gap => gap !== null);
+  put('hedge.funding_gap_ratio', ratioComplete ? maxRatio : null, seenAt, ratioComplete, 'Incomplete funding quantities / sources', ratios);
+  put('hedge.funding_gap_usd', quantityComplete ? metricNumber30(maxGapUsd) : null, seenAt, quantityComplete, 'Missing fresh funding gap USD marks / quantities', dollars);
+  put('hedge.funding_material_gap_ratio', quantityComplete ? maxMaterialRatio : null, seenAt, quantityComplete,
+    'Missing fresh funding gap USD marks / quantities', ratios);
+  put('hedge.funding_unmatched', matchComplete ? unmatched : null, seenAt, matchComplete, 'Incomplete current funding coverage', gaps);
+  put('hedge.quantity_verified', quantityComplete ? fundingQuantityVerified(maxMaterialRatio, unmatched, !mismatchedDirection) : null,
+    seenAt, quantityComplete, 'Missing fresh funding gap USD marks / quantities', gaps);
   put('hedge.direction_match', matchComplete ? !mismatchedDirection : null, seenAt, matchComplete, 'Incomplete funding direction / quantities');
   for (const [venue, id] of [['HYPERLIQUID', 'hl'], ['BINANCE', 'binance']] as const) put(`hedge.${id}_size_gap_eth`,
     matchComplete ? metricNumber18([...exactGaps.entries()].filter(([key]) => key.startsWith(`ETH:${venue}:`))

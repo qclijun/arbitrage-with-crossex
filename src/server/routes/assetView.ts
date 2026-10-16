@@ -1407,6 +1407,7 @@ export function createAssetViewBuilder(deps: AppDeps) {
             base: market?.base, tokenId: zone.tokenId,
             sizeBase: market && ((market.base === 'ETH' && zone.tokenId === 2) || (market.base === 'BTC' && zone.tokenId === 1)) ? sizeBase : null,
             venue: market ? normalizeVenue(market.venue) : null, maturity: market?.maturity ?? null,
+            spreadVenues: market?.spreadVenues ?? null,
             side: rawSize > 0n ? 'LONG' : 'SHORT', sizeToken: Math.abs(sizeNumber),
             entryApr: position.fixedApr, markApr: Number.isFinite(position.markApr) ? position.markApr : null,
             mtmUsd: usdNumber(mtmUsdExact), notionalUsd: usdNumber(notionalUsdExact), mtmUsdExact, notionalUsdExact,

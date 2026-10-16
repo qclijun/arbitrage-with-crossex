@@ -79,5 +79,9 @@
   "hedge.perp_net_btc": {"unit": "BTC", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
   "hedge.residual_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
   "hedge.residual_equity_ratio": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
-  "hedge.quantity_verified": {"unit": "bool", "type": "bool", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"}
+  "hedge.quantity_verified": {"unit": "bool", "type": "bool", "max_age_seconds": 120, "source": "Verified ETH/BTC account and independent collateral pools", "collection": "derived"},
+  "hedge.funding_gap_ratio": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "Largest absolute funding gap / perpetual quantity by base, source and side; no perpetual with live Boros coverage is 100%", "collection": "derived"},
+  "hedge.funding_gap_usd": {"unit": "USD", "type": "number", "max_age_seconds": 120, "source": "Largest absolute per-source funding gap valued at verified ETH/BTC USD mark", "collection": "derived"},
+  "hedge.funding_material_gap_ratio": {"unit": "ratio", "type": "number", "max_age_seconds": 120, "source": "Largest per-source ratio with gap above $10 and above one verified executable lot; missing lot evidence grants no lot exemption", "collection": "derived"},
+  "hedge.funding_unmatched": {"unit": "bool", "type": "bool", "max_age_seconds": 120, "source": "Verified source-side with a perpetual but no live Boros funding coverage, or live Boros coverage but no perpetual", "collection": "derived"}
 }

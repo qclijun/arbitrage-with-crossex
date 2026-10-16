@@ -31,6 +31,14 @@
 
 风险4的“实际退出成本”也暂不监控，相关三个指标不输出、不触发告警；“永续标记价差”及其三个指标继续监控。恢复退出成本检查时需启用规则并提供有效盘口与成本证据。
 
+### 当前账户资金费匹配（2026-10-16）
+
+当前终端按 ETH/BTC、资金费来源、方向分别匹配，并正确拆分 Spread 的两个来源。`差额 = 永续本金 − 有效 Boros 覆盖本金`：正数为缺口，负数为过覆盖；`偏差比例 = |差额| / 永续本金`。比例及美元本金均展示逐来源明细，不跨来源或跨币种抵消。
+
+默认比例严格超过 0.1% 预警、超过 1% 严重告警，同时该来源差额须超过 10 美元本金、且超过一个已验证的成交步长。缺失或过期步长不享受步长豁免。完全缺失一侧、方向错误独立报 CRITICAL，即使金额小；缺少估值证据保留 UNKNOWN。空仓为零偏差。`quantity_verified` 使用同一套有效容差；小额尾差仍展示，不能通过状态为 OK 推断数量完全相等。
+
+旧 ETH 绝对数量指标保留作诊断，当前 account 模式不再据此触发资金费匹配告警；旧绝对阈值配置不会被当作比例使用，回退到上述默认值。详细证据、边界及历史状态兼容约定见 [Risk 指标契约](RISK-MONITOR-CONTRACTS.md#account-funding-quantity-tolerance)。以下 2026-10-06 内容描述历史模型。
+
 ### 终端 Risk 的当前对冲与历史基线（2026-10-06）
 
 终端的“永续数量中性”直接汇总账户匹配、完整且新鲜的实际 ETH 永续数量（多头为正、空头为负），不依赖 Boros 读取、钱包选择或历史基线。完整空仓为 0；缺失、重复、合约不明确或未能核实的读取仍为 UNKNOWN。
@@ -73,7 +81,7 @@
 | 4 | 4. 永续标记价差：`basis.mark_spread_usd_per_eth`、`basis.pnl_usd`、`basis.loss_profit_ratio` | basis.loss_profit_ratio gt 0.25 → WARNING；basis.loss_profit_ratio gt 0.5 → CRITICAL | 查持续性与盘口，结合保证金决定协调缩仓 |
 | 4 | 4. 实际退出成本：`basis.executable_exit_cost_usd`、`basis.depth_coverage_ratio`、`basis.exit_cost_profit_ratio` | basis.exit_cost_profit_ratio gt 0.25 → WARNING；basis.depth_coverage_ratio lt 1 → WARNING | 不用标记价替代成交价；控制双腿执行间隔 |
 | 5 | 5. 永续数量中性：`hedge.perp_net_eth` | hedge.perp_net_eth abs_gt 0.001 → WARNING；hedge.perp_net_eth abs_gt 0.01 → CRITICAL | 核对订单与成交后处理残量，禁止盲目重复下单 |
-| 5 | 5. 每条资金费腿匹配：`hedge.hl_size_gap_eth`、`hedge.binance_size_gap_eth`、`hedge.direction_match` | hedge.hl_size_gap_eth gt 0.001 → WARNING；hedge.binance_size_gap_eth gt 0.001 → WARNING；hedge.hl_size_gap_eth gt 0.01 → CRITICAL；hedge.binance_size_gap_eth gt 0.01 → CRITICAL；hedge.direction_match eq False → CRITICAL | 协调修复对应腿，避免只看总净delta |
+| 5 | 5. 每条资金费腿匹配（当前 account）：`hedge.funding_gap_ratio`、`hedge.funding_gap_usd`、`hedge.quantity_verified` | 每来源偏差严格超过 0.1% → WARNING、超过 1% → CRITICAL；须同时超过 $10 本金及一个有效步长；缺侧/方向错误独立 CRITICAL | 保留尾差明细，按来源协调处理，避免单独补腿 |
 | 5 | 5. 期限匹配：`hedge.maturity_match` | hedge.maturity_match eq False → CRITICAL | 暂停扩大规模，核对原始成交 |
 | 5 | 5. 策略市场身份（历史基线）：`hedge.market_identity_match` | hedge.market_identity_match eq False → CRITICAL | 核对可信历史成交与策略基线；不得自动接纳当前仓位 |
 | 5 | 5. 执行残留：`execution.unhedged_eth`、`execution.halted_count`、`execution.pending_age_s` | execution.unhedged_eth abs_gt 0.001 → CRITICAL；execution.halted_count gt 0 → CRITICAL；execution.pending_age_s gt 120 → WARNING | 查真实订单状态，不把超时当作未成交 |

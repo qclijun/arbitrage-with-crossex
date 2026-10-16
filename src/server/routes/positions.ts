@@ -39,7 +39,21 @@ export function positionsRoutes(deps: AppDeps) {
         rows.map((r) => r.symbol ?? ''),
         fresh,
       );
-      return reply.ok({ positions: rows, exposure: computeExposure(rows), marginTiers }, { stale, observedAt });
+      const quantitySteps: Record<string, { lotSize: string; observedAt: number }> = {};
+      if (rows.length) {
+        try {
+          const rules = await deps.cache.get('rules:all', TTL.static,
+            async () => (await deps.getClients().crossEx.listCrossexRuleSymbols()).body);
+          if (!rules.stale) for (const row of rows) {
+            const matches = rules.value.filter(r => r.symbol === row.symbol && r.businessType === 'FUTURE' && r.state === 'live'
+              && Number(r.delistTime ?? '0') === 0);
+            if (matches.length === 1 && Number(matches[0].lotSize) > 0) {
+              quantitySteps[row.symbol!] = { lotSize: matches[0].lotSize, observedAt: rules.observedAt };
+            }
+          }
+        } catch { /* Missing rule evidence never grants a rounding exemption. */ }
+      }
+      return reply.ok({ positions: rows, exposure: computeExposure(rows), marginTiers, quantitySteps }, { stale, observedAt });
     });
   };
 }

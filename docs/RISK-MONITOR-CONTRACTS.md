@@ -76,6 +76,10 @@ Source freshness for automatic values follows the actual endpoint fields and cov
 | `hedge.maturity_match` | bool | bool | derived | 3600 | Boros市场描述/持仓maturity |
 | `hedge.perp_net_btc` | BTC | number | derived | 120 | Verified ETH/BTC account and independent collateral pools |
 | `hedge.perp_net_eth` | ETH | number | derived | 3600 | Verified ETH/BTC account and independent collateral pools |
+| `hedge.funding_gap_ratio` | ratio | number | derived | 120 | Largest per-source absolute gap / perpetual quantity |
+| `hedge.funding_gap_usd` | USD | number | derived | 120 | Largest per-source gap principal at a verified USD mark |
+| `hedge.funding_material_gap_ratio` | ratio | number | derived | 120 | Largest ratio above both $10 and one verified executable lot |
+| `hedge.funding_unmatched` | bool | bool | derived | 120 | A source-side has only perpetual or only live Boros coverage |
 | `hedge.quantity_verified` | bool | bool | derived | 120 | Verified ETH/BTC account and independent collateral pools |
 | `hedge.residual_equity_ratio` | ratio | number | derived | 120 | Verified ETH/BTC account and independent collateral pools |
 | `hedge.residual_usd` | USD | number | derived | 120 | Verified ETH/BTC account and independent collateral pools |
@@ -105,6 +109,20 @@ Source freshness for automatic values follows the actual endpoint fields and cov
 | `stablecoin.usdc_usd` | USD | number | external | 120 | 独立USD报价，不能把USDT/USDC价恒设1 |
 | `stablecoin.usdt_deviation` | ratio | number | derived | 120 | 独立USD报价，不能把USDT/USDC价恒设1 |
 | `stablecoin.usdt_usd` | USD | number | external | 120 | 独立USD报价，不能把USDT/USDC价恒设1 |
+
+## Account funding quantity tolerance
+
+The current account rule matches live funding coverage independently by base asset (ETH/BTC), source venue and side. A spread is expanded in its verified source order: the first source keeps the Boros side and the second source takes the opposite side. PnL, collateral and maturity still count the original market once.
+
+Signed gap = perpetual quantity minus live Boros coverage. Positive is uncovered; negative is overcoverage. The raw ratio is `abs(gap) / perpetual quantity` per source-side, and is 100% when Boros is present without a perpetual. `hedge.funding_gap_ratio` and `hedge.funding_gap_usd` show the largest individual ratio and dollar principal; they need not come from the same source. Details retain every signed quantity and source, without cross-source or cross-coin netting.
+
+The default management limits are strictly greater than 0.1% for WARNING and 1% for CRITICAL. A ratio enters `hedge.funding_material_gap_ratio` only when its own gap exceeds $10 AND exceeds one verified executable lot (sum of lots if multiple contracts share a source-side). A missing/invalid/stale/future lot grants no lot exemption. `/positions.quantitySteps` preserves the rule-cache observation time; rules expire after 600 seconds. Lot evidence must be unique, live, and divide the actual quantity. A fully missing side or a wrong direction is independently CRITICAL even below $10 or one lot. Fresh complete empty positions have zero mismatch.
+
+USD valuation uses the existing highest verified perpetual mark for the base; a Boros-only source may use its fresh collateral-token quote. Stablecoin quotes retain the existing 1:1 USD assumption. No verified USD mark means UNKNOWN for materiality/quantity acceptance; raw quantity ratios remain visible. Values exactly on the ratio, $10 or one-lot boundary do not trigger that boundary. Money/quantity differences and materiality comparisons use fixed-point integers before producing numeric metrics.
+
+`hedge.quantity_verified` uses the same effective conditions as the funding check, including scoped ratio overrides. Old ETH absolute-threshold overrides are not reinterpreted as percentages: account mode falls back to the new defaults; the legacy offline ETH-cross evaluator retains its historical catalog. Absolute ETH metrics remain visible for diagnostics and verification of previous critical state. Missing triggering evidence continues to preserve prior CRITICAL; no state reset is needed. The Risk page, shared GET report and background monitor use the same account rule.
+
+These are management defaults, not venue liquidation thresholds or calibrated loss guarantees. The $10 floor denotes funding principal, not a current loss, fee quote or stress-loss estimate. No orders, transfers, execution sizing or notification scheduling are changed.
 
 ## External heartbeat deployment and acceptance
 

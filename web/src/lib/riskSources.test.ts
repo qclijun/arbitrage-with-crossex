@@ -57,6 +57,37 @@ async function basisFixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Risk shared-snapshot acceptance', () => {
+  it.each([null, ['HYPERLIQUID', 'HYPERLIQUID']] as const)('keeps unverifiable spread sources UNKNOWN (%s)', async venues => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    const position = input.asset.data!.risk!.positions[0];
+    position.venue = 'HL-GATE';
+    position.spreadVenues = venues === null ? null : [...venues];
+    expect(check(input, 'hedge.hl_size_gap_eth', accountScope).status).toBe('UNKNOWN');
+  });
+
+  it.each(['SHORT', 'LONG'] as const)('expands %s spread funding in source order', async side => {
+    const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
+    const first = input.asset.data!.risk!.positions[0];
+    input.asset.data!.risk!.positions = [{ ...first, venue: 'HL-GATE', side,
+      spreadVenues: ['HYPERLIQUID', 'GATE'] }];
+    const legs = input.positions.data!.exposure[0].legs;
+    legs[0].side = side;
+    legs[1].side = side === 'SHORT' ? 'LONG' : 'SHORT';
+    legs[1].exchange = 'GATE';
+    legs[1].symbol = 'GATE_FUTURE_ETH_USDT';
+    input.positions.data!.positions.forEach((p, i) => {
+      p.symbol = legs[i].symbol;
+      p.positionQty = legs[i].side === 'SHORT' ? '-3' : '3';
+    });
+    expect(check(input, 'hedge.hl_size_gap_eth', accountScope).status).toBe('OK');
+    input.asset.data!.risk!.positions[0].sizeBase = '3.04';
+    const metrics = riskMeasurements(accountScope, input, now).metrics;
+    expect(metrics['hedge.quantity_verified'].value).toBe(false);
+    expect(check(input, 'hedge.hl_size_gap_eth', accountScope).status).toBe('CRITICAL');
+    input.asset.data!.risk!.positions[0].spreadVenues = ['GATE', 'HYPERLIQUID'];
+    expect(check(input, 'hedge.hl_size_gap_eth', accountScope).metrics['hedge.direction_match'].value).toBe(false);
+  });
+
   it('sums Gate and Boros account PnL from exact decimal strings', async () => {
     const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
     input.account.data!.assets[0].upnl = '0.1';

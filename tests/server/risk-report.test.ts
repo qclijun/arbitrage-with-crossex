@@ -113,6 +113,105 @@ describe('read-only shared Risk report', () => {
     url: f.url + (previous ? '&previous=' + encodeURIComponent(JSON.stringify(previous)) : ''), headers: HOST,
   })).json().data;
   const metric = (r: any, id: string) => r.checks.flatMap((c: any) => Object.entries(c.metrics)).find(([k]: any) => k === id)?.[1] as any;
+  it.each([
+    ['8.025', '8.02630278', 'OK'],
+    ['100', '100.02', 'OK'],
+    ['0.01', '0.009', 'OK'],
+    ['3', '3.006', 'WARNING'],
+    ['0.1', '0.09', 'CRITICAL'],
+  ])('grades funding size %s versus coverage %s by ratio and materiality', async (qty, coverage, status) => {
+    const f = await fixture(), s = f.snapshots;
+    s.positions.positions[0].positionQty = '-' + qty;
+    s.positions.exposure[0].legs[0].qty = Number(qty);
+    s.asset.risk.positions[0].sizeBase = coverage;
+    const r = await readReport(f), c = r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth');
+    expect(c.status).toBe(status);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(status === 'OK');
+    expect(metric(r, 'hedge.funding_gap_ratio').value).toBeCloseTo(Math.abs(Number(qty) - Number(coverage)) / Number(qty), 12);
+  });
+  it('exempts one verified executable lot while retaining its raw ratio and dollars', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.asset.risk.positions[0].sizeBase = '3.03';
+    s.positions.quantitySteps = { HYPERLIQUID_FUTURE_ETH_USDC: { lotSize: '0.03', observedAt: now * 1000 } };
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.funding_gap_ratio').value).toBe(.01);
+    expect(metric(r, 'hedge.funding_gap_usd').value).toBeCloseTo(90, 10);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(true);
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('OK');
+    s.positions.quantitySteps.HYPERLIQUID_FUTURE_ETH_USDC.observedAt = (now - 86401) * 1000;
+    expect((await readReport(f)).checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('WARNING');
+  });
+  it.each(['perp', 'boros'])('never hides a missing %s side below the dollar floor', async missing => {
+    const f = await fixture(), s = f.snapshots;
+    s.positions.positions[0].positionQty = '-0.0001';
+    s.positions.exposure[0].legs[0].qty = .0001;
+    s.asset.risk.positions[0].sizeBase = '0.0001';
+    if (missing === 'perp') { s.positions.positions.shift(); s.positions.exposure[0].legs.shift(); }
+    else s.asset.risk.positions.shift();
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.funding_unmatched').value).toBe(true);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(false);
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('CRITICAL');
+  });
+  it.each([
+    ['3.003', 'OK'], ['3.003000000000000001', 'WARNING'],
+    ['3.03', 'WARNING'], ['3.03000000000000001', 'CRITICAL'],
+  ])('uses strict ratio boundaries for %s coverage', async (coverage, status) => {
+    const f = await fixture(), s = f.snapshots;
+    s.positions.positions[0].markPrice = '10000';
+    s.asset.risk.positions[0].sizeBase = coverage;
+    const r = await readReport(f);
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe(status);
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(status === 'OK');
+  });
+  it.each([['3.01', 'OK'], ['3.010000000000000001', 'WARNING']])('uses a strict $10 materiality boundary for %s', async (coverage, status) => {
+    const f = await fixture(), s = f.snapshots;
+    s.positions.positions.forEach((p: any) => { p.markPrice = '1000'; });
+    s.asset.risk.positions[0].sizeBase = coverage;
+    expect((await readReport(f)).checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe(status);
+  });
+  it('shares custom ratio limits with quantity_verified and retains missing-side guards', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.asset.risk.positions[0].sizeBase = '3.006';
+    s.supplement.settings = { thresholds: { 'hedge.hl_size_gap_eth': [
+      ['hedge.funding_material_gap_ratio', 'gt', .005, 'WARNING'],
+      ['hedge.funding_material_gap_ratio', 'gt', .02, 'CRITICAL'],
+    ] }, recoveryMarginFraction: .03 };
+    let r = await readReport(f);
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('OK');
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(true);
+    s.asset.risk.positions.shift();
+    r = await readReport(f);
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('CRITICAL');
+    expect(metric(r, 'hedge.quantity_verified').value).toBe(false);
+  });
+  it('migrates legacy absolute overrides without reinterpreting ETH limits as ratios', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.asset.risk.positions[0].sizeBase = '3.00130278';
+    s.supplement.settings = { thresholds: { 'hedge.hl_size_gap_eth': [
+      ['hedge.hl_size_gap_eth', 'gt', .001, 'WARNING'],
+    ] }, recoveryMarginFraction: .03 };
+    const r = await readReport(f, { scope: f.scope, state: {
+      'hedge.hl_size_gap_eth': { status: 'CRITICAL', criticalMetrics: ['hedge.hl_size_gap_eth'] },
+    } });
+    const c = r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth');
+    expect(c.status).toBe('OK');
+    expect(c.thresholds).toContainEqual(['hedge.funding_material_gap_ratio', 'gt', .001, 'WARNING']);
+  });
+  it('preserves missing valuation as UNKNOWN and unresolved ratio CRITICAL', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.asset.risk.positions[0].sizeBase = '3.006';
+    s.positions.positions.forEach((p: any) => { p.markPrice = ''; });
+    const r = await readReport(f);
+    expect(metric(r, 'hedge.funding_gap_ratio').value).toBe(.002);
+    expect(metric(r, 'hedge.funding_material_gap_ratio')).toMatchObject({ value: null, complete: false });
+    expect(metric(r, 'hedge.quantity_verified').value).toBeNull();
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('UNKNOWN');
+    const previous = { scope: f.scope, state: { 'hedge.hl_size_gap_eth': {
+      status: 'CRITICAL', criticalMetrics: ['hedge.funding_material_gap_ratio'],
+    } } };
+    expect((await readReport(f, previous)).checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('CRITICAL');
+  });
   const addBtc = (f: Awaited<ReturnType<typeof fixture>>) => {
     const s = f.snapshots, acc = address + f.scope.accountId!.toString(16).padStart(2, '0') + '0001ffffff';
     s.collateral.tokens.push({ symbol: 'BTC', tokenId: 1, priceUsd: 50000,
@@ -349,12 +448,12 @@ describe('read-only shared Risk report', () => {
     expect(metric(r, 'hedge.quantity_verified').value).toBe(true);
     expect(metric(r, 'data.coverage_complete').value).toBe(true);
   });
-  it('keeps every nonzero BTC quantity gap unverified until a tolerance is configured', async () => {
+  it('applies the same ratio and dollar tolerance to BTC funding tails', async () => {
     const f = await fixture(), btc = addBtc(f);
     f.snapshots.asset.risk.positions.find((p: any) => p.marketAcc === btc && p.side === 'SHORT').sizeBase = '0.100000000001';
     const r = await readReport(f);
-    expect(metric(r, 'hedge.quantity_verified')).toMatchObject({ value: null, complete: false });
-    expect(r.checks.find((c: any) => c.metrics?.['hedge.quantity_verified'])?.status).toBe('UNKNOWN');
+    expect(metric(r, 'hedge.quantity_verified')).toMatchObject({ value: true, complete: true });
+    expect(r.checks.find((c: any) => c.metrics?.['hedge.quantity_verified'])?.status).toBe('OK');
   });
   it('verifies an exact zero BTC quantity gap without an unconfigured tolerance', async () => {
     const f = await fixture(); addBtc(f);

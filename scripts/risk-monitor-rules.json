@@ -528,29 +528,21 @@
         "hedge.hl_size_gap_eth",
         "hedge.binance_size_gap_eth",
         "hedge.direction_match",
-        "hedge.quantity_verified"
+        "hedge.quantity_verified",
+        "hedge.funding_gap_ratio",
+        "hedge.funding_gap_usd",
+        "hedge.funding_material_gap_ratio",
+        "hedge.funding_unmatched"
       ],
       "conditions": [
         [
-          "hedge.hl_size_gap_eth",
+          "hedge.funding_material_gap_ratio",
           "gt",
           0.001,
           "WARNING"
         ],
         [
-          "hedge.hl_size_gap_eth",
-          "gt",
-          0.01,
-          "CRITICAL"
-        ],
-        [
-          "hedge.binance_size_gap_eth",
-          "gt",
-          0.001,
-          "WARNING"
-        ],
-        [
-          "hedge.binance_size_gap_eth",
+          "hedge.funding_material_gap_ratio",
           "gt",
           0.01,
           "CRITICAL"
@@ -562,13 +554,13 @@
           "CRITICAL"
         ],
         [
-          "hedge.quantity_verified",
+          "hedge.funding_unmatched",
           "eq",
-          false,
-          "WARNING"
+          true,
+          "CRITICAL"
         ]
       ],
-      "action": "逐来源检查资金费缺口与过覆盖；净价格敞口为零不代表资金费匹配"
+      "action": "逐来源核对有符号差额、偏差比例及美元本金；正常取整尾差不单独补腿，单边缺失与方向错误独立处理"
     }
   },
   {
