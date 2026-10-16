@@ -133,3 +133,8 @@ v1 没有原生成交身份、跨 venue 校准时钟、POC 拒绝标签、确定
 9 号票的 `hedge-wait` 明细会显示在新增 `hedgeWait` 摘要中，按 run/deal 保留最新状态。
 `confirmedUnhedgedBase` 与 `unreservedBase` 分开；缺失时长/数量保持 null，
 `actualEconomicStatus` 和 `sourceTimeStatus` 仍 UNKNOWN。详见 [等待说明](HEDGE-DEPENDENCY.md)。
+
+10 号票增加可选 `optimizationMatrix`、`referenceConfig` 和 `trialEligibility`，
+分别判断池化、等待及组合，并验证独立回退/最终参数证据；旧清单不产生四配置试用资格。
+使用 [latency-rollout.example.json](../scripts/latency-rollout.example.json) 和
+[验收与回退说明](ENGINE-OPTIMIZATION-ROLLOUT.md)。真实门禁未通过时仍为 UNKNOWN。

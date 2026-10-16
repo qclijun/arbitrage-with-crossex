@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "trialEligibility": {
+    "status": "UNKNOWN",
+    "automaticEnablement": false,
+    "naturalTrading": "UNKNOWN",
+    "configurations": {
+      "pool": {
+        "config": "pool",
+        "status": "UNKNOWN",
+        "checks": {
+          "baseline": "UNKNOWN",
+          "declaredSelections": "PASS",
+          "observationOverhead": "UNKNOWN",
+          "safety": "PASS",
+          "rollback": "PASS",
+          "comparison": "UNKNOWN",
+          "poolSelection": "UNKNOWN",
+          "poolParameterBinding": "UNKNOWN"
+        }
+      },
+      "wait": {
+        "config": "wait",
+        "status": "UNKNOWN",
+        "checks": {
+          "baseline": "UNKNOWN",
+          "declaredSelections": "PASS",
+          "observationOverhead": "UNKNOWN",
+          "safety": "PASS",
+          "rollback": "PASS",
+          "comparison": "UNKNOWN"
+        }
+      },
+      "combined": {
+        "config": "combined",
+        "status": "UNKNOWN",
+        "checks": {
+          "baseline": "UNKNOWN",
+          "declaredSelections": "PASS",
+          "observationOverhead": "UNKNOWN",
+          "safety": "PASS",
+          "rollback": "PASS",
+          "comparison": "UNKNOWN",
+          "poolSelection": "UNKNOWN",
+          "poolParameterBinding": "UNKNOWN"
+        }
+      }
+    },
+    "selectedMaxSockets": null,
+    "evidence": {
+      "safety": {
+        "status": "PASS",
+        "metrics": {
+          "makerDependency": true,
+          "missingPrice": true,
+          "partialCancelRace": true,
+          "dustSizing": true,
+          "unknownFreeze": true,
+          "intentEdits": true,
+          "outageRecovery": true,
+          "transportUnknown": true,
+          "authRouting": true,
+          "credentialRetirement": true,
+          "observationBounds": true,
+          "clockUncertainty": true,
+          "reservedExposure": true
+        },
+        "artifact": "/home/jerel/workspace/GitHub/arbitrage-with-crossex/docs/validation/engine-optimization-safety-2026-10-16.json"
+      },
+      "rollback": {
+        "status": "PASS",
+        "metrics": {
+          "pool": true,
+          "wait": true,
+          "combined": true,
+          "inFlightDrained": true,
+          "ledgerPreserved": true,
+          "noResend": true
+        },
+        "artifact": "/home/jerel/workspace/GitHub/arbitrage-with-crossex/docs/validation/engine-optimization-rollback-2026-10-16.json"
+      },
+      "poolSelection": {
+        "status": "UNKNOWN"
+      }
+    }
+  },
+  "status": "UNKNOWN",
+  "baseline": {
+    "config": "baseline",
+    "status": "UNKNOWN",
+    "strata": []
+  },
+  "configurations": {
+    "baseline": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "baseline",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": false
+    },
+    "pool": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "pool",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": false
+    },
+    "wait": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "wait",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": true
+    },
+    "combined": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "combined",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": true
+    }
+  },
+  "operations": [
+    "sdk-order-read",
+    "public-book"
+  ],
+  "observationOverhead": {
+    "status": "UNKNOWN"
+  },
+  "gaps": [
+    "insufficient-alternating-groups",
+    "observation-overhead-unverified"
+  ],
+  "windows": [],
+  "comparisons": [
+    {
+      "referenceConfig": "baseline",
+      "config": "pool",
+      "operation": "sdk-order-read",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "baseline",
+      "config": "pool",
+      "operation": "public-book",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "baseline",
+      "config": "wait",
+      "operation": "sdk-order-read",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "baseline",
+      "config": "wait",
+      "operation": "public-book",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "baseline",
+      "config": "combined",
+      "operation": "sdk-order-read",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "baseline",
+      "config": "combined",
+      "operation": "public-book",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "pool",
+      "config": "combined",
+      "operation": "sdk-order-read",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "pool",
+      "config": "combined",
+      "operation": "public-book",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "wait",
+      "config": "combined",
+      "operation": "sdk-order-read",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    },
+    {
+      "referenceConfig": "wait",
+      "config": "combined",
+      "operation": "public-book",
+      "performance": {
+        "status": "UNKNOWN",
+        "reason": "need >=3 paired windows, >=100 successes in each"
+      },
+      "strata": {
+        "cold": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "warm": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        },
+        "UNKNOWN": {
+          "status": "UNKNOWN",
+          "reason": "need >=3 paired windows, >=100 successes in each"
+        }
+      },
+      "errorRateNonIncreasingByWindow": [],
+      "status": "UNKNOWN"
+    }
+  ],
+  "provenance": [
+    {
+      "path": "/home/jerel/workspace/GitHub/arbitrage-with-crossex/docs/validation/engine-optimization-safety-2026-10-16.json",
+      "bytes": 1609,
+      "sha256": "c5427d379efd95bfaca501d8b3a85b9116828319431883015f5fe9f944a32ea4"
+    },
+    {
+      "path": "/home/jerel/workspace/GitHub/arbitrage-with-crossex/docs/validation/engine-optimization-rollback-2026-10-16.json",
+      "bytes": 1377,
+      "sha256": "3d5ce941d4e21e4a0b9d28f838f8161a74ab930cf807d26382222165755dd79e"
+    }
+  ],
+  "limitations": [
+    "No engine/network operations performed; existing observations read only.",
+    "v1 cannot independently measure socket queue, connection state, RSS/FD or precise economic exposure.",
+    "External evidence checks are supplied attestations, not inferred from RTT.",
+    "PASS is a local budget check, not a statistical significance or live trading guarantee."
+  ]
+}

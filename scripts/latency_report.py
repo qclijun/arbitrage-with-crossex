@@ -158,7 +158,7 @@ def hedge_wait_report(rows):
     return result
 
 
-def pool_budget(baseline, candidate):
+def pool_budget(baseline, candidate, require_improvement=True):
     """Nearest-rank percentiles, no averaging of window percentiles."""
     if (len(baseline) < 3 or len(baseline) != len(candidate) or
             any(len(w) < 100 or any(not number(v) or v < 0 for v in w)
@@ -177,7 +177,9 @@ def pool_budget(baseline, candidate):
               'twoThirdsWindows': improved * 3 >= len(windows) * 2,
               'mergedP50': c['p50'] * 10 <= b['p50'] * 11,
               'everyWindowP95': all(w['withinRegressionBudget'] for w in windows)}
-    return {'status': 'PASS' if all(checks.values()) else 'FAIL', 'checks': checks,
+    required = checks if require_improvement else {k: checks[k] for k in ('mergedP50', 'everyWindowP95')}
+    return {'status': 'PASS' if all(required.values()) else 'FAIL', 'checks': checks,
+            'budget': 'pool-improvement' if require_improvement else 'read-only-nonregression',
             'improvedWindows': improved, 'windows': windows, 'baselineMs': b, 'candidateMs': c}
 
 
@@ -387,6 +389,82 @@ def validate_external(key, item):
     return item
 
 
+def trial_eligibility(manifest, matrix, configurations, baseline_status, comparisons, windows, overhead, root, provenance):
+    """Budget eligibility from linked audits, never authorization or automatic activation."""
+    comparison_status = status_of([baseline_status] + [c['status'] for c in comparisons])
+    result = {'status': 'FAIL' if comparison_status == 'FAIL' else UNKNOWN,
+              'automaticEnablement': False, 'naturalTrading': UNKNOWN, 'configurations': {}}
+    if matrix is None:
+        result['gaps'] = ['four-configuration-matrix-missing']
+        return result
+
+    def flags(item, keys):
+        if item['status'] != 'PASS':
+            return item['status']
+        metrics = item.get('metrics', {})
+        return status_of(['PASS' if metrics.get(k) is True else 'FAIL' if metrics.get(k) is False else UNKNOWN for k in keys])
+
+    safety = attestation({'artifact': manifest.get('offlineSafetyEvidence')}, root, provenance)
+    rollback = attestation({'artifact': manifest.get('rollbackEvidence')}, root, provenance)
+    selection = attestation({'artifact': manifest.get('poolSelectionEvidence')}, root, provenance)
+    safety_status = flags(safety, ('makerDependency', 'missingPrice', 'partialCancelRace', 'dustSizing',
+        'unknownFreeze', 'intentEdits', 'outageRecovery', 'transportUnknown', 'authRouting',
+        'credentialRetirement', 'observationBounds', 'clockUncertainty', 'reservedExposure'))
+    overhead_status = flags(overhead, ('everyGroupWithinBudget', 'mergedWithinBudget', 'steadyState', 'boundedGrowth'))
+    metrics = overhead.get('metrics', {})
+    required = ('groups', 'minTicksPerGroup', 'rssDeltaMiB')
+    numeric = UNKNOWN if any(not number(metrics.get(k)) for k in required) else (
+        'FAIL' if metrics['rssDeltaMiB'] > 32 else
+        'PASS' if metrics['groups'] >= 3 and metrics['minTicksPerGroup'] >= 1000 else UNKNOWN)
+    overhead_status = status_of([overhead_status, numeric])
+    selected = selection.get('metrics', {}).get('maxSockets')
+    selection_status = flags(selection, ('baselineCompared', 'concurrencyTested', 'readOnlyCompared'))
+    if not number(selected) or int(selected) != selected or not 1 <= selected <= 16:
+        selection_status = status_of([selection_status, UNKNOWN])
+    else:
+        declared = [configurations[matrix[r]].get('poolMaxSockets') for r in ('pool', 'combined')]
+        selection_status = status_of([selection_status] + [
+            UNKNOWN if not number(n) else 'PASS' if n == selected else 'FAIL' for n in declared])
+    rollback_status = flags(rollback, ('inFlightDrained', 'ledgerPreserved', 'noResend'))
+    declared_statuses = []
+    for role, config in matrix.items():
+        declared = configurations[config]
+        expected_wait = role in ('wait', 'combined')
+        wait = declared.get('skipUnrelatedMakerWait')
+        sockets = declared.get('poolMaxSockets')
+        declared_statuses.append(UNKNOWN if not isinstance(wait, bool) else 'PASS' if wait == expected_wait else 'FAIL')
+        if role in ('baseline', 'wait'):
+            declared_statuses.append(UNKNOWN if 'poolMaxSockets' not in declared else 'PASS' if sockets is None else 'FAIL')
+    declared_status = status_of(declared_statuses)
+    for role in ('pool', 'wait', 'combined'):
+        config = matrix[role]
+        checks = {'baseline': baseline_status, 'declaredSelections': declared_status, 'observationOverhead': overhead_status, 'safety': safety_status,
+                  'rollback': status_of([rollback_status, flags(rollback, (role,))]),
+                  'comparison': status_of([c['status'] for c in comparisons if c['config'] == config])}
+        if role != 'wait':
+            checks['poolSelection'] = selection_status
+            bindings = []
+            for window in windows:
+                if window['config'] != config:
+                    continue
+                resource = window['externalEvidence']['resources']
+                measured = resource.get('metrics', {})
+                limit, maximum = measured.get('poolMaxSockets'), measured.get('maxGenerationSockets')
+                numeric = UNKNOWN
+                if all(number(n) and int(n) == n for n in (selected, limit, maximum)):
+                    numeric = 'PASS' if limit == selected and 0 <= maximum <= limit else 'FAIL'
+                bindings.append(status_of([resource['status'], numeric,
+                    flags(resource, ('transitionHighWaterIncluded',))]))
+            checks['poolParameterBinding'] = status_of(bindings)
+        result['configurations'][role] = {'config': config, 'status': status_of(list(checks.values())), 'checks': checks}
+    combined = result['configurations']['combined']
+    combined['status'] = status_of([c['status'] for c in result['configurations'].values()])
+    result.update(status=status_of([c['status'] for c in result['configurations'].values()]),
+                  selectedMaxSockets=selected if selection_status == 'PASS' else None,
+                  evidence={'safety': safety, 'rollback': rollback, 'poolSelection': selection})
+    return result
+
+
 def build_report(manifest, root):
     """Replay a declared schedule. Metadata/attestations are supplied evidence, not measurements."""
     if manifest.get('version') != 1:
@@ -395,6 +473,13 @@ def build_report(manifest, root):
     configurations = manifest.get('configurations', {})
     operations = manifest.get('operations', [])
     baseline = manifest.get('baseline')
+    matrix = manifest.get('optimizationMatrix')
+    if matrix is not None and (not isinstance(matrix, dict) or
+            set(matrix) != {'baseline', 'pool', 'wait', 'combined'} or
+            any(not isinstance(v, str) for v in matrix.values()) or
+            len(set(matrix.values())) != 4 or set(matrix.values()) != set(configurations) or
+            matrix['baseline'] != baseline):
+        raise ValueError('invalid optimization matrix')
     if (not isinstance(windows, list) or len(windows) > 256 or not isinstance(configurations, dict) or
             not isinstance(operations, list) or not operations or len(operations) > 32 or
             any(not isinstance(op, str) or not re.fullmatch('[a-zA-Z-]{1,48}', op) for op in operations) or
@@ -410,6 +495,9 @@ def build_report(manifest, root):
             gaps.add('configuration-metadata-missing')
         if any(config.get(key) != configurations[baseline].get(key) for key in ('machine', 'account', 'route')):
             gaps.add('configuration-confounded')
+        if matrix:
+            metadata[name].update(poolMaxSockets=config.get('poolMaxSockets') if number(config.get('poolMaxSockets')) else None,
+                                  skipUnrelatedMakerWait=config.get('skipUnrelatedMakerWait') if isinstance(config.get('skipUnrelatedMakerWait'), bool) else None)
     overhead = attestation({'artifact': manifest.get('observationOverheadEvidence')}, root, provenance)
     if overhead['status'] != 'PASS':
         gaps.add('observation-overhead-unverified')
@@ -511,22 +599,23 @@ def build_report(manifest, root):
     if [g for _, _, g, _ in schedule] != sorted(g for _, _, g, _ in schedule):
         gaps.add('interleaved-groups')
     comparisons = []
-    for config in configurations:
-        if config == baseline:
-            continue
+    pairs = [(baseline, c, matrix is None or c != matrix['wait']) for c in configurations if c != baseline]
+    if matrix:
+        pairs += [(matrix['pool'], matrix['combined'], False), (matrix['wait'], matrix['combined'], False)]
+    for reference, config, improvement in pairs:
         for operation in operations:
             def values(group, cfg, connection=None):
                 return [v for (op, conn), durations in samples.get((group, cfg), {}).items()
                         if op == operation and (connection is None or conn == connection) for v in durations]
-            performance = pool_budget([values(g, baseline) for g in groups], [values(g, config) for g in groups])
-            strata = {conn: pool_budget([values(g, baseline, conn) for g in groups],
-                                       [values(g, config, conn) for g in groups]) for conn in ('cold', 'warm', UNKNOWN)}
-            relevant = [w for w in output if w['config'] in (baseline, config)]
+            performance = pool_budget([values(g, reference) for g in groups], [values(g, config) for g in groups], improvement)
+            strata = {conn: pool_budget([values(g, reference, conn) for g in groups],
+                                       [values(g, config, conn) for g in groups], improvement) for conn in ('cold', 'warm', UNKNOWN)}
+            relevant = [w for w in output if w['config'] in (reference, config)]
             # Compare error rates with all requests as denominator; category-specific.
             error_checks, error_increased = [], False
             for group in groups:
                 counts = []
-                for cfg in (baseline, config):
+                for cfg in (reference, config):
                     gs = [g for w in relevant if w['config'] == cfg and w['group'] == group
                           for g in w['requests'] if g['operation'] == operation]
                     counts.append((sum(g['total'] for g in gs),
@@ -541,7 +630,7 @@ def build_report(manifest, root):
                 statuses.append(UNKNOWN)
             if not all(error_checks):
                 statuses.append('FAIL' if error_increased else UNKNOWN)
-            comparisons.append({'config': config, 'operation': operation, 'performance': performance,
+            comparisons.append({'referenceConfig': reference, 'config': config, 'operation': operation, 'performance': performance,
                                 'strata': strata, 'errorRateNonIncreasingByWindow': error_checks,
                                 'status': status_of(statuses)})
     baseline_windows = [w for w in output if w['config'] == baseline]
@@ -550,7 +639,9 @@ def build_report(manifest, root):
                               ['PASS' if all(sum(g['success'] for g in w['requests']
                                                if g['operation'] == op and g['connection'] == conn) >= 100
                                              for w in baseline_windows for op in operations for conn in ('cold', 'warm')) else UNKNOWN])
-    return {'version': 1, 'status': status_of([baseline_status] + [c['status'] for c in comparisons]),
+    trial = trial_eligibility(manifest, matrix, configurations, baseline_status, comparisons, output, overhead, root, provenance)
+    statuses = [baseline_status] + [c['status'] for c in comparisons] + ([trial['status']] if matrix else [])
+    return {'version': 1, 'trialEligibility': trial, 'status': status_of(statuses),
             'baseline': {'config': baseline, 'status': baseline_status,
                          'strata': [{'group': w['group'], 'operation': op, 'connection': conn,
                                      'status': 'PASS' if sum(g['success'] for g in w['requests'] if

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "baseline": "baseline",
+  "optimizationMatrix": {
+    "baseline": "baseline",
+    "pool": "pool",
+    "wait": "wait",
+    "combined": "combined"
+  },
+  "operations": [
+    "sdk-order-read",
+    "public-book"
+  ],
+  "configurations": {
+    "baseline": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "baseline",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": false
+    },
+    "pool": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "pool",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": false
+    },
+    "wait": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "wait",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": true
+    },
+    "combined": {
+      "version": "REPLACE_WITH_MEASURED_COMMIT",
+      "configuration": "combined",
+      "machine": "host-alias",
+      "account": "account-alias",
+      "route": "direct-or-proxy-alias",
+      "poolMaxSockets": null,
+      "skipUnrelatedMakerWait": true
+    }
+  },
+  "windows": [],
+  "observationOverheadEvidence": null,
+  "poolSelectionEvidence": null,
+  "offlineSafetyEvidence": "../docs/validation/engine-optimization-safety-2026-10-16.json",
+  "rollbackEvidence": "../docs/validation/engine-optimization-rollback-2026-10-16.json"
+}

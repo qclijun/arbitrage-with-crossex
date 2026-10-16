@@ -1,0 +1,49 @@
+{
+  "status": "PASS",
+  "scope": "offline-contract-only",
+  "metrics": {
+    "makerDependency": true,
+    "missingPrice": true,
+    "partialCancelRace": true,
+    "dustSizing": true,
+    "unknownFreeze": true,
+    "intentEdits": true,
+    "outageRecovery": true,
+    "transportUnknown": true,
+    "authRouting": true,
+    "credentialRetirement": true,
+    "observationBounds": true,
+    "clockUncertainty": true,
+    "reservedExposure": true
+  },
+  "sources": [
+    {
+      "path": "tests/unit/engine-hedge-dependency.test.ts",
+      "sha256": "7a02c78fe60b78f4508260a6321abe0964eb9137ec8badc3adf973807143cf2d"
+    },
+    {
+      "path": "tests/unit/engine-observation.test.ts",
+      "sha256": "49261f9d50975cecc6b6362cd2904c226fe2610e914aee42b380fc4c2167197f"
+    },
+    {
+      "path": "tests/server/engine-signed-pool.test.ts",
+      "sha256": "8b9ae4d5ed0631c86268c021b9e39ee41e50fe2d03866ef43a3daf1bfcf5064f"
+    },
+    {
+      "path": "tests/server/engine-pool-lifecycle.test.ts",
+      "sha256": "1b8706cd64de6add5fe69f8f41a2ac93d8497c3eafe5bf51bd13693e76a9d26a"
+    },
+    {
+      "path": "tests/server/engine-pool-connection.test.ts",
+      "sha256": "675bedad9dedcc43f9521e6c390fc2979e9a34c00cbb2d9b2b3e85bddc32a97b"
+    },
+    {
+      "path": "tests/server/engine-optimization-rollback.test.ts",
+      "sha256": "5cee5575e368fc38062c7f41dbb18502745ea488fa49252d96fedda80d9c5fcd"
+    }
+  ],
+  "limitations": [
+    "Synthetic offline SDK/adapter/tick and localhost transport evidence only.",
+    "No observation RSS admission, real baseline, final pool selection or natural trading approval."
+  ]
+}
