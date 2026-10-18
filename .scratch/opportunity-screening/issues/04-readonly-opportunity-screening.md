@@ -29,6 +29,12 @@ Blocked by: none
 
 ## Answer
 
+- 2026-10-07 按用户要求先提交当前修改为 `31848b4`，再修复审查发现的同源连接池排队超限。`fetchVenueBook` 新增从调用开始的 2.5 秒共享取消期限，覆盖排队、CONNECT/TLS、元数据和盘口响应；成功或失败均清理期限计时器，到期仍返回 null/UNKNOWN，不重试。新增排队、CONNECT、TLS、连续元数据与盘口的本机合成回归；修复前前三项失败、修复后全部通过。`yarn verify`（2600 服务端/单元通过、1456 UI 通过）、生产构建与差异检查通过。签名交易客户端未修改，未重启服务。用户要求谨慎验证交易影响，本项总期限修复隔离到 `codex/venue-book-total-deadline`，待充分验证后再考虑合并，不应用到原分支或自动重启服务。
+
+- 2026-10-18 合入 dev 前的适配（`fix/venue-book-total-deadline`）：dev 已将 `fetchVenueBook` 重构为 `fetchVenueBookWithDiagnostics`，期限逻辑移植到诊断版本并保留失败分类；总期限到期在 axios 中表现为 `ERR_CANCELED`，新增该码到 `timeout` 分类（否则会误报为 `network`）。连接复用测试与本项期限测试合并为统一的 `withProxy` 夹具，保留 dev 的三轮并发复用断言。
+
+  **行为变化（需知悉）**：`TIMEOUT_MS` 的语义从"每个 HTTP 请求各自的超时"变为"每次盘口采集的总预算"。需要先取元数据或市场发现的市场（OKX、Lighter）留给盘口请求的时间相应减少，正常路径不受影响。`docs/venue-book-diagnostics.md` 与 `docs/OPPORTUNITY-SCREENING.zh-CN.md` 已同步说明。
+
 - 2026-10-08 review 修复：确认英文 warning 模板耦合和报告时间命名歧义。根响应/每组新增稳定 `warningEvidence`；脚本不再解析英文 warning/reason，盘口腿通过已有结构化诊断关联，旧告警缺机器证据仍 UNKNOWN。报告保留聚合字段并新增显式行情时刻。静态/行情分类参数改为必填，加入风险限制 stale 回归和跨语言安全诊断 fixture。修正规格范围漂移及地图的历史审查表述，逐项结论见[复核记录](../evidence/review-followup.md)。独立签名票继续待办，不修改交易传输、不重启服务。
 
 - 2026-10-08 状态复核：维持 resolved。盘口失败诊断及三路并发连接保留修复已提交为 `575ae58`；榜外 roll 异常完整报告修复为 `227c755`，均已进入 `codex/opportunity-screening`。当前脚本 27 项离线测试通过；最新只读扫描 `20261008T005518-f47dbc261379` 为 VALID，Top 5，无对照异常。该扫描仅验证当次证据，不证明实盘执行准备，也不保证未来没有 UNKNOWN。01/03 同步关闭，02 维持 wontfix。

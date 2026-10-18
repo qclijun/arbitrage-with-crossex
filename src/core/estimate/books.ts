@@ -296,9 +296,15 @@ export async function fetchVenueBookWithDiagnostics(exchange: string, base: stri
   });
   const src = BOOK_SOURCES[exchange.toUpperCase()];
   if (!src) return fail('unsupported');
+  // One budget from invocation, including pool queueing, CONNECT/TLS and metadata.
+  // Axios's timeout alone starts too late to bound those waits — the proxy pool
+  // queues above its maxSockets, and a scan reads several symbols at once.
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  deadline.unref();
   try {
     // Metadata and books share the same per-origin connection pool.
-    const requestOptions = bookRequestOptions();
+    const requestOptions = { ...bookRequestOptions(), signal: controller.signal };
     let sizeMult = 1;
     if (src.meta) {
       const key = `${exchange.toUpperCase()}:${nativeSymbol(exchange, base, quote)}`;
@@ -344,9 +350,13 @@ export async function fetchVenueBookWithDiagnostics(exchange: string, base: stri
     const status = error.response?.status;
     httpStatus = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
     const code = error.code && SAFE_ERROR_CODES.has(error.code) ? error.code : null;
-    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return fail('timeout', code);
+    // Our own total deadline surfaces as ERR_CANCELED, not axios's ECONNABORTED —
+    // report it as the timeout it is, so operators do not chase a network fault.
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ERR_CANCELED') return fail('timeout', code);
     if (httpStatus !== null) return fail('http', code);
     if (code && /CERT|SIGNATURE/.test(code)) return fail('tls', code);
     return fail('network', code);
+  } finally {
+    clearTimeout(deadline);
   }
 }

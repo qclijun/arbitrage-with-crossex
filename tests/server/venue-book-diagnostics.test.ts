@@ -23,6 +23,8 @@ describe('safe public book failure diagnostics', () => {
   it.each([
     ['ECONNABORTED', undefined, 'timeout'],
     ['ETIMEDOUT', undefined, 'timeout'],
+    // Our own total deadline aborts the request, which axios reports as ERR_CANCELED.
+    ['ERR_CANCELED', undefined, 'timeout'],
     ['ECONNRESET', undefined, 'network'],
     ['ENOTFOUND', undefined, 'network'],
     ['DEPTH_ZERO_SELF_SIGNED_CERT', undefined, 'tls'],
