@@ -86,6 +86,7 @@ async function opportunities(
   results: RawMarket[],
   books: Record<number, ReturnType<typeof book>> = {},
   symbols: typeof ruleSymbols = ruleSymbols,
+  exitMode: 'close' | 'roll' = 'close',
 ): Promise<OpportunitiesResult> {
   const bodies: Record<string, unknown> = {
     '/apis/v1/markets': { results, total: results.length, skip: 0 },
@@ -98,7 +99,7 @@ async function opportunities(
   mockGateGet('/rule/symbols', { body: symbols });
   mockGateGet('/rule/risk_limits', { body: riskLimits });
   mockGateGet('/fee', { body: feeRows });
-  const res = await app.inject({ method: 'GET', url: `/api/opportunities?notionalUsd=${NOTIONAL}`, headers: HOST });
+  const res = await app.inject({ method: 'GET', url: `/api/opportunities?notionalUsd=${NOTIONAL}&exitMode=${exitMode}`, headers: HOST });
   expect(res.statusCode).toBe(200);
   return res.json().data as OpportunitiesResult;
 }
@@ -151,8 +152,8 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(pair?.execSpreadApr).toBeCloseTo(0.0299, 12);
   });
 
-  it('BTC spread with no singles makes a pair', async () => {
-    const data = await opportunities(fixture.results);
+  it.each(['close', 'roll'] as const)('BTC spread includes both close-fee margin reserves in %s mode', async (exitMode) => {
+    const data = await opportunities(fixture.results, {}, ruleSymbols, exitMode);
     const group = data.groups.find((g) => g.maturity === NOV_27 && g.tokenId === BTC);
     expect(group?.markets).toEqual([]);
     expect(group?.pairs).toHaveLength(1);
@@ -162,7 +163,10 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(pair?.longLeg).toMatchObject({ crossexVenue: 'GATE', crossexSymbol: 'GATE_FUTURE_BTC_USDT' });
     expect(pair?.borosLegs.map((l) => [l.marketId, l.side])).toEqual([[58, 'SHORT']]);
     expect(pair?.capital.borosIms.map((l) => l.marketId)).toEqual([58]);
-    expect(pair?.capitalUsd).not.toBeNull();
+    // Both $10k perps have a 20x cap: $500 position margin + $7.50 reserve.
+    expect(pair?.capital.perpShortImUsd).toBeCloseTo(507.5, 10);
+    expect(pair?.capital.perpLongImUsd).toBeCloseTo(507.5, 10);
+    expect(pair?.capitalUsd).toBeCloseTo(1015 + pair!.capital.borosIms[0].imUsd!, 10);
   });
 
   it('a spread perp with no CrossEx symbol warns like a single', async () => {
@@ -270,8 +274,8 @@ describe('GET /api/opportunities with spread markets', () => {
     );
   });
 
-  it('one fee, one margin', async () => {
-    const data = await opportunities(fixture.results);
+  it.each(['close', 'roll'] as const)('one Boros fee and margin plus two perp reserves in %s mode', async (exitMode) => {
+    const data = await opportunities(fixture.results, {}, ruleSymbols, exitMode);
     const pair = hlGatePair(data, NOV_27)!;
     const [leg] = pair.borosLegs;
     expect(leg.takerFeeRate).toBeCloseTo(0.001, 15);
@@ -285,6 +289,6 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(pair.capital.borosIms).toHaveLength(1);
     expect(pair.capital.borosIms[0].marketId).toBe(59);
     expect(pair.capital.borosIms[0].imUsd).toBeCloseTo(notionalYears * floor * kIM, 6);
-    expect(pair.capitalUsd).toBeCloseTo(notionalYears * floor * kIM + 2 * (NOTIONAL / 20), 6);
+    expect(pair.capitalUsd).toBeCloseTo(notionalYears * floor * kIM + 1015, 6);
   });
 });

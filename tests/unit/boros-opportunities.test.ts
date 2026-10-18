@@ -416,10 +416,13 @@ describe('borosLiquidationApr', () => {
 });
 
 describe('perpInitialMarginUsd', () => {
-  it('sizes the leg at the venue max leverage', () => {
-    expect(perpInitialMarginUsd(1_000_000, 10)).toBeCloseTo(100_000, 6);
-    // No preflight buffer and no taker-fee reserve — raw initial margin.
-    expect(perpInitialMarginUsd(1_000_000, 20)).toBeCloseTo(50_000, 6);
+  it('includes CrossEx close-fee margin reserve at the venue max leverage', () => {
+    // CrossEx reserves 0.075% of notional in addition to notional / leverage.
+    // These are margin requirements, independent of the actual trading fees.
+    expect(perpInitialMarginUsd(15_000, 40)).toBeCloseTo(386.25, 6);
+    expect(perpInitialMarginUsd(15_000, 25)).toBeCloseTo(611.25, 6);
+    expect(perpInitialMarginUsd(1_000_000, 10)).toBeCloseTo(100_750, 6);
+    expect(perpInitialMarginUsd(1_000_000, 20)).toBeCloseTo(50_750, 6);
   });
 
   it('is null when the leverage cap is unknown or non-positive', () => {
@@ -427,6 +430,10 @@ describe('perpInitialMarginUsd', () => {
     expect(perpInitialMarginUsd(1_000_000, -5)).toBeNull();
     expect(perpInitialMarginUsd(1_000_000, undefined)).toBeNull();
     expect(perpInitialMarginUsd(1_000_000, null)).toBeNull();
+    expect(perpInitialMarginUsd(1_000_000, Number.NaN)).toBeNull();
+    expect(perpInitialMarginUsd(1_000_000, Infinity)).toBeNull();
+    expect(perpInitialMarginUsd(Number.NaN, 20)).toBeNull();
+    expect(perpInitialMarginUsd(Infinity, 20)).toBeNull();
   });
 });
 
@@ -435,18 +442,23 @@ describe('buildOpportunities — capital and the APR on capital', () => {
   /** Hand-derived from the canonical fixture: exec 8.99% short / 4.51% long. */
   const borosShort = (N * 0.0899 * 30 * kIM) / 365;
   const borosLong = (N * FLOOR * 30 * kIM) / 365; // 4.51% < the 8.004% floor
-  const capital = borosShort + borosLong + N / HL_LEVERAGE + N / BN_LEVERAGE;
+  const capital = borosShort + borosLong + 100_750 + 50_750;
 
-  it('models each leg margin and sums them into capital', () => {
-    const pair = buildOpportunities(input(), opts()).groups[0].bestPair!;
+  it.each([
+    ['close', 1035.6164383561644],
+    ['roll', 2235.6164383561644],
+  ] as const)('includes both perp reserves in %s capital without charging them as costs', (exitMode, profit) => {
+    const pair = buildOpportunities(input(), opts({ exitMode })).groups[0].bestPair!;
     expect(pair.capital.borosIms[0].imUsd).toBeCloseTo(borosShort, 6);
     expect(pair.capital.borosIms[1].imUsd).toBeCloseTo(borosLong, 6);
-    expect(pair.capital.perpShortImUsd).toBeCloseTo(100_000, 6);
-    expect(pair.capital.perpLongImUsd).toBeCloseTo(50_000, 6);
+    expect(pair.capital.perpShortImUsd).toBeCloseTo(100_750, 6);
+    expect(pair.capital.perpLongImUsd).toBeCloseTo(50_750, 6);
     expect(pair.capital.shortLeverageMax).toBe(HL_LEVERAGE);
     expect(pair.capital.longLeverageMax).toBe(BN_LEVERAGE);
     expect(pair.capitalUsd).toBeCloseTo(capital, 6);
-    // Perp margin dominates: ~$150k of the ~$156k total.
+    // Independently worked fixture profit: the reserve changes capital only.
+    expect(pair.estProfitUsd).toBeCloseTo(profit, 6);
+    // Both legs include $750 of close-fee margin, not an extra profit cost.
     expect(pair.effectiveLeverage).toBeCloseTo(N / capital, 10);
   });
 
@@ -477,7 +489,7 @@ describe('buildOpportunities — capital and the APR on capital', () => {
       opts(),
     );
     const pair = out.groups[0].pairs[0];
-    expect(pair.capital.perpShortImUsd).toBeCloseTo(100_000, 6);
+    expect(pair.capital.perpShortImUsd).toBeCloseTo(100_750, 6);
     expect(pair.capital.perpLongImUsd).toBeNull();
     expect(pair.capital.longLeverageMax).toBeNull();
     expect(pair.capitalUsd).toBeNull();

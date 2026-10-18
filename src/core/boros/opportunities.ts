@@ -417,12 +417,16 @@ export function borosHealthFactor(netBalance: number, maintMargin: number): numb
   return maintMargin > 0 ? netBalance / maintMargin : null;
 }
 
+// CrossEx reserves this fraction of notional for closing a futures position.
+// It is margin occupancy, independent of the account's actual trading fee rate.
+// https://www.gate.com/zh/help/crossex/functional/49325
+const CROSSEX_CLOSE_FEE_MARGIN_RATE = 0.00075;
+
 /**
- * Initial margin one perp leg posts at the venue's max leverage — what
- * `PairTicket` actually opens at. Deliberately EXCLUDES preflight's
- * `PREFLIGHT_MARGIN_BUFFER` and `TAKER_FEE_RESERVE`: those make preflight a
- * sufficiency check, whereas the capital figure here (like the Positions view's)
- * is raw initial margin. Null when the leverage cap is unknown or non-positive.
+ * Initial margin one perp leg posts at the venue's max leverage, including
+ * CrossEx's close-fee margin reserve. Deliberately excludes preflight's extra
+ * safety buffers: this is position margin, not an account sufficiency check.
+ * Null when the leverage cap is unknown or non-positive.
  */
 export function perpInitialMarginUsd(
   notionalUsd: number,
@@ -431,7 +435,7 @@ export function perpInitialMarginUsd(
   if (leverageMax === null || leverageMax === undefined) return null;
   if (!Number.isFinite(leverageMax) || leverageMax <= 0) return null;
   if (!Number.isFinite(notionalUsd)) return null;
-  return notionalUsd / leverageMax;
+  return notionalUsd / leverageMax + notionalUsd * CROSSEX_CLOSE_FEE_MARGIN_RATE;
 }
 
 /**

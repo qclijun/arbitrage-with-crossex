@@ -275,25 +275,25 @@ describe('GET /api/opportunities', () => {
     expect(data.warnings).toEqual([]);
   });
 
-  it('models the capital each pair consumes and leads with the APR on it', async () => {
+  it.each(['close', 'roll'])('includes close-fee margin in %s capital and its APR', async (exitMode) => {
     app = makeTestApp({ borosFetch: borosStub(borosBodies()) });
     mockGate();
     mockVenueBooks();
 
-    const res = await app.inject({ method: 'GET', url: '/api/opportunities', headers: HOST });
+    const res = await app.inject({ method: 'GET', url: `/api/opportunities?exitMode=${exitMode}`, headers: HOST });
     expect(res.statusCode).toBe(200);
     const pair = res.json().data.groups[0].bestPair;
 
-    // Perp IM at each venue's max leverage on the default $10k/leg.
+    // Max-leverage IM plus the $7.50 close-fee margin on each $10k leg.
     expect(pair.capital.shortLeverageMax).toBe(20);
     expect(pair.capital.longLeverageMax).toBe(25);
-    expect(pair.capital.perpShortImUsd).toBeCloseTo(500, 10);
-    expect(pair.capital.perpLongImUsd).toBeCloseTo(400, 10);
+    expect(pair.capital.perpShortImUsd).toBeCloseTo(507.5, 10);
+    expect(pair.capital.perpLongImUsd).toBeCloseTo(407.5, 10);
     // Boros IM is small beside it: 30d at kIM 0.476, charged on 8.99% received
     // and — since 4.51% sits under it — on the 8.004% APR floor paid.
     expect(pair.capital.borosIms[0].imUsd).toBeCloseTo(35.186, 2);
     expect(pair.capital.borosIms[1].imUsd).toBeCloseTo(31.327, 2);
-    expect(pair.capitalUsd).toBeCloseTo(500 + 400 + 35.186 + 31.327, 2);
+    expect(pair.capitalUsd).toBeCloseTo(507.5 + 407.5 + 35.186 + 31.327, 2);
 
     // The headline: the same locked dollars over capital instead of notional,
     // which is exactly the notional basis times the leverage that capital buys.
@@ -319,7 +319,7 @@ describe('GET /api/opportunities', () => {
     const pair = group.pairs[0];
 
     expect(pair.capital.shortLeverageMax).toBe(20);
-    expect(pair.capital.perpShortImUsd).toBeCloseTo(500, 10);
+    expect(pair.capital.perpShortImUsd).toBeCloseTo(507.5, 10);
     expect(pair.capital.longLeverageMax).toBeNull();
     expect(pair.capital.perpLongImUsd).toBeNull();
     expect(pair.capitalUsd).toBeNull();

@@ -92,6 +92,10 @@ Positions 到期利润 = 已净计结算费及适用返还的固定收益
 ```
 
 到期估算不是账户总 PnL，也不自动包含借款利息与 Gas。
+机会页的永续初始保证金采用“名义价值 ÷ 场所最大杠杆 + 名义价值 × 0.075%”。
+后项是 CrossEx 的预估完全平仓手续费保证金预留，普通四腿与三腿 Spread、
+close 与 roll 均计入资金占用；它不是额外已付手续费，不再次扣减预计净利润。
+实际开平仓费用仍按适用成交费率核算；最低模型资金未包含额外安全缓冲。
 默认统计窗口按可确认的当前持仓周期开仓时间确定，按 Gate 账户和 Boros
 钱包隔离；不能遗漏早于永续开仓发生的 Boros 费用。手动窗口继续生效。
 费用历史不完整时保留 UNKNOWN，不提供依赖缺失费用的净利润估算。
@@ -102,6 +106,7 @@ Positions 到期利润 = 已净计结算费及适用返还的固定收益
 - [官方费用规则](https://docs.pendle.finance/boros-dev/Mechanics/Fees)
 - [Market Hub](https://docs.pendle.finance/boros-dev/Contracts/MarketHub)
 - [Gas 预算说明](https://docs.pendle.finance/boros-dev/FAQ)
+- [CrossEx 保证金与平仓费预留规则](https://www.gate.com/zh/help/crossex/functional/49325)
 - 实现：[opportunities.ts](../src/core/boros/opportunities.ts)、[assetModel.ts](../web/src/panels/assets/assetModel.ts)、[assetView.ts](../src/server/routes/assetView.ts)。
 
 账户标识、交易哈希、原始响应、实付快照与实时余额只保存在本地私有资料中。

@@ -16,13 +16,15 @@
 
 下面的数值取自 2026-10-08 本机报告 `data/opportunity-screening/20261008T231956-bb8253886440/report.json` 的 `candidates[0]`。该报告每腿名义本金为 **$10,000**，示例是历史快照，不代表当前市场。
 
+该历史示例使用修复前的保证金口径，未包含 CrossEx 的平仓费保证金预留；下表历史资金及相关收益率保留原值。当前报告按下文“平仓费保证金预留”说明计算，不应直接沿用这些历史资金收益率。
+
 | 字段 | 含义 | 示例 |
 | --- | --- | --- |
 | `execApr` | 单条 Boros 腿按目标规模走盘口得到的加权成交年化利率。`shortLeg` 收取固定利率，`longLeg` 支付固定利率；不是永续合约的实时资金费率。 | short 收 **7.9885%**；long 付 **4.3900%** |
 | `grossSpreadApr` | 两个 Boros 市场的中间利率差，尚未考虑目标规模的盘口冲击及费用。 | **4.1172%/年** |
 | `execSpreadApr` | 两腿的成交利率差：`shortLeg.execApr − longLeg.execApr`。已考虑 Boros 盘口冲击，但尚未扣除模型费用和永续滑点等其他成本。 | **3.5985%/年** |
 | `borosImpactApr` | Boros 盘口冲击使利差减少了多少：`grossSpreadApr − execSpreadApr`。已经体现在成交利差中，不再重复扣除。 | 减少 **0.5187 个百分点** |
-| `capitalUsd` | 四条腿的模型初始保证金之和：两条 Boros 腿，加两条永续腿；永续保证金按场所最大杠杆计算。不是实际账户余额或含安全缓冲的资金预算。 | **$991.53** |
+| `capitalUsd` | 组合各腿的模型初始保证金之和：Boros 腿加两条永续腿；永续按场所最大杠杆计算，并包含每腿名义价值 0.075% 的平仓费保证金预留。不是实际账户余额或含额外安全缓冲的资金预算。 | **$991.53（旧口径历史值）** |
 | `netFixedApr` | 扣除模型总成本后，以每腿名义本金为分母的净年化收益率。 | **2.6550%/年** |
 | `netFixedAprOnCapital` | 同一笔预计净利润，以 `capitalUsd` 为分母的净年化收益率。这是筛选排名的首要指标。 | **26.7763%/年** |
 | `effectiveLeverage` | `notionalUsd ÷ capitalUsd`，表示模型资金支撑的每腿名义规模倍数。不是实际设置的交易所杠杆，也不是四腿总敞口除以资金。 | **10.0854 倍** |
@@ -61,7 +63,7 @@ grossSpreadApr = short 市场 midApr − long 市场 midApr
 execSpreadApr  = shortLeg.execApr − longLeg.execApr
 borosImpactApr = grossSpreadApr − execSpreadApr
 
-C = capital.borosShortImUsd + capital.borosLongImUsd
+C = Boros 各腿初始保证金之和
   + capital.perpShortImUsd + capital.perpLongImUsd
 
 P = N × T × execSpreadApr − K
@@ -74,6 +76,20 @@ netFixedAprOnCapital = netFixedApr × effectiveLeverage
 holdingPeriodReturn = P / C = netFixedAprOnCapital × T
 extraCostToZeroUsd  = max(0, P)
 ```
+
+## 平仓费保证金预留
+
+当前机会模型按 CrossEx 的规则计算每条永续腿：
+
+```text
+单腿永续初始保证金 = N / 该场所最大杠杆 + N × 0.00075
+```
+
+合成示例：每腿名义 $15,000，40 倍腿占用 $386.25，25 倍腿占用 $611.25；永续两腿合计 $997.50，比仅按杠杆计算的 $975.00 多 $22.50。Boros 保证金另行相加，普通四腿组合和三腿 Spread 采用同一规则。
+
+0.075% 是保证金预留率，不是实际 Maker/Taker 成交费率。它只增加 `capitalUsd`，不增加 `costs.totalUsd`，也不再次扣减 `estProfitUsd`；资金年化、有效杠杆、持有期资金收益和排名使用修正后的资金分母。close 与 roll 均包含这项预留：roll 省略本期永续退出成本，仍需为继续持有的仓位保留保证金。最低模型资金仍未包含额外安全缓冲或备用金。
+
+依据：[Gate 跨所账户规则说明——合约交易的保证金要求](https://www.gate.com/zh/help/crossex/functional/49325)。
 
 ## 如何理解示例
 
