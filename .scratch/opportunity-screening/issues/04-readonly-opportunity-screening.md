@@ -33,6 +33,8 @@ Blocked by: none
 
 - 2026-10-18 合入 dev 前的适配（`fix/venue-book-total-deadline`）：dev 已将 `fetchVenueBook` 重构为 `fetchVenueBookWithDiagnostics`，期限逻辑移植到诊断版本并保留失败分类；总期限到期在 axios 中表现为 `ERR_CANCELED`，新增该码到 `timeout` 分类（否则会误报为 `network`）。连接复用测试与本项期限测试合并为统一的 `withProxy` 夹具，保留 dev 的三轮并发复用断言。
 
+  **行为变化（需知悉）**：`TIMEOUT_MS` 的语义从"每个 HTTP 请求各自的超时"变为"每次盘口采集的总预算"。需要先取元数据或市场发现的市场（OKX、Lighter）留给盘口请求的时间相应减少，正常路径不受影响。`docs/venue-book-diagnostics.md` 与 `docs/OPPORTUNITY-SCREENING.zh-CN.md` 已同步说明。
+
 - 2026-10-08 review 修复：确认英文 warning 模板耦合和报告时间命名歧义。根响应/每组新增稳定 `warningEvidence`；脚本不再解析英文 warning/reason，盘口腿通过已有结构化诊断关联，旧告警缺机器证据仍 UNKNOWN。报告保留聚合字段并新增显式行情时刻。静态/行情分类参数改为必填，加入风险限制 stale 回归和跨语言安全诊断 fixture。修正规格范围漂移及地图的历史审查表述，逐项结论见[复核记录](../evidence/review-followup.md)。独立签名票继续待办，不修改交易传输、不重启服务。
 
 - 2026-10-08 状态复核：维持 resolved。盘口失败诊断及三路并发连接保留修复已提交为 `575ae58`；榜外 roll 异常完整报告修复为 `227c755`，均已进入 `codex/opportunity-screening`。当前脚本 27 项离线测试通过；最新只读扫描 `20261008T005518-f47dbc261379` 为 VALID，Top 5，无对照异常。该扫描仅验证当次证据，不证明实盘执行准备，也不保证未来没有 UNKNOWN。01/03 同步关闭，02 维持 wontfix。

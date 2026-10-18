@@ -13,11 +13,13 @@
 - `observedAt`：采集结果的缓存观察时间（毫秒）；复用缓存时保持原时间。
 - `stale`：缓存快照是否过期；新鲜的失败结果仍然没有可用盘口。
 
-例如，`category=timeout; stage=book; HTTP=unavailable; errorCode=ECONNABORTED; elapsed=2,501 ms` 表示采集器捕获到超时错误，没有记录到 HTTP 状态码。`category=http; HTTP=429` 表示上游返回限流状态。
+例如，`category=timeout; stage=book; HTTP=unavailable; errorCode=ERR_CANCELED; elapsed=2,500 ms` 表示采集器在从调用开始计算的 2.5 秒总期限到期时取消了请求，没有记录到 HTTP 状态码。`errorCode=ECONNABORTED` 或 `ETIMEDOUT` 同样归入 `timeout`，表示传输层自身先报超时。`category=http; HTTP=429` 表示上游返回限流状态。
 
 不保存原始错误全文、响应正文、请求头、代理地址或凭据。筛选脚本再次限制可保存字段和错误码。
 
-本扩展保留已有代理、连接池、超时、缓存 TTL、失败返回空盘口和 UNKNOWN 判定。不会自动重试或绕过代理。签名下单客户端及订单不确定性处理没有修改。
+本扩展保留已有代理、连接池、缓存 TTL、失败返回空盘口和 UNKNOWN 判定。不会自动重试或绕过代理。签名下单客户端及订单不确定性处理没有修改。
+
+每次采集从调用开始共享一个 2.5 秒总期限，覆盖连接池排队、CONNECT/TLS、元数据、市场发现和盘口响应；这是每次采集的预算，不是每个 HTTP 请求各自的超时。因此需要先取元数据或市场发现的市场（如 OKX、Lighter），留给盘口请求的时间会相应减少；期限到期返回缺失盘口并记为 `timeout`。
 
 旧报告没有这些诊断，无法补回历史错误。代码需在终端服务重启后才会由 API 输出新字段；本变更不自动重启服务。
 
