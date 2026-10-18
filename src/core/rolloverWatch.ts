@@ -62,7 +62,7 @@ export function watchPreview(sim: WatchSimulation, size: number, now: number) {
   const ready = !venueComplete ? null : venue!.status === 'Refused' || sim.gate.blockers.length > 0 ? false
     : !watchFinite(sim.gasBalanceUsd) || !watchFinite(margin.availableAfter) || !watchFinite(margin.availableAfterExit)
       || !watchFinite(margin.need) || !watchFinite(margin.shortfall) || depth === null
-      || !legs.every(l => watchFinite(l.execApr) && watchFinite(l.midApr)) ? null
+      || !legs.every(l => watchFinite(l.execApr) && watchFinite(l.midApr) && l.midApr !== 0) ? null
       : venue!.orders.every(o => o.filled && sameWatchSize(o.matchedSize, size) && !o.error)
         && sim.gasBalanceUsd >= profile.gasMinimumUsd && margin.availableAfter >= 0 && margin.shortfall === 0
         && depth + 1e-9 >= size && legs.every(l => Math.abs(l.execApr! - l.midApr!) <= l.slippageApr + 1e-12);

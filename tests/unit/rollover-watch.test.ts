@@ -39,6 +39,34 @@ print(json.dumps(out))`;
   return JSON.parse(r.stdout);
 }
 describe('watch-profile Python / Risk policy parity', () => {
+  it('keeps zero, absent and nonfinite midpoints UNKNOWN without banning negative or zero execution rates', () => {
+    const cases: Array<{ mid?: number | null; exec: number; ready: boolean | null }> = [
+      { mid: 0, exec: .001, ready: null },
+      { mid: 0, exec: .06, ready: null },
+      { exec: .001, ready: null },
+      { mid: null, exec: .001, ready: null },
+      { mid: NaN, exec: .001, ready: null },
+      { mid: Infinity, exec: .001, ready: null },
+      { mid: -Infinity, exec: .001, ready: null },
+      { mid: -.02, exec: -.019, ready: true },
+      { mid: -.02, exec: -.03, ready: false },
+      { mid: .001, exec: 0, ready: true },
+    ];
+    const scenarios = cases.map(c => {
+      const s = simulation();
+      const leg = s.exit.simulation.legs[0];
+      leg.execApr = c.exec;
+      if (c.mid === undefined) delete (leg as Partial<typeof leg>).midApr;
+      else Object.assign(leg, { midApr: c.mid });
+      expect(watchPreview(s, 1, now).ready, `mid=${c.mid}, exec=${c.exec}`).toBe(c.ready);
+      return { kind: 'preview', args: [s, 1, now] };
+    });
+    const reference = python(scenarios);
+    expect(reference.map((v: { result: { ready: boolean | null } }) => v.result.ready)).toEqual(cases.map(c => c.ready));
+    expect(scenarios.map(c => JSON.parse(JSON.stringify(watchPreview(c.args[0] as WatchSimulation, 1, now)))))
+      .toEqual(reference.map((v: { result: unknown }) => v.result));
+  });
+
   it('matches progress, completed/imbalanced positions, preview failures and bounded probe sizes', () => {
     const scenarios: Array<{ kind: string; args: unknown[] }> = [0, 1, p.totalSize].map(q => ({ kind: 'progress', args: [positions(q)] }));
     scenarios.push({ kind: 'progress', args: [[]] });

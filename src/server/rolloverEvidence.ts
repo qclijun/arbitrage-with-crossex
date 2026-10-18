@@ -33,7 +33,8 @@ async function dailyDetails(dataDir: string, now: number, remaining: number, quo
       if (!row || row.v !== 3 || !finite(row.now_unix) || row.now_unix > now) continue;
       const subject = row.watch_scope;
       if (subject?.address !== WATCH_ADDRESS || subject.account_id !== 0 || subject.size !== SIZE
-        || !sameRiskTerminal(subject.terminal, 'http://localhost:6688') || !finite(row.sample_count) || row.sample_count < 3
+        || !sameRiskTerminal(subject.terminal, 'http://localhost:6688') || row.sample_complete !== true
+        || !Number.isInteger(row.sample_count) || row.sample_count < 3 || row.sample_count !== row.sample_expected_count
         || !finite(row.sample_interval_seconds) || row.sample_interval_seconds < 60) continue;
       if (!sameWatchSize(row.quote_size_eth, quoteSize) || !sameWatchSize(row.remaining_eth, remaining)) continue;
       const historical = now - row.now_unix > 3600;

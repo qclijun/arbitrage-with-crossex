@@ -31,7 +31,7 @@
    - 新腿：209.execShortApr、213.execLongApr、两者的到期时间。
    - 旧腿退出价：196.execLongApr（平空 = 买入）、198.execShortApr（平多 = 卖出）。
    - 各腿 mid/mark APR 与 taker 费率（takerDragApr 或 takerFeeRate，按接口实际字段）。
-   间隔约 1 分钟取 3 次，用中位数，同时记录 min/max。字段缺失时，相应量记为 UNKNOWN，不得猜值或用其他字段代替；E 缺失时不计算 A。
+   间隔约 1 分钟取 3 次，用中位数，同时记录 min/max。任一次请求失败或字段缺失时，相应聚合量记为 UNKNOWN，不以剩余样本中位数代替完整三采样；E 缺失时不计算 A。普通利率市场 midApr=0 表示缺失，不回退 mark，合法负利率仍有效。必要报价或证据范围不完整、采样少于3次或间隔不足60秒时，仅作诊断，当日不给行动建议，记录不得作为有效趋势基线。
 3. 计算：
    - 退出差 E = 196.execLongApr − 198.execShortApr。
    - 新腿执行差 S = 209.execShortApr − 213.execLongApr。
@@ -49,7 +49,7 @@
    - A′ 跨批总收益/总费用不能靠“本批 × 批数”推算：每批 q_i、t_i、执行价分别计算 A_i，再减尚未计入的该批 gas/中继费用，并核对实际累计成本和剩余预算。未来批次报价与盘口补充未知，总计划收益保持 UNKNOWN。`--batch-overhead-usd` 只记录人工核验的A侧额外净成本（与本次模型的共同项/已扣项剔重后）；缺失时 `A_after_batch_overhead_usd=UNKNOWN`，不把 gas 余额当成本。成本预算、收入、最迟启动/退出截止、值守和上一批 receipt 未核验时，实盘准入仍为 UNKNOWN。
    - 报价持平情景（非预测）：显式输出 B_cash_ref_usd、B_risk_adjusted_ref_usd、A_minus_B_cash_ref_usd、A_minus_B_risk_adjusted_ref_usd。B_minus_A_ref_usd 在 v3 为**纯现金** B−A；两种结果可以异号。它们不是重开报价预测，也不单独替代打平线判断。
 4. 追加一行 JSON 到 /home/jerel/workspace/GitHub/arbitrage-with-crossex/data/risk-monitor/rollover-watch.jsonl（不存在则创建）。字段：v=3、ts、now_unix、eth_usd、N_usd、t_old_yr、t_new_yr、t_reopen_yr、L、E、S（含 min/max）、四腿 exec/mid、X_max、f_x、f_n、fee_source、fee_A、fee_B、R_B、A_usd、S_r_star、S_cons、M、B_minus_A_ref_usd、gate_G、warns，以及 quote_size_eth、remaining_eth、rolled_eth、progress_state、full_batch_ready、batch_ready、batch_size_eth、batch_probes、simulation_observed_at、batch_overhead_usd、A_after_batch_overhead_usd、execution_pending、execution_admission。
-   新增字段：market_fee_terms、fee_A_eth_by_market、fee_clock_seconds、settlement_A_usd、settlement_B_usd、S_r_star_cash、M_cash、B_cash_ref_usd、B_risk_adjusted_ref_usd、A_minus_B_cash_ref_usd、A_minus_B_risk_adjusted_ref_usd、risk_premium_apr、profit_scope。先读历史；只比较v3同q记录，v1/v2保留但不作为当前收益/趋势证据。
+   新增字段：market_fee_terms、fee_A_eth_by_market、fee_clock_seconds、settlement_A_usd、settlement_B_usd、S_r_star_cash、M_cash、B_cash_ref_usd、B_risk_adjusted_ref_usd、A_minus_B_cash_ref_usd、A_minus_B_risk_adjusted_ref_usd、risk_premium_apr、profit_scope。采样完整性记录 sample_count（成功次数）、sample_expected_count（计划次数）、sample_complete、sample_interval_seconds；有效历史须明确 sample_complete=true、成功次数等于计划次数且至少3次、间隔至少60秒。先读历史；只比较v3同q完整记录，v1/v2及完整性未确证的旧记录保留但不作为当前收益/趋势证据。
 5. 向 BOSS 输出中文汇报，结论先行：结论一行 + 关键数字表（S、E、S_r*、S_cons、M 及较昨日变化，A_usd，X_max，G 状态）+ 当日建议。终端不可达时报 UNKNOWN，不编造数据，留待下轮。
    当日**风险调整**倾向规则（另报纯现金倾向和假设；G 已通过；经济性倾向、技术预检候选、实际执行准入须分开显示）：
    - M ≥ +0.002：倾向 B（持有到期再重开；B 执行前须先有获批方案）。
@@ -61,7 +61,7 @@
 6. 决策点规则：
    - 日期 ≥ 2026-10-25 时进入“二次决策点”，给出明确的二选一建议（滚[A 或 A′] vs B），附完整依据：A/B 已知现金流项和缺失成本（缺失时不声称完整净收益）、剩余天数、滑点检查结果、逐腿同平台约束、到期日值守，以及资金费空档 >300 秒即 CRITICAL 的提示。
    - 可执行性约束优先于经济性：G 已通过；B 方案未获批 → B 不可执行；A/A′ 只有对应规模的技术预检通过才是候选，实盘准入须另核验。在二次决策点/已批准截止，若无已验证展期候选或实际准入仍未核验，而 B 也未获批，报 CRITICAL，转 ROLLOVER-PLAN 的退出方案，并请求人工决策。
-   - 日期 ≥ 2026-10-29，或旧腿已不在（已执行展期或退出）时，在汇报中说明盯盘结束，不再继续。
+   - 日期 ≥ 2026-10-29（Asia/Taipei），或旧腿已不在（已执行展期或退出）时，在汇报中说明盯盘结束，不再继续。运行中跨过该午夜也须结束：等待最多到截止时刻，截止后不再发起报价、整批预检或公共费率采集；仅日期截止不能证明已展期或已退出。
 
 汇报保持精炼：结论一行 + 关键数字表 + 当日建议。
 

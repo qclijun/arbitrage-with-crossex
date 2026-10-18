@@ -307,7 +307,8 @@ def extract_sample(data):
         row = rows.get(market_id)
         legs[market_id] = {
             'exec': period_exec(row, side),
-            'mid': number(row.get('midApr')) if row else None,
+            # Ordinary rate markets encode an unavailable midpoint as zero.
+            'mid': (number(row.get('midApr')) or None) if row else None,
             'mark': number(row.get('markApr')) if row else None,
             'taker': median(fee_values.get(market_id, [])),
             'venue': row.get('venue') if row else None,
@@ -329,7 +330,7 @@ def extract_sample(data):
     return sample
 
 
-def aggregate_samples(samples):
+def aggregate_samples(samples, expected_count=None):
     result = {
         'maturity': None,
         'exec': {m: None for m in MARKETS},
@@ -341,50 +342,55 @@ def aggregate_samples(samples):
         'S': None,
         'S_min': None,
         'S_max': None,
+        'complete': False,
         'warns': [],
     }
     if not samples:
         result['warns'].append('WARN: 三次 /api/opportunities 采样全部失败，四腿执行价缺失')
         return result
 
-    count = len(samples)
+    count = len(samples) if expected_count is None else expected_count
     for market_id in MARKETS:
         for field in ('exec', 'mid', 'mark', 'taker'):
             values = [s['legs'][market_id][field] for s in samples
                       if s['legs'][market_id][field] is not None]
-            result[field][market_id] = median(values)
+            result[field][market_id] = median(values) if len(values) == count else None
             if len(values) < count and field != 'taker':
                 result['warns'].append(
                     f'WARN: {market_id}.{field} 在 {count - len(values)}/{count} 次采样中缺失，'
-                    '按可用样本中位数')
+                    '按 UNKNOWN 处理')
         venues = [s['legs'][market_id]['venue'] for s in samples
                   if s['legs'][market_id].get('venue')]
-        result['venue'][market_id] = venues[0] if venues else None
+        result['venue'][market_id] = venues[0] if len(venues) == count and len(set(venues)) == 1 else None
 
     maturities = [s['maturity'] for s in samples if s.get('maturity') is not None]
     unique_maturities = sorted(set(maturities))
-    result['maturity'] = unique_maturities[0] if len(unique_maturities) == 1 else None
+    result['maturity'] = unique_maturities[0] if len(unique_maturities) == 1 and len(maturities) == count else None
     if len(unique_maturities) > 1:
         result['warns'].append(f'WARN: 新腿到期在采样间不一致：{unique_maturities}，按 UNKNOWN 处理')
     elif len(maturities) < count:
         result['warns'].append(
-            f'WARN: 新腿到期在 {count - len(maturities)}/{count} 次采样中缺失，按可用样本')
+            f'WARN: 新腿到期在 {count - len(maturities)}/{count} 次采样中缺失，按 UNKNOWN 处理')
 
     e_values = [s['E'] for s in samples if s.get('E') is not None]
     s_values = [s['S'] for s in samples if s.get('S') is not None]
-    result['E'] = median(e_values)
-    result['S'] = median(s_values)
-    if s_values:
+    result['E'] = median(e_values) if len(e_values) == count else None
+    result['S'] = median(s_values) if len(s_values) == count else None
+    if result['S'] is not None:
         result['S_min'] = min(s_values)
         result['S_max'] = max(s_values)
     if not e_values:
         result['warns'].append('WARN: E 缺失（旧腿退出 exec 不完整），不计算 A')
     elif len(e_values) < count:
-        result['warns'].append(f'WARN: E 仅基于 {len(e_values)}/{count} 次完整采样')
+        result['warns'].append(f'WARN: E 仅有 {len(e_values)}/{count} 次完整采样，按 UNKNOWN 处理，不计算 A')
     if not s_values:
         result['warns'].append('WARN: S 缺失（新腿 exec 不完整），不计算 A')
     elif len(s_values) < count:
-        result['warns'].append(f'WARN: S 仅基于 {len(s_values)}/{count} 次完整采样')
+        result['warns'].append(f'WARN: S 仅有 {len(s_values)}/{count} 次完整采样，按 UNKNOWN 处理，不计算 A')
+    result['complete'] = (len(samples) == count and result['maturity'] is not None
+                          and result['E'] is not None and result['S'] is not None
+                          and all(result[field][m] is not None
+                                  for m in MARKETS for field in ('exec', 'mid', 'venue')))
     for sample in samples:
         if sample.get('warn'):
             result['warns'].append('WARN: ' + sample['warn'])
@@ -487,11 +493,18 @@ def same_quote_size(row, size):
     return value is not None and abs(value - size) <= 1e-9
 
 
+def complete_sample_record(row):
+    count, expected = number(row.get('sample_count')), number(row.get('sample_expected_count'))
+    interval = number(row.get('sample_interval_seconds'))
+    return (row.get('sample_complete') is True and count is not None and count >= 3
+            and count == int(count) and count == expected and interval is not None and interval >= 60)
+
+
 def previous_row(rows, today, quote_size=SIZE):
-    """Last v=3 row from before today; if none, the last v=3 row at all."""
+    """Last complete v=3 row before today; otherwise the last complete row."""
     dated = []
     for index, row in enumerate(rows):
-        if row.get('v') != VERSION or not same_quote_size(row, quote_size):
+        if row.get('v') != VERSION or not same_quote_size(row, quote_size) or not complete_sample_record(row):
             continue
         day = row_date(row)
         if day is not None:
@@ -508,10 +521,10 @@ def previous_row(rows, today, quote_size=SIZE):
 
 
 def consensus_min(rows, today, current, quote_size=SIZE):
-    """Min S over v=3 records in the last 3 natural days, including today's."""
+    """Min S over complete v=3 records in the last 3 natural days."""
     values = []
     for row in rows:
-        if row.get('v') != VERSION or not same_quote_size(row, quote_size):
+        if row.get('v') != VERSION or not same_quote_size(row, quote_size) or not complete_sample_record(row):
             continue
         day = row_date(row)
         if day is None or day > today or day < today - dt.timedelta(days=2):
@@ -669,7 +682,7 @@ def compute(now_epoch, eth_usd, agg, history, today, quote_size=SIZE, *, terms=N
         cash_delta = A-B_cash
         adjusted_delta = A-B_adjusted
 
-    S_cons = consensus_min(history, today, S, quote_size)
+    S_cons = consensus_min(history, today, S if agg['complete'] else None, quote_size)
     M = S_cons - S_r_star if S_cons is not None and S_r_star is not None else None
 
     deviations = {}
@@ -830,17 +843,25 @@ def critical_reasons(flags):
         reasons.append(f'资金费空档 {gap:.0f} 秒 > {FUNDING_GAP_CRITICAL} 秒')
     if flags['same_platform'] is False:
         reasons.append('逐腿同平台约束不满足（196/209 或 198/213 不在同一 venue）')
-    roll_blocked = not roll_is_executable(flags)
+    roll_blocked = not roll_is_executable(flags) or flags.get('execution_admitted') is not True
     if flags['decision_point'] and roll_blocked and not flags['b_approved']:
-        reasons.append('二次决策点没有已验证展期候选且 B 未获批；转人工退出决策')
+        reasons.append('二次决策点没有已验证展期候选或实盘准入仍UNKNOWN，且 B 未获批；转人工退出决策')
     return reasons
 
 
 def conclusion_line(row, flags):
     if flags['ended']:
         return f'结论：盯盘结束——{flags["ended_reason"]}，不再继续。'
+    if flags['critical']:
+        notes = ['；'.join(flags['critical']), '请人工决策']
+        if row['A_usd'] is None:
+            notes.append('关键报价或费用缺失，经济性UNKNOWN')
+        if flags['suppressed']:
+            notes.append('当日不给建议；仓位、预检或执行证据须核验；pending/unknown交易禁止新批次或重发')
+        return '结论：CRITICAL——' + '；'.join(notes) + '。'
     if row['A_usd'] is None:
-        return '结论：UNKNOWN——关键报价或到期缺失，本轮不动作，留待下轮。'
+        suffix = '当日不给建议；证据须先核验，pending/unknown交易禁止新批次或重发。' if flags['suppressed'] else '本轮不动作，留待下轮。'
+        return '结论：UNKNOWN——关键报价或费用缺失，' + suffix
     if flags['suppressed']:
         return '结论：WARN——仓位、预检或执行状态未核验，照常记账，当日不给建议；有pending/unknown交易时禁止新批次或重发。'
     M = row['M']
@@ -853,11 +874,6 @@ def conclusion_line(row, flags):
         base = f'中性（M={pct(M)} 在 [0, +0.20%)）'
     else:
         base = 'UNKNOWN（M 缺失）'
-    if flags['critical']:
-        reason = flags['critical'][0]
-        if len(reason) > 90:
-            reason = reason[:87] + '…'
-        return f'结论：CRITICAL——{base}；{reason}；请人工决策。'
     if flags['decision_point']:
         choice = decision_choice(flags)
         if choice.startswith('两者'):
@@ -868,16 +884,16 @@ def conclusion_line(row, flags):
         return f'结论：{base}；B 已获批，按 B 准备（仍需收入、保证金与值守准入）。'
     if tendency == 'B' and not flags['b_approved']:
         if roll_is_executable(flags):
-            return f'结论：{base}；B 未获批，不可执行；滚为可执行备选。'
+            return f'结论：{base}；B 未获批，不可执行；滚有技术预检候选，实盘准入UNKNOWN。'
         return f'结论：{base}；B 未获批，滚亦不可执行；继续盯盘并请人工决策。'
     if tendency == 'roll':
         if flags['slippage_over']:
             if flags['b_approved']:
-                return f'结论：{base}；滑点检查未过，本批报价未通过，其他规模须另行预检；可执行选项为已获批的 B。'
+                return f'结论：{base}；滑点检查未过，本批报价未通过，其他规模须另行预检；B 已获批，可按清单准备；执行前核验仍未完成。'
             return f'结论：{base}；滑点检查未过，本批报价未通过，其他规模须另行预检。'
         if flags['slippage_missing']:
             if flags['b_approved']:
-                return f'结论：{base}；滑点字段缺失，A/A′ 无法确认；可执行选项为已获批的 B。'
+                return f'结论：{base}；滑点字段缺失，A/A′ 无法确认；B 已获批，可按清单准备；执行前核验仍未完成。'
             return f'结论：{base}；滑点字段缺失，A/A′ 无法确认；今日不动作。'
         if not roll_is_executable(flags):
             if flags['same_platform'] is None:
@@ -887,7 +903,7 @@ def conclusion_line(row, flags):
             else:
                 detail = '滚不可执行'
             if flags['b_approved']:
-                return f'结论：{base}；{detail}，可执行选项为已获批的 B。'
+                return f'结论：{base}；{detail}，B 已获批，可按清单准备；执行前核验仍未完成。'
             return f'结论：{base}；{detail}，今日不可执行。'
         return f'结论：{base}；选 {flags["roll_choice"]} 预检候选，实盘准入UNKNOWN。'
     return f'结论：{base}；继续盯盘。'
@@ -896,13 +912,15 @@ def conclusion_line(row, flags):
 def advice_line(row, flags):
     if flags['ended']:
         return '无（盯盘结束）。'
+    if flags['critical']:
+        caution = ('当日不给建议；先核验仓位、预检及执行状态；pending/unknown交易禁止新批次或重发。'
+                   if flags['suppressed'] else '')
+        return ('CRITICAL：' + '；'.join(flags['critical']) + '。' + caution
+                + '请人工决策并核对 ROLLOVER-PLAN 的退出分支；脚本不执行退出。')
+    if flags['suppressed']:
+        return '当日不给建议；先核验仓位、报价及执行证据；pending/unknown交易禁止新批次或重发。'
     if row['A_usd'] is None:
         return '数据不足，不动作；检查终端与报价后重跑，本轮不编造数据。'
-    if flags['suppressed']:
-        return '当日不给建议；先核对 196/198 的数量与 entryApr，再重跑。'
-    if flags['critical']:
-        return ('CRITICAL：' + flags['critical'][0]
-                + '。转 ROLLOVER-PLAN 的退出方案，并请求人工决策。')
     if flags['decision_point']:
         choice = decision_choice(flags)
         if choice.startswith('B'):
@@ -911,7 +929,7 @@ def advice_line(row, flags):
         if choice.startswith('滚'):
             return (f'二次决策点：选 {choice}；先完成滑点、simulate 门禁、保证金与值守准入，'
                     '再执行。')
-        return '二次决策点：滚与 B 均不可执行 → CRITICAL；请人工决策并转 ROLLOVER-PLAN 的退出方案。'
+        return '二次决策点：滚与 B 均未确认可执行 → CRITICAL；请人工决策并转 ROLLOVER-PLAN 的退出方案。'
     tendency = flags['tendency']
     if tendency == 'B':
         if flags['b_approved']:
@@ -953,16 +971,20 @@ def details_line(row):
 
 def decision_choice(flags):
     """The 10-25 二选一, with executability taking priority over economics."""
-    if roll_is_executable(flags):
+    if flags['suppressed']:
+        return '当日不给建议；仅供经济性参考，须先人工核验'
+    if roll_is_executable(flags) and flags.get('execution_admitted') is True:
         if flags['b_approved'] and flags['tendency'] == 'B':
             return 'B'
         return f'滚（{flags["roll_choice"]}）'
     if flags['b_approved']:
-        return 'B（滚不可执行，B 已获批）'
-    return '两者均不可执行 → CRITICAL，请人工决策'
+        return 'B（已获批，执行前核验仍未完成）'
+    return '两者均未确认可执行 → CRITICAL，实盘准入UNKNOWN，请人工决策并核对退出分支'
 
 
 def decision_lines(row, flags):
+    if flags['suppressed']:
+        return ['', '二次决策点：当日不给建议；以上数值仅供经济性参考，保留风险告警并先人工核验。']
     days = (OLD_MATURITY - row['now_unix']) / 86400
     choice = decision_choice(flags)
 
@@ -989,7 +1011,7 @@ def decision_lines(row, flags):
         '- 到期日值守：10-30 08:00（+08:00）前须人工到岗确认；脚本无法核实。',
         f'- 资金费空档：>300 秒即 CRITICAL；当前 {flags["funding_gap_text"]}。',
         f'- 可执行性：G {GATE_G}；B {"已获批" if flags["b_approved"] else "未获批 → 不可执行"}；'
-        f'滚{"门禁通过" if flags["roll_gate_ok"] is True else "门禁未过/未确认"}。',
+        f'滚{"技术门禁通过（仅为候选）" if flags["roll_gate_ok"] is True else "技术门禁未过/未确认"}；实盘准入UNKNOWN。',
         f'- 二选一建议：{choice}。',
     ]
     return lines
@@ -999,6 +1021,10 @@ def build_report(row, flags):
     lines = [conclusion_line(row, flags), '']
     if flags['ended']:
         lines.append(f'盯盘状态：结束（{flags["ended_reason"]}）')
+        lines.append('当日建议：无（盯盘结束）；结束状态不证明旧仓退出、展期完成、receipt成功或风险消除。')
+        if row['warns']:
+            lines.extend('警告：' + warn for warn in row['warns'])
+        return '\n'.join(lines)
     else:
         days = (OLD_MATURITY - row['now_unix']) / 86400
         state = '二次决策点' if flags['decision_point'] else '进行中'
@@ -1036,6 +1062,8 @@ def build_report(row, flags):
         lines.append(f"预检：全量={row.get('full_batch_ready')}；候选小批={row.get('batch_size_eth')} ETH；候选预检={row.get('batch_ready')}。")
         lines.append('小批预检不消耗盘口，不证明后续批次可成交；每批receipt/事件确认和旧+新=原总量对账后重新报价。')
         lines.append(f"人工核验本批额外净成本={usd(row.get('batch_overhead_usd'))}；再扣该成本后A（仍非完整净利润）={usd(row.get('A_after_batch_overhead_usd'))}；累计预算/截止时间/值守准入仍须核验。")
+    if flags['suppressed']:
+        lines.append('本轮数值与倾向仅供经济性参考，不构成行动建议；先人工核验警告所列证据。')
     lines.append('口径：S/E为裸成交APR；S_r*/M为风险调整口径，纯现金打平另列。未来B报价未知，报价持平情景不是预测。')
     cash_tendency = {'roll': '滚', 'B': 'B', 'neutral': '中性', 'UNKNOWN': 'UNKNOWN'}[tendency_of(row.get('M_cash'))]
     lines.append(f'纯现金倾向：{cash_tendency}（同一M阈值规则）；风险调整倾向见结论。')
@@ -1111,13 +1139,25 @@ def parse_args(argv):
     return args
 
 
+def finish_date_cutoff(args, now_epoch, warns):
+    today = dt.datetime.fromtimestamp(now_epoch, TZ).date()
+    row = empty_row(now_epoch, None)
+    reason = f'日期截止（Asia/Taipei {END_DATE.isoformat()} 起）'
+    row.update(watch_status='ENDED_DATE_CUTOFF', ended_reason=reason,
+               progress_state='UNKNOWN', warns=unique(warns))
+    if not args.no_write:
+        append_row(args.ledger, row)
+    flags = ended_flags(row, today, reason)
+    print(json.dumps(row, ensure_ascii=False, allow_nan=False) if args.json else build_report(row, flags))
+    return 0
+
+
 def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
     try:
         args = parse_args(argv)
         base = local_base(args.terminal)
         if not ADDRESS_RE.match(args.address):
             raise ValueError('address must be a 20-byte hex address')
-        token = read_token(args.token_file)
     except (ValueError, WatchError) as exc:
         print(f'无法启动：{exc}', file=sys.stderr)
         return 1
@@ -1128,16 +1168,45 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
     address = args.address.lower()
     history, history_warns = load_history(args.ledger)
     warns = list(history_warns)
+    cutoff_epoch = dt.datetime.combine(END_DATE, dt.time(), TZ).timestamp()
+
+    def at_cutoff():
+        return float(now()) >= cutoff_epoch
+
+    class DateCutoff(WatchError):
+        pass
+
+    wire_fetch = fetch
+
+    def fetch(*fetch_args, **fetch_kwargs):
+        if at_cutoff():
+            raise DateCutoff('watch date cutoff reached')
+        return wire_fetch(*fetch_args, **fetch_kwargs)
+
+    if at_cutoff():
+        return finish_date_cutoff(args, float(now()), warns)
+
+    try:
+        token = read_token(args.token_file)
+    except WatchError as exc:
+        print(f'无法启动：{exc}', file=sys.stderr)
+        return 1
 
     try:
         eth_usd, positions, positions_time = fetch_asset_view(fetch, token, base, address, args.timeout)
         if positions_time > now_epoch or now_epoch - positions_time > 120:
             raise WatchError("Stale/future position observation")
+    except DateCutoff:
+        return finish_date_cutoff(args, float(now()), warns)
     except Exception as exc:  # terminal/credential failure: do not invent a row
+        if at_cutoff():
+            return finish_date_cutoff(args, float(now()), warns)
         print('结论：UNKNOWN——终端不可达、鉴权失败或数据异常，本轮不编造数据，留待下轮。')
         print(f'原因：{exc}')
         return 2
 
+    if at_cutoff():
+        return finish_date_cutoff(args, float(now()), warns)
     old_warns = check_old_legs(positions)
     warns.extend(old_warns)
     suppressed = bool(old_warns)
@@ -1148,6 +1217,7 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
         row.update(remaining_eth=remaining, rolled_eth=state['rolled'], progress_state=state['state'])
         reason = '旧腿已到期' if now_epoch >= OLD_MATURITY else '旧腿 196/198 不在仓：' + state['state']
         row['warns'] = unique(warns)
+        row.update(watch_status='ENDED_POSITION', ended_reason=reason)
         if not args.no_write:
             append_row(args.ledger, row)
         flags = ended_flags(row, today, reason)
@@ -1163,8 +1233,12 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
                 full = simulate_roll(fetch, token, base, address, args.timeout, remaining)
                 discovery['full'] = full
                 discovery['full_state'] = batch_preview(full, remaining, float(now()))
+        except DateCutoff:
+            return finish_date_cutoff(args, float(now()), warns)
         except Exception as exc:
             warns.append(f'WARN: roll simulate 失败：{exc}')
+    if at_cutoff():
+        return finish_date_cutoff(args, float(now()), warns)
     if args.batch_size is not None and not args.skip_simulate and not suppressed and not args.execution_pending:
         if args.batch_size > remaining + 1e-9:
             suppressed = True
@@ -1178,9 +1252,13 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
                 discovery['size'] = args.batch_size if ready is True else None
                 if ready is not True:
                     warns.append('WARN: 指定小批未通过，不自动替换为其他批量')
+            except DateCutoff:
+                return finish_date_cutoff(args, float(now()), warns)
             except Exception as exc:
                 discovery['selected'] = discovery['size'] = None
                 warns.append(f'WARN: 指定小批预检UNKNOWN：{exc}')
+    if at_cutoff():
+        return finish_date_cutoff(args, float(now()), warns)
     full_ready = discovery['full_state']['ready']
     selected = discovery['selected']
     quote_size = discovery['size'] if selected is not None else remaining if remaining is not None else SIZE
@@ -1209,20 +1287,34 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
             try:
                 payload = fetch(opportunities_url(base, notional), token, args.timeout)
                 samples.append(extract_sample(api_data(payload, 'opportunities')))
+            except DateCutoff:
+                return finish_date_cutoff(args, float(now()), warns)
             except Exception as exc:
                 warns.append(f'WARN: 第 {index + 1}/{args.samples} 次 opportunities 采样失败：{exc}')
+            if at_cutoff():
+                return finish_date_cutoff(args, float(now()), warns)
             if index < args.samples - 1:
-                sleep(args.interval_seconds)
+                sleep(min(args.interval_seconds, max(0, cutoff_epoch - float(now()))))
+                if at_cutoff():
+                    return finish_date_cutoff(args, float(now()), warns)
 
-    agg = aggregate_samples(samples)
+    agg = aggregate_samples(samples, expected_count=max(3, args.samples))
+    agg['complete'] = agg['complete'] and args.interval_seconds >= 60
     warns.extend(agg['warns'])
+    if not agg['complete']:
+        suppressed = True
+        warns.append('WARN: 必要报价三采样不完整或间隔不足60秒，当日不给建议，不作为有效趋势证据')
     terms = None
     try:
         terms = parse_market_terms(fetch(TERMS_URL, '', args.timeout), float(now()))
+    except DateCutoff:
+        return finish_date_cutoff(args, float(now()), warns)
     except Exception as exc:
         warns.append(f'WARN: market fee evidence UNKNOWN: {exc}')
+    if at_cutoff():
+        return finish_date_cutoff(args, float(now()), warns)
     locked = {p['marketId']: p.get('entryApr') for p in positions if p.get('marketId') in (OLD_HL, OLD_OKX)}
-    locked_spread = locked[OLD_HL]-locked[OLD_OKX] if not suppressed else L
+    locked_spread = locked[OLD_HL]-locked[OLD_OKX] if not old_warns else L
     computed = compute(now_epoch, eth_usd, agg, history, today, quote_size, terms=terms,
                        locked_spread=locked_spread, risk_premium=args.b_risk_premium_apr)
     warns.extend(computed['warns'])
@@ -1242,11 +1334,15 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
             roll_ok, roll_reasons = roll_gate_status(sim, False, quote_size, float(now()))
             discovery['selected'] = sim if roll_ok is True else None
             discovery['size'] = quote_size if roll_ok is True else None
+        except DateCutoff:
+            return finish_date_cutoff(args, float(now()), warns)
         except Exception as exc:
             roll_ok = full_ready = None
             discovery['size'] = None
             roll_reasons = [str(exc)]
             suppressed = True
+    if at_cutoff():
+        return finish_date_cutoff(args, float(now()), warns)
     if args.notional_usd is not None and (eth_usd is None or abs(args.notional_usd - round(quote_size * eth_usd)) > 1):
         suppressed = True
         warns.append('WARN: override notional does not match selected batch size; no actionable economics')
@@ -1286,6 +1382,8 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
         suppressed = True
     row['execution_admission'] = 'UNKNOWN — 逐批成本、累计预算、收入、截止时间、值守和receipt须独立核验'
     row['sample_count'] = len(samples)
+    row['sample_expected_count'] = args.samples
+    row['sample_complete'] = agg['complete'] and not suppressed
     row['sample_interval_seconds'] = args.interval_seconds
     tendency = tendency_of(row['M'])
     choice = roll_choice(args.receipt_success, row['X_max'], full_ready is True and abs(quote_size - remaining) <= 1e-9)
@@ -1300,6 +1398,7 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
         'roll_gate_reasons': roll_reasons,
         'same_platform': same_platform,
         'b_approved': args.b_approved,
+        'execution_admitted': False,
         'receipt_success': args.receipt_success,
         'decision_point': today >= DECISION_DATE,
         'watch_ending': today >= END_DATE,
@@ -1307,7 +1406,8 @@ def run(argv=None, *, fetch=fetch_json, now=time.time, sleep=time.sleep):
         'tendency': tendency,
         'roll_choice': choice,
     }
-    flags['critical'] = critical_reasons(flags) if row['A_usd'] is not None else []
+    flags['critical'] = critical_reasons(flags)
+    row['warns'] = unique(row['warns'] + ['CRITICAL: ' + reason for reason in flags['critical']])
     if args.execution_pending:
         flags['suppressed'] = True
         row['warns'].append('WARN: pending/unknown交易未查明，禁止新批次或重发')
@@ -1350,7 +1450,7 @@ def platform_text(venues, status):
 
 def roll_gate_text(flags):
     if flags['roll_gate_ok'] is True:
-        return '通过（depth/margin/gas；值守需人工确认）'
+        return '技术预检通过（仅为候选；depth/margin/gas；实盘准入UNKNOWN，值守需人工确认）'
     if flags['roll_gate_ok'] is False:
         return '未过：' + '；'.join(flags['roll_gate_reasons'])
     return 'UNKNOWN：' + ('；'.join(flags['roll_gate_reasons']) or '未确认')
@@ -1368,6 +1468,7 @@ def ended_flags(row, today, reason):
         'roll_gate_reasons': [],
         'same_platform': None,
         'b_approved': False,
+        'execution_admitted': False,
         'receipt_success': False,
         'decision_point': today >= DECISION_DATE,
         'watch_ending': True,

@@ -18,6 +18,7 @@ SIZE = 3.9888313
 OLD_MATURITY = 1793318400
 NEW_MATURITY = 1795737600
 TOKEN = 'synthetic-secret-token'
+ADDRESS = '0x' + '1' * 40
 
 
 def epoch(year, month, day, hour=12):
@@ -41,10 +42,10 @@ def asset_view(price=2500.0, old_present=True, old_size=SIZE,
     boros.append(dict(marketId=128, side='SHORT', sizeToken=3.6271309,
                       entryApr=0.079833, maturity=1798156800))
     for p in boros:
-        p.update(marketAcc='0xc70f77072a7dae64ac4997c70dabbca39839cbbc000002ffffff',
+        p.update(marketAcc=ADDRESS + '000002ffffff',
                  base='ETH', tokenId=2, venue='HYPERLIQUID' if p['marketId'] in (196, 128) else 'OKX')
     return dict(ok=True, data=dict(assets=[dict(base='ETH', priceUsd=price, borosOpen=boros)],
-        risk=dict(version=2, address='0xc70f77072a7dae64ac4997c70dabbca39839cbbc', accountId=0,
+        risk=dict(version=2, address=ADDRESS, accountId=0,
                   positionsComplete=True, stale=False, observedAt=NOW * 1000, positions=boros)))
 
 
@@ -288,7 +289,7 @@ class RolloverWatchTest(unittest.TestCase):
 
     def test_history_is_compared_only_at_the_same_quote_size(self):
         today = dt.datetime.fromtimestamp(NOW, TZ).date()
-        history = [dict(v=3, quote_size_eth=SIZE, now_unix=NOW, S=.001), dict(v=3, now_unix=NOW, quote_size_eth=1, S=.03)]
+        history = [dict(v=3, sample_complete=True, sample_count=3, sample_expected_count=3, sample_interval_seconds=60, quote_size_eth=SIZE, now_unix=NOW, S=.001), dict(v=3, sample_complete=True, sample_count=3, sample_expected_count=3, sample_interval_seconds=60, now_unix=NOW, quote_size_eth=1, S=.03)]
         self.assertEqual(self.module.consensus_min(history, today, .025, 1), .025)
         self.assertEqual(self.module.consensus_min(history, today, .025, SIZE), .001)
 
@@ -308,6 +309,12 @@ class RolloverWatchTest(unittest.TestCase):
         spec.loader.exec_module(cls.module)
 
     def setUp(self):
+        address_patch = patch.object(self.module, 'ADDRESS', ADDRESS)
+        address_patch.start()
+        self.addCleanup(address_patch.stop)
+        profile_patch = patch.dict(self.module.PROFILE, address=ADDRESS)
+        profile_patch.start()
+        self.addCleanup(profile_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.dir = Path(self.temp.name)
@@ -323,7 +330,7 @@ class RolloverWatchTest(unittest.TestCase):
             '--ledger', str(self.ledger),
             '--latest-json', str(self.latest),
             '--samples', '3',
-            '--interval-seconds', '0',
+            '--interval-seconds', '60',
         ] + (args or [])
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -349,7 +356,7 @@ class RolloverWatchTest(unittest.TestCase):
         self.assertEqual(row['watch_scope'], {'address': self.module.ADDRESS, 'account_id': 0,
                                              'size': SIZE, 'terminal': 'http://127.0.0.1:6688'})
         self.assertEqual(row['sample_count'], 3)
-        self.assertEqual(row['sample_interval_seconds'], 0)
+        self.assertEqual(row['sample_interval_seconds'], 60)
         self.assertAlmostEqual(row['S'], 0.024, places=12)
         self.assertAlmostEqual(row['S_min'], 0.022, places=12)
         self.assertAlmostEqual(row['S_max'], 0.026, places=12)
@@ -467,8 +474,9 @@ class RolloverWatchTest(unittest.TestCase):
         del quote['data']['groups'][0]['markets'][1]['midApr']
         code, report = self.run_watch(FakeTerminal(quotes=[quote]))
         self.assertEqual(code, 0)
-        self.assertIn('滑点字段缺失', report)
-        self.assertIn('A/A′ 无法确认', report)
+        self.assertIn('滑点检查缺字段', report)
+        self.assertIn('当日不给建议', report)
+        self.assertIn('| X_max | UNKNOWN |', report)
         self.assertNotIn('CRITICAL', report)
         row = json.loads(self.ledger.read_text().splitlines()[0])
         self.assertIsNone(row['X_max'])
@@ -510,11 +518,11 @@ class RolloverWatchTest(unittest.TestCase):
         today = dt.datetime.fromtimestamp(NOW, TZ).date()
         rows = [
             dict(v=1, ts='2026-10-16T09:00:00+08:00', S=0.0001),
-            dict(v=3, quote_size_eth=SIZE, now_unix=int(dt.datetime.combine(
+            dict(v=3, sample_complete=True, sample_count=3, sample_expected_count=3, sample_interval_seconds=60, quote_size_eth=SIZE, now_unix=int(dt.datetime.combine(
                 today - dt.timedelta(days=3), dt.time(9), TZ).timestamp()), S=0.0005),
-            dict(v=3, quote_size_eth=SIZE, now_unix=int(dt.datetime.combine(
+            dict(v=3, sample_complete=True, sample_count=3, sample_expected_count=3, sample_interval_seconds=60, quote_size_eth=SIZE, now_unix=int(dt.datetime.combine(
                 today - dt.timedelta(days=2), dt.time(9), TZ).timestamp()), S=0.019),
-            dict(v=3, quote_size_eth=SIZE, now_unix=int(dt.datetime.combine(
+            dict(v=3, sample_complete=True, sample_count=3, sample_expected_count=3, sample_interval_seconds=60, quote_size_eth=SIZE, now_unix=int(dt.datetime.combine(
                 today - dt.timedelta(days=1), dt.time(9), TZ).timestamp()), S=0.020),
         ]
         self.ledger.write_text('\n'.join(json.dumps(row) for row in rows) + '\n')
@@ -532,7 +540,7 @@ class RolloverWatchTest(unittest.TestCase):
         yesterday = int(dt.datetime.combine(
             today - dt.timedelta(days=1), dt.time(9), TZ).timestamp())
         self.ledger.write_text(json.dumps(dict(
-            v=3, quote_size_eth=SIZE, now_unix=yesterday, S=0.020, E=0.030, S_r_star=0.028,
+            v=3, sample_complete=True, sample_count=3, sample_expected_count=3, sample_interval_seconds=60, quote_size_eth=SIZE, now_unix=yesterday, S=0.020, E=0.030, S_r_star=0.028,
             S_cons=0.019, M=-0.008)) + '\n')
         fake = FakeTerminal(quotes=[opportunity(exec_209=0.075, exec_213=0.051)])
         code, report = self.run_watch(fake)
@@ -565,7 +573,7 @@ class RolloverWatchTest(unittest.TestCase):
         self.assertIn('资金费空档', report)
         self.assertIn('二选一建议：B', report)
 
-    def test_decision_point_without_b_approval_chooses_the_roll(self):
+    def test_decision_point_without_b_approval_requires_actual_admission(self):
         quote = opportunity(exec_196=0.11, exec_198=0.05,
                             mid_196=0.1105, mid_198=0.0505,
                             exec_209=0.0713, mid_209=0.0720)
@@ -573,13 +581,16 @@ class RolloverWatchTest(unittest.TestCase):
         code, report = self.run_watch(fake, now=DECISION_NOW)
         self.assertEqual(code, 0)
         self.assertIn('B 未获批', report)
-        self.assertIn('二选一建议：滚（A′）', report)
+        self.assertTrue(report.startswith('结论：CRITICAL'))
+        self.assertIn('实盘准入', report)
+        self.assertIn('退出', report)
+        self.assertNotIn('二选一建议：滚', report)
 
     def test_decision_point_prefers_approved_b_when_the_roll_is_blocked(self):
         fake = FakeTerminal(sim=simulation(blocker='depth too thin'))
         code, report = self.run_watch(fake, now=DECISION_NOW, args=['--b-approved'])
         self.assertEqual(code, 0)
-        self.assertIn('二选一建议：B（滚不可执行，B 已获批）', report)
+        self.assertIn('二选一建议：B（已获批，执行前核验仍未完成）', report)
         self.assertIn('二次决策点：选 B', report)
         self.assertNotIn('两者均不可执行', report)
 

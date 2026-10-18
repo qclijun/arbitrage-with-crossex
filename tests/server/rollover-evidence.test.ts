@@ -165,13 +165,42 @@ describe('watch-profile read-only four-leg evidence', () => {
     const f = fixture();
     const row = { v: 3, quote_size_eth: size, remaining_eth: size, ts: '2026-10-18', now_unix: now - 30, S: .025, E: .03, S_r_star: .027, S_cons: .024, M: -.003,
       S_r_star_cash: .022, A_minus_B_cash_ref_usd: -.6, A_minus_B_risk_adjusted_ref_usd: 1.2, settlement_A_usd: 1,
-      watch_scope: { address, account_id: 0, size, terminal: `http://${host}:6688` }, sample_count: 3, sample_interval_seconds: 60 };
+      watch_scope: { address, account_id: 0, size, terminal: `http://${host}:6688` }, sample_count: 3, sample_expected_count: 3,
+      sample_complete: true, sample_interval_seconds: 60 };
     writeFileSync(path.join(f.dataDir, 'risk-monitor/rollover-watch.jsonl'), [row, { ...row, v: 2, M: 999 }, { ...row, v: 1, S_star: 999 }].map(r => JSON.stringify(r)).join('\n'));
     const m = await f.read();
     expect(m['rollover.next_net_apr'].details).toContainEqual({ label: 'Daily M', value: -.003, unit: 'APR fraction' });
     expect(m['rollover.next_net_apr'].details).toContainEqual({ label: 'Daily A_minus_B_cash_ref_usd', value: -.6, unit: 'USD' });
     expect(m['rollover.next_net_apr'].details).toContainEqual({ label: 'Daily S_r_star_cash', value: .022, unit: 'APR fraction' });
     expect(m['rollover.next_net_apr'].value).toBeCloseTo(.024);
+  });
+  it.each([
+    { sample_complete: false, sample_count: 3, sample_expected_count: 3 },
+    { sample_complete: true, sample_count: 1, sample_expected_count: 3 },
+    { sample_complete: true, sample_count: 3, sample_expected_count: 4 },
+    { sample_complete: true, sample_count: 1, sample_expected_count: 1 },
+    { sample_complete: true, sample_count: 3, sample_expected_count: 3, sample_interval_seconds: 0 },
+    { sample_count: 3 },
+  ])('rejects incomplete daily samples without replacing live technical evidence: %j', async sampling => {
+    const f = fixture();
+    const row = { v: 3, quote_size_eth: size, remaining_eth: size, now_unix: now - 30, M: 999,
+      watch_scope: { address, account_id: 0, size, terminal: 'http://localhost:6688' },
+      sample_interval_seconds: 60, ...sampling };
+    writeFileSync(path.join(f.dataDir, 'risk-monitor/rollover-watch.jsonl'), JSON.stringify(row));
+    const m = await f.read();
+    expect(m['rollover.next_net_apr'].details).not.toContainEqual({ label: 'Daily M', value: 999, unit: 'APR fraction' });
+    expect(m['rollover.next_net_apr'].details).toContainEqual(expect.objectContaining({ label: 'Daily v3 watch', value: expect.stringContaining('UNKNOWN') }));
+    expect(m['rollover.next_net_apr'].value).toBeCloseTo(.024);
+  });
+  it.each([0, null])('keeps batch readiness unknown for missing mid=%s despite in-tolerance execution', async mid => {
+    const f = fixture();
+    Object.assign(f.sim.exit.simulation.legs[0], { midApr: mid, execApr: .001 });
+    const m = await f.read();
+    expect(m['rollover.atomic_batch_ready'].value).toBeNull();
+    expect(m['rollover.full_batch_ready'].value).toBeNull();
+    expect(m['rollover.atomic_batch_ready'].details).toContainEqual({ label: 'Full remaining preview', value: 'UNKNOWN', unit: '' });
+    const status = evaluateRisk(scope, m, now).checks.find(c => c.id === 'rollover.incremental_margin_usd')?.status;
+    expect(status).not.toBe('OK');
   });
   it('keeps daily profit unknown when only legacy v2 rows exist', async () => {
     const f = fixture();

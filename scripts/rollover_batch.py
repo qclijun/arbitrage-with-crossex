@@ -84,7 +84,7 @@ def preview(sim, size, now):
         ready = False
     elif complete and (finite(sim.get('gasBalanceUsd')) and depth is not None
             and all(finite(margin.get(k)) for k in ('availableAfter', 'availableAfterExit', 'need', 'shortfall'))
-            and all(finite(p.get('execApr')) and finite(p.get('midApr')) for p in legs)):
+            and all(finite(p.get('execApr')) and finite(p.get('midApr')) and p['midApr'] != 0 for p in legs)):
         ready = (all(o.get('filled') is True and same_size(o.get('matchedSize'), size) and not o.get('error') for o in orders)
                  and sim['gasBalanceUsd'] >= PROFILE['gasMinimumUsd'] and margin['availableAfter'] >= 0
                  and margin['shortfall'] == 0 and depth + 1e-9 >= size
