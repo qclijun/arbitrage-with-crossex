@@ -715,7 +715,45 @@
         1.3,
         "WARNING"
       ]
-    ]
+    ],
+    "account": {
+      "label": "6. 原子展期预检与保证金",
+      "metrics": [
+        "rollover.atomic_batch_ready",
+        "rollover.execution_admission",
+        "rollover.full_batch_ready",
+        "rollover.batch_size_eth",
+        "rollover.remaining_eth",
+        "rollover.rolled_eth",
+        "rollover.roll_path",
+        "rollover.atomic_margin_need_usd",
+        "rollover.atomic_available_after_usd",
+        "rollover.atomic_margin_shortfall_usd"
+      ],
+      "conditions": [
+        ["rollover.execution_admission", "eq", "UNKNOWN", "WARNING"],
+        ["rollover.full_batch_ready", "eq", false, "WARNING"],
+        [
+          "rollover.atomic_batch_ready",
+          "eq",
+          false,
+          "WARNING"
+        ],
+        [
+          "rollover.atomic_available_after_usd",
+          "lt",
+          0,
+          "WARNING"
+        ],
+        [
+          "rollover.atomic_margin_shortfall_usd",
+          "gt",
+          0,
+          "WARNING"
+        ]
+      ],
+      "action": "全量失败但小批预检通过时保留A′候选；每批重新报价、查receipt并对账。批次成本、累计预算、截止时间及值守未核验前不得执行。"
+    }
   },
   {
     "id": "rollover.uncovered_funding_seconds",

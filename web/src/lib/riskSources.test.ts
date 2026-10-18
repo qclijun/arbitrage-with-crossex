@@ -57,6 +57,46 @@ async function basisFixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Risk shared-snapshot acceptance', () => {
+  async function accountFundingFixture() {
+    const input = await fixture();
+    const risk = input.asset.data!.risk!;
+    risk.version = 2;
+    risk.positions.forEach((b, i) => {
+      b.base = 'ETH'; b.tokenId = 2; b.sizeBase = '3';
+      b.venue = i ? 'OKX' : 'HYPERLIQUID';
+    });
+    const legs = input.positions.data!.exposure[0].legs;
+    legs[1].exchange = 'OKX'; legs[1].symbol = 'OKX_FUTURE_ETH_USDT';
+    input.positions.data!.positions[1].symbol = legs[1].symbol;
+    input.supplement.data!.scope = { ...scope, pool: 'account' };
+    input.supplement.data!.baseline = null;
+    return input;
+  }
+  it('proves zero funding gap across OKX/Hyperliquid and multiple maturities without a legacy baseline', async () => {
+    const input = await accountFundingFixture();
+    const risk = input.asset.data!.risk!;
+    risk.positions = risk.positions.flatMap(b => [{ ...b, sizeBase: '1.5', sizeToken: 1.5 },
+      { ...b, marketId: b.marketId + 100, maturity: now + 100 * 86400, sizeBase: '1.5', sizeToken: 1.5 }]);
+    const c = check(input, 'rollover.uncovered_funding_seconds', { ...scope, pool: 'account' });
+    expect(c.status).toBe('OK');
+    expect(c.metrics['rollover.uncovered_funding_eth'].value).toBe(0);
+    expect(c.metrics['rollover.uncovered_funding_seconds'].value).toBe(0);
+  });
+  it('retains UNKNOWN gap duration until the matching independent collector proves a continuous gap over 300s', async () => {
+    const input = await accountFundingFixture(), selected: RiskScope = { ...scope, pool: 'account' };
+    const boros = input.asset.data!.risk!.positions;
+    boros[1].sizeBase = '2'; boros[1].sizeToken = 2;
+    let c = check(input, 'rollover.uncovered_funding_seconds', selected);
+    expect(c.status).toBe('WARNING');
+    expect(c.metrics['rollover.uncovered_funding_eth'].value).toBe(1);
+    expect(c.metrics['rollover.uncovered_funding_seconds'].value).toBeNull();
+    Object.assign(input.supplement.data!, { fundingGapFingerprint: fundingGapFingerprint(input.positions.data!.exposure[0].legs, boros, selected),
+      fundingGapEth: 1, fundingGapObservedAt: now - 10, fundingGapStartedAt: now - 301 });
+    c = check(input, 'rollover.uncovered_funding_seconds', selected);
+    expect(c.status).toBe('CRITICAL'); expect(c.metrics['rollover.uncovered_funding_seconds'].value).toBe(301);
+    input.supplement.data!.fundingGapFingerprint = 'wrong-wallet-or-legs';
+    expect(check(input, c.id, selected).metrics['rollover.uncovered_funding_seconds'].value).toBeNull();
+  });
   it.each([null, ['HYPERLIQUID', 'HYPERLIQUID']] as const)('keeps unverifiable spread sources UNKNOWN (%s)', async venues => {
     const input = await fixture(), accountScope: RiskScope = { ...scope, pool: 'account' };
     const position = input.asset.data!.risk!.positions[0];

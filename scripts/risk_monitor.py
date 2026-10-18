@@ -62,13 +62,13 @@ def record_funding_gap(data, config, state, now):
     if (not isinstance(boros, list)
             or any(number(p.get('positionQty')) is None or not isinstance(p.get('symbol'), str) for p in rows)
             or sum(number(p['positionQty']) != 0 for p in rows) != sum(len(g.get('legs', [])) for g in positions['exposure'])
-            or any(b.get('marketAcc', '').lower() != pool or b.get('venue') not in ('HYPERLIQUID', 'BINANCE')
+            or any(b.get('marketAcc', '').lower() != pool or b.get('venue') not in ('HYPERLIQUID', 'BINANCE', 'OKX')
                    or not isinstance(b.get('marketId'), int) or isinstance(b['marketId'], bool) or b['marketId'] <= 0 for b in boros)):
         state.pop('funding_gap', None)
         return
     quantities = [p.get('qty') for p in perps] + [b.get('sizeToken') for b in boros]
     if (any(not isinstance(q, (int, float)) or isinstance(q, bool) or not math.isfinite(q) or q <= 0 for q in quantities)
-            or any(p.get('side') not in ('LONG', 'SHORT') or not re.fullmatch(r'(HYPERLIQUID|BINANCE)_FUTURE_ETH_(USDT|USDC|USD)', p.get('symbol', ''))
+            or any(p.get('side') not in ('LONG', 'SHORT') or not re.fullmatch(r'(HYPERLIQUID|BINANCE|OKX)_FUTURE_ETH_(USDT|USDC|USD)', p.get('symbol', ''))
                    or p.get('exchange') != p['symbol'].split('_')[0] for p in perps)
             or len({p['symbol'] for p in perps}) != len(perps)
             or any(b.get('side') not in ('LONG', 'SHORT') or not isinstance(b.get('maturity'), (int, float)) or isinstance(b['maturity'], bool)

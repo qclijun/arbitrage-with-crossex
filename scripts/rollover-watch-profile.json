@@ -1,0 +1,17 @@
+{
+  "address": "0xc70f77072a7dae64ac4997c70dabbca39839cbbc",
+  "accountId": 0,
+  "totalSize": 3.9888313,
+  "oldMaturity": 1793318400,
+  "newMaturity": 1795737600,
+  "exitTolerance": 0.005,
+  "entryTolerance": 0.0025,
+  "gasMinimumUsd": 2,
+  "minimumOrderUsd": 10,
+  "maxProbes": 6,
+  "probeDecimals": 3,
+  "legs": [
+    {"marketId": 198, "targetId": 213, "venue": "OKX", "side": "LONG", "entryApr": 0.031072},
+    {"marketId": 196, "targetId": 209, "venue": "HYPERLIQUID", "side": "SHORT", "entryApr": 0.077667}
+  ]
+}

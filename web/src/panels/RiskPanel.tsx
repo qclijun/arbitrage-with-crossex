@@ -8,7 +8,9 @@ import { useTrackedAddress } from './trackedAddress';
 const tones: Record<RiskStatus, string> = { CRITICAL: 'text-negative', WARNING: 'text-warning', UNKNOWN: 'text-ink-400', OK: 'text-positive', PAUSED: 'text-ink-500' };
 const featured = ['gate.equity_usd', 'gate.upnl_usd', 'gate.loss_equity_ratio', 'boros.equity_usd', 'boros.rate_mtm_usd',
   'boros.mtm_loss_equity_ratio', 'hedge.perp_net_eth', 'hedge.perp_net_btc', 'hedge.residual_equity_ratio',
-  'hedge.funding_gap_ratio', 'hedge.funding_gap_usd', 'boros.settlement_net_24h_usd', 'boros.buffer_runway_days', 'rollover.days_to_maturity'];
+  'hedge.funding_gap_ratio', 'hedge.funding_gap_usd', 'boros.settlement_net_24h_usd', 'boros.buffer_runway_days', 'rollover.days_to_maturity',
+  'rollover.next_net_apr', 'rollover.depth_coverage_ratio', 'rollover.full_batch_ready', 'rollover.atomic_batch_ready',
+  'rollover.roll_path', 'rollover.execution_admission', 'rollover.batch_size_eth', 'rollover.remaining_eth', 'rollover.rolled_eth', 'rollover.atomic_available_after_usd'];
 
 export function RiskPanel() {
   const { address } = useTrackedAddress();
@@ -74,7 +76,7 @@ export function RiskPanel() {
       })}
     </div>
     <div className="space-y-3" aria-label="All enabled risk checks">
-      {checks.map(check => <details key={check.id} className="rounded-lg border border-ink-700 bg-ink-900 p-4" open={check.status === 'CRITICAL'}>
+      {checks.map(check => <details key={check.id} className="rounded-lg border border-ink-700 bg-ink-900 p-4" open={check.status === 'CRITICAL' || check.id === 'rollover.next_net_apr' || check.id === 'rollover.incremental_margin_usd'}>
         <summary className="cursor-pointer text-sm text-ink-200"><span className={`mr-3 font-semibold ${tones[check.status]}`}>{check.status}</span>{check.label}<span className="ml-3 text-xs text-ink-500">{check.id} · {check.coverageComplete ? 'Complete applicable evidence' : 'Incomplete / unknown evidence'}</span></summary>
         <div className="mt-4 space-y-4">
           {Object.entries(check.metrics).map(([id, e]) => <div key={id} className="border-t border-ink-700 pt-3 text-xs text-ink-400">

@@ -8,6 +8,7 @@ import { resolveBorosFetch } from '../../core/boros/client';
 import { readAgentApproval } from '../borosAgentApproval';
 import { credentialIdentity } from '../readScope';
 import { sameRiskTerminal } from '../riskTerminal';
+import { rolloverEvidence } from '../rolloverEvidence';
 import { canonicalRiskIdentity, contracts, rules, validMetric, type Condition, type MetricEvidence, type RiskScope, type RiskBaseline, type RiskSupplement } from '../../core/risk';
 
 export interface ProducerScope {
@@ -89,6 +90,10 @@ export function riskEvidenceRoutes(deps: AppDeps) {
           obs.coverage_complete === true, finite(obs.ttl_seconds) ? obs.ttl_seconds : 0);
         if (obs.unit !== undefined && obs.unit !== contracts[id].unit) metrics[id].unit = String(obs.unit);
       }
+      const rollover = await deps.cache.get(`risk:rollover:${scope.credentialId}:${address}:${accountId}`, 30_000,
+        () => rolloverEvidence(app, deps, scope, { host: req.headers.host ?? 'localhost:6688',
+          'x-arb-token': String(req.headers['x-arb-token'] ?? '') }));
+      Object.assign(metrics, rollover.value);
       let baseline: RiskBaseline | null = null;
       const b = record(config.baseline);
       const borosEntries = Object.entries(record(b.boros));

@@ -109,7 +109,10 @@ export function validMetric(value: unknown, contract: MetricContract): boolean {
 }
 export function validateEvidence(id: string, entry: MetricEvidence, scope: RiskScope, now: number): string | null {
   const contract = contracts[id];
-  const na = id === 'boros.buffer_runway_days' && entry.applicability === 'NA' && entry.value === null;
+  const na = (id === 'boros.buffer_runway_days' || ['rollover.next_net_apr', 'rollover.depth_coverage_ratio',
+    'rollover.atomic_batch_ready', 'rollover.atomic_margin_need_usd', 'rollover.atomic_available_after_usd',
+    'rollover.atomic_margin_shortfall_usd', 'rollover.execution_admission', 'rollover.full_batch_ready', 'rollover.batch_size_eth'].includes(id))
+    && entry.applicability === 'NA' && entry.value === null;
   if (!contract || (!na && !validMetric(entry.value, contract))) return entry.reason ?? 'Invalid or missing value / type';
   if (entry.unit !== contract.unit) return 'Wrong contract unit';
   if (scopeKey(entry.scope) !== scopeKey(scope) || !scope.credentialId) return 'Account / wallet / subaccount scope not verified';

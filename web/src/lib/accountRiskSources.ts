@@ -1,5 +1,5 @@
 import { readEvidence, type ReadEvidence } from '../api/client';
-import { contracts, FUNDING_GAP_MIN_USD, fundingQuantityVerified, type MetricEvidence, type RiskScope } from './risk';
+import { contracts, FUNDING_GAP_MIN_USD, fundingGapFingerprint, fundingQuantityVerified, scopeKey, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
 import { fx, fxStr, type Fx } from '../../../src/engine/fx';
@@ -317,6 +317,25 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   put('hedge.quantity_verified', quantityComplete ? fundingQuantityVerified(maxMaterialRatio, unmatched, !mismatchedDirection) : null,
     seenAt, quantityComplete, 'Missing fresh funding gap USD marks / quantities', gaps);
   put('hedge.direction_match', matchComplete ? !mismatchedDirection : null, seenAt, matchComplete, 'Incomplete funding direction / quantities');
+  // Funding coverage is an account observation, independent of the old two-leg
+  // Binance baseline. Sum positive perpetual shortfalls across all ETH venues
+  // and maturities, while keeping BTC quantities in their own units.
+  const ethGaps = [...exactGaps.entries()].filter(([key]) => key.startsWith('ETH:')).map(([, gap]) => gap);
+  const uncovered = matchComplete && ethGaps.every((gap): gap is bigint => gap !== null)
+    ? metricNumber18(ethGaps.reduce((sum, gap) => sum + (gap > 0n ? gap : 0n), 0n)) : null;
+  const supplement = read(input.supplement)?.data;
+  const ethPerps = legs.filter(p => p.base === 'ETH');
+  const ethBoros = fundingSources.filter(b => b.base === 'ETH');
+  const trustedStart = supplement && scopeKey(supplement.scope) === scopeKey(scope)
+    && supplement.fundingGapFingerprint === fundingGapFingerprint(ethPerps, ethBoros, scope)
+    && supplement.fundingGapEth === uncovered && finite(supplement.fundingGapObservedAt)
+    && supplement.fundingGapObservedAt <= now && now - supplement.fundingGapObservedAt <= 3600
+    && finite(supplement.fundingGapStartedAt) && supplement.fundingGapStartedAt > 0
+    && supplement.fundingGapStartedAt <= supplement.fundingGapObservedAt ? supplement.fundingGapStartedAt : null;
+  put('rollover.uncovered_funding_eth', uncovered, seenAt, uncovered !== null, 'Incomplete account funding coverage', gaps);
+  put('rollover.uncovered_funding_seconds', uncovered === 0 ? 0 : uncovered !== null && trustedStart !== null ? now - trustedStart : null,
+    seenAt, uncovered === 0 || uncovered !== null && trustedStart !== null,
+    'Missing verified continuous collector history; page visits never start the clock');
   for (const [venue, id] of [['HYPERLIQUID', 'hl'], ['BINANCE', 'binance']] as const) put(`hedge.${id}_size_gap_eth`,
     matchComplete ? metricNumber18([...exactGaps.entries()].filter(([key]) => key.startsWith(`ETH:${venue}:`))
       .reduce((max, [, gap]) => gap === null ? max : abs18(gap) > max ? abs18(gap) : max, 0n)) : null,

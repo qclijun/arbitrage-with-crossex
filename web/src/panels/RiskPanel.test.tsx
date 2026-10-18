@@ -65,6 +65,42 @@ beforeEach(() => {
 });
 afterEach(() => { for (const c of clients.splice(0)) c.clear(); });
 describe('rendered Risk / shared API evidence', () => {
+  it('distinguishes a blocked full roll from an available A′ batch and displays remaining progress', async () => {
+    const now = Date.now() / 1000;
+    const values: Record<string, unknown> = { 'rollover.full_batch_ready': false, 'rollover.atomic_batch_ready': true,
+      'rollover.batch_size_eth': 1.5, 'rollover.remaining_eth': 2.9888313, 'rollover.rolled_eth': 1,
+      'rollover.roll_path': 'A_PRIME', 'rollover.execution_admission': 'UNKNOWN', 'rollover.atomic_margin_need_usd': 40,
+      'rollover.atomic_available_after_usd': 200, 'rollover.atomic_margin_shortfall_usd': 0 };
+    for (const [id, value] of Object.entries(values)) external[id] = { value, unit: contracts[id].unit,
+      source: 'Separate full and selected-batch simulations', evidence: 'read-only fixture', observedAt: now, ttlSeconds: 120, scope, complete: true };
+    mount();
+    await waitFor(() => expect(check('rollover.incremental_margin_usd').querySelector('summary')).toHaveTextContent('WARNING'));
+    const panel = check('rollover.incremental_margin_usd');
+    expect(panel).toHaveTextContent('A_PRIME');
+    expect(panel).toHaveTextContent('1.500000 ETH');
+    expect(panel).toHaveTextContent('2.988831 ETH');
+    expect(panel).toHaveTextContent('Complete applicable evidence');
+    expect(panel).toHaveTextContent('全量失败但小批预检通过时保留A′候选');
+  });
+  it('renders four-leg preview blockers and keeps missing post-batch margin UNKNOWN', async () => {
+    const now = Date.now() / 1000;
+    for (const id of ['rollover.atomic_batch_ready', 'rollover.atomic_margin_need_usd', 'rollover.atomic_available_after_usd', 'rollover.atomic_margin_shortfall_usd']) {
+      external[id] = { value: id === 'rollover.atomic_batch_ready' ? false : id === 'rollover.atomic_margin_need_usd' ? 95 : null,
+        unit: contracts[id].unit, source: 'Read-only four-leg batch preview', evidence: 'POST /api/boros/roll/simulate', observedAt: now,
+        ttlSeconds: 120, scope, complete: !id.includes('available_after') && !id.includes('shortfall'),
+        details: [{ label: 'Blockers', value: 'venue-refused: 198 has only 2.1374 ETH inside tolerance', unit: '' },
+          { label: 'Execution receipt', value: 'UNKNOWN — preview only', unit: '' }] };
+    }
+    mount();
+    await waitFor(() => expect(check('rollover.incremental_margin_usd').querySelector('summary')).toHaveTextContent('WARNING'));
+    const panel = check('rollover.incremental_margin_usd');
+    expect(panel).toHaveTextContent('原子展期预检与保证金');
+    expect(panel).toHaveTextContent('2.1374 ETH');
+    expect(panel).toHaveTextContent('UNKNOWN — preview only');
+    expect(panel).toHaveTextContent('Incomplete / unknown evidence');
+    expect(panel).not.toHaveTextContent('rollover.post_roll_coverage');
+    expect(panel).toHaveAttribute('open');
+  });
   it('shows current hedge checks as OK and omits historical checks without a baseline', async () => {
     server.use(http.get('/api/positions', () => response({
       positions: [{ symbol: 'HYPERLIQUID_FUTURE_ETH_USDC', positionQty: '-3', markPrice: '3000', upnl: '0' },
@@ -99,7 +135,7 @@ describe('rendered Risk / shared API evidence', () => {
     const now = Date.now() / 1000;
     baseline = { boros: { '128': -3, '129': 3 }, perps: { HYPERLIQUID_FUTURE_ETH_USDC: -3, BINANCE_FUTURE_ETH_USDT: 3 },
       opened_at: now - 1000, observed_at: now - 100, evidence: 'explicit scoped fixture baseline' };
-    const ids = new Set(rules.filter(r => r.enabled !== false).flatMap(r => r.metrics));
+    const ids = new Set(rules.filter(r => r.enabled !== false).flatMap(r => effectiveRiskRule(r, scope).metrics));
     for (const id of ids) {
       const contract = contracts[id];
       external[id] = { value: contract.type === 'bool' ? true : contract.type === 'enum' ? contract.values![0] : contract.unit === 'unix seconds' ? now - 30 : 1,

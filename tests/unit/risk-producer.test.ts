@@ -10,6 +10,16 @@ function python(script: string, input: unknown) {
   return JSON.parse(result.stdout);
 }
 describe('independent producer scope and continuous gap evidence', () => {
+  it('records OKX funding gaps across multiple expiries with the same shared fingerprint', () => {
+    const perps = [{ symbol: 'OKX_FUTURE_ETH_USDT', exchange: 'OKX', side: 'LONG', qty: 4 }];
+    const boros = [198, 213].map((marketId, i) => ({ marketAcc: root + '000002ffffff', marketId, venue: 'OKX',
+      side: 'LONG', sizeToken: 1, maturity: 1801000000 + i * 86400 }));
+    const data = { farm: { risk: { address: root, accountId: 0, positionsComplete: true, positions: boros } },
+      positions: { positions: [{ symbol: perps[0].symbol, positionQty: '4' }], exposure: [{ base: 'ETH', legs: perps }] } };
+    const output = python(`state={}\nc={'root':'${root}'}\nrecord_funding_gap(value,c,state,1800000000)\nrecord_funding_gap(value,c,state,1800000301)\nprint(json.dumps(state['funding_gap']))`, data);
+    expect(output).toMatchObject({ uncovered_eth: 2, started_at: 1800000000, observed_at: 1800000301 });
+    expect(output.fingerprint).toBe(fundingGapFingerprint(perps, boros as RiskBorosPosition[], { address: root, accountId: 0, credentialId: 'fixture', pool: 'account' }));
+  });
   it('uses identical numeric/configuration identities across Python and JavaScript', () => {
     const configs = [1, 1e-7, 1e-9, .03, -0, 1e20].map(value => ({ root, recovery_margin_fraction: value,
       thresholds: { 'gate.im_coverage': [['gate.im_coverage', 'lt', value, 'CRITICAL']] } }));
