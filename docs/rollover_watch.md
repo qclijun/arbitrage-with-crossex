@@ -2,12 +2,13 @@
 
 背景（自包含，不要依赖会话历史）：持仓 0xc70f77072a7dae64ac4997c70dabbca39839cbbc（Boros subaccount 0，根地址）。旧腿：market 196 Hyperliquid ETH 30 Oct 2026 SHORT 3.9888313 ETH（锁定 entryApr 7.7667%）+ market 198 OKX ETHUSDT 30 Oct 2026 LONG 3.9888313 ETH（锁定 entryApr 3.1072%），锁定费率差 L = 4.6595%，到期 unix 1793318400。拟滚入的新腿：market 209 Hyperliquid ETH 27 Nov 2026（SHORT，收 execShortApr）+ market 213 OKX ETHUSDT 27 Nov 2026（LONG，付 execLongApr）。新腿到期以 API 返回值为准，预期 1795737600（= 旧到期 + 28 天，用于校验，不符即报 WARN）。已有 12-25 组（128/129）不动。
 
-执行门禁 G（FOK/原子成交语义针对当前部署的核验）：**状态 VERIFIED（2026-10-17，只读核验，证据见下）**。复核脚本 `scripts/verify_roll_fok.ts`（只取 calldata，不签名、不提交；无 key、无 /send-txs 调用）。
+执行门禁 G（FOK/原子成交语义针对当前部署的核验）：**状态 VERIFIED（1.7.6 路径，2026-10-20 只读核验，证据见下）**。复核脚本 `scripts/verify_roll_fok.ts`（只取 calldata，不签名、不提交；无 key、无 /send-txs 调用）。
 
-- 构建器：`calldata-builder/agent/roll-over` 对 198→213、196→209 返回 4 条 `placeSingleOrder`（selector `0x8c69996c`），解码后每条 `tif = 2`。用 IOC(1)/FOK(2) 差分构建 `place-order`，唯一稳定变化的 calldata word 是 slot 4，其余 slot（含随构建漂移的 slot 12）不随 TI 变化。
+- **1.7.6 路径（当前执行路径）**：终端不再调用 `calldata-builder/agent/roll-over` 或 `v1/simulations/roll-over`。四条腿逐条走 `calldata-builder/agent/place-order`（由 `placeMarketOrders` 以 `tif=2` 构建），整批发 `send-txs/bulk-calls`（`requireSuccess=true`），预览改 `v2/simulations/roll-over`。2026-10-20 核对：198/196 平腿与 213/209 开腿逐条构建均为 selector `0x8c69996c`、TIF slot 4 = 2；`exit-markets` 对 196、198 均返回 calldata。未覆盖：完整批次中头部撤单、退出市场、平仓后 exit、gas 充值四类调用也同处一个 `tryAggregate`；该组合尚无实盘回执。
+- **1.7.5 路径（历史证据，仅存档）**：`calldata-builder/agent/roll-over` 对 198→213、196→209 返回 4 条 `placeSingleOrder`（selector `0x8c69996c`），解码后每条 `tif = 2`。用 IOC(1)/FOK(2) 差分构建 `place-order`，唯一稳定变化的 calldata word 是 slot 4，其余 slot（含随构建漂移的 slot 12）不随 TI 变化。
 - 部署合约：Arbitrum 42161 Router 代理 `0x8080…DEf6` → 实现 `0x9382e315bb6b8ed94d74a3a32f7781c9d6d71df8`（Sourcify exact_match，solc 0.8.28）；其 `RouterFacetLib` 把 `0x8c69996c` 路由到 `tradeModule`，签名 `placeSingleOrder(((bool,uint24,uint24,uint8,uint8,uint256,int16),bool,uint64,bool,uint256,bool,int128))` 与 calldata 布局一致。MarketHub `0x1080…ADaD` → `MarketHubEntry`，market 198 代理 → 实现 `0x1e4157d8…63c0`，`CoreOrderUtils._shouldPlaceOnBook` 对 FOK 执行 `require(hasMatchedAll, MarketOrderFOKNotFilled)`，即未全成交即 revert。
 - 限额绑定：`closeRate`/`openRate` 正确映射到 calldata 的 `tick` 边界（0.0301→297、0.0400→392、0.0200→198，tick 步长 1e-4 APR），不是按 mid±slippage 重算。
-- 实盘补验（2026-10-18）：用户执行的 1.98 ETH 小批已核对链上成功回执、同一交易四条成交事件、每腿等量及新旧仓位守恒，证实本部署该次提交成功。原始回执/费用快照与核算只保存在本机 `data/risk-monitor/rollover-audit-2026-10-18/`，不提交仓库。单次成功不保证后续报价/深度或收益；`--receipt-success` 仍是人工核验声明，不是脚本自行推断或执行授权。
+- 实盘补验（2026-10-18）：用户执行的 1.98 ETH 小批已核对链上成功回执、同一交易四条成交事件、每腿等量及新旧仓位守恒，证实本部署该次提交成功。**该笔发生在 1.7.6 合入 dev（2026-10-19）之前，走的是 1.7.5 构建器路径，不可作为 1.7.6 路径的实盘证据。** 原始回执/费用快照与核算只保存在本机 `data/risk-monitor/rollover-audit-2026-10-18/`，不提交仓库。单次成功不保证后续报价/深度或收益；`--receipt-success` 仍是人工核验声明，不是脚本自行推断或执行授权。
 
 候选路径（仅研究与预检，不授予交易权限）：
 - A：到期前一次性原子展期**当前剩余 R**（原计划总量 3.9888313 ETH；2026-10-19 已核剩余 2.0088313 ETH）。退出侧容忍 0.5%，深度与可成交量以本轮预检为准；早期默认 0.25% 时 OKX 10-30 成交量为 0 的记录仅作历史，不当作当前盘口。

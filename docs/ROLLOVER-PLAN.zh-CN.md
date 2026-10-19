@@ -168,20 +168,20 @@ ETH 抵押品价格风险和实际退出成本有停用检查，展期时人工�
 
 #### 当前实例（2026-10-19 补填，待人工签署）
 
-> 口径：剩余仓位 R = 2.0088313 ETH（已滚 1.98 ETH），N ≈ $4,801.47，ETH $2390.29。数据来源：`data/risk-monitor/rollover-watch.jsonl` 2026-10-19T07:12 行、`POST /api/boros/roll/simulate` 2026-10-19 实测。**下列均为填入值，签署前不构成“展期就绪”。**
+> 口径：剩余仓位 R = 2.0088313 ETH（已滚 1.98 ETH），N ≈ $4,806.73，ETH $2,392.80。数据来源：`data/risk-monitor/rollover-watch.jsonl` 2026-10-19T07:12 行，以及 **2026-10-20 在 1.7.6 终端上重测的 `POST /api/boros/roll/simulate`（v2 预览路径）**。**下列均为填入值，签署前不构成“展期就绪”。**
 
 | 必填项 | 当前值 |
 |---|---|
 | `T` | 2026-10-30 00:00 UTC（unix 1793318400）= 10-30 08:00 +08 |
 | 旧新四 market | 196 HL / 198 OKX → 209 HL / 213 OKX |
-| 可行规模 `q` | 2.0088313 ETH（全量剩余；`full_batch_ready=true`，`roll_path=FULL_PREVIEW`） |
+| 可行规模 `q` | 2.0088313 ETH（全量剩余；2026-10-20 1.7.6 v2 预览 `full_batch_ready=true`，`roll_path=FULL_PREVIEW`：venue Succeed、四腿 filled 2.0088313、无 blockers；容忍内最深腿 209 仅 93.1 ETH，远超本批） |
 | 本批 | 2.0088313 ETH 单批原子（四腿同量 FOK） |
-| 净收益 | A = **$12.90**（已扣交易费 $0.66 + 预计结算费 $1.03；**非到手净利**，入场费/gas/永续基差未含） |
-| 执行误差/失败预算 | 退出滑点 ≤ 0.50%（实测 `X_max` 0.244%）、新开 ≤ 0.25%；失败损失上限 **$50** |
-| 各账户实际可用资金/缓冲 | Boros ETH cross：`need` 0.0195 / `availableAfterExit` 0.1030 / `availableAfter` 0.0837 / `shortfall` **0**（after÷need = **4.30x**）；IM 覆盖 2.06x、MM 3.62x；Gate IM 1.24x / MM 3.37x；gas **$5.07** |
+| 净收益 | A = **$12.90**（1.7.5 v1 预览口径，待重算）。2026-10-20 1.7.6 v2 预览的同口径输入：exit `feeDragApr` 0.002、entry `feeDragApr` 0.002、过价成本 $0.27 + $1.01、N $4,806.73、旧腿剩 10.3 天（`settleFeeApr` 0.001）；按 `rollover_watch.py` 口径重算 A 应在 10-25 复核时完成。**非到手净利**，入场费/gas/永续基差未含 |
+| 执行误差/失败预算 | 退出滑点 ≤ 0.50%（2026-10-20 1.7.6 预览实测 `X_max`：198 0.273%、196 0.103%）、新开 ≤ 0.25%（213 0.110%、209 0.193%）；失败损失上限 **$50** |
+| 各账户实际可用资金/缓冲 | Boros ETH cross（2026-10-20 1.7.6 v2 预览重测）：`need` 0.01907 / `availableAfterExit` 0.10272 / `availableAfter` 0.08320 / `shortfall` **0**（after÷need = **4.36x**）；gas **$5.07**。旧值 0.0195 / 0.1030 / 0.0837 / 4.30x 为 1.7.5 v1 预览，作废 |
 | 缺口/过覆盖/紧急价格净敞口（数量、时间、损失上限） | 资金费少覆盖 **0 ETH**；过覆盖 **0**；紧急永续价格净敞口上限 **0.25 ETH / 30 分钟 / $50** |
 | 累计成本上限 | **$12**（费用 + gas + 重试；不含应急减仓价格损失，该部分计入上一行） |
-| 官方成交语义证据 | `G = VERIFIED`（2026-10-17：calldata `tif=2` + RouterFacetLib 路由 + `CoreOrderUtils` 对 FOK `require(hasMatchedAll)`）+ 实盘回执 `0x0571e418…2d1751`（2026-10-18，status=1，四腿各 1.98 ETH） |
+| 官方成交语义证据 | `G = VERIFIED`（**执行路径＝1.7.6**，2026-10-20 只读核对：四条腿逐条 `place-order` 均 selector `0x8c69996c`、TIF slot 4 = 2，`exit-markets` 对 196/198 返回 calldata；预览 `v2/simulations/roll-over`）+ 合约层证据（RouterFacetLib 路由、`CoreOrderUtils` 对 FOK `require(hasMatchedAll)`）。实盘回执 `0x0571e418…2d1751`（2026-10-18，四腿各 1.98 ETH）走的是 **1.7.5** 构建器路径，仅作历史；1.7.6 完整批次（含撤单/退出/gas 充值）尚无实盘回执 |
 | 展期最迟启动 | **2026-10-29 20:00 UTC**（10-30 04:00 +08；按 T − 128min 推导为 21:52 UTC，取更保守值） |
 | 转退出决策时刻 | **2026-10-29 12:00 UTC**（10-29 20:00 +08，早于最迟启动 8h） |
 | 退出步骤与失败动作 | [§5 路径 B](#路径-b部分展期或退出) 与 [ROLLOVER-B-PLAN §6.2](ROLLOVER-B-PLAN.zh-CN.md) |
