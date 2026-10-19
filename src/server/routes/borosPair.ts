@@ -477,6 +477,38 @@ export function createPairPricer(deps: AppDeps) {
     return readAccount(value);
   };
 
+  const settleMaxMs = deps.borosSettle?.maxMs ?? 6_000;
+  const settleSleep = deps.borosSettle?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  /**
+   * After a Boros write: re-read the account until Boros shows the trade,
+   * keep that read cached for the cards, then drop the fills it changed.
+   * Boros shows a batch 1–2 s after the send returns, so the page's instant
+   * re-read got the old position and the cache kept it for 30 s (2026-10-16).
+   * A read that never shows the trade (nothing filled, or Boros is slow) is
+   * not kept.
+   */
+  const settleAfterWrite = async (address: string, before: AccountView, traded: readonly number[]): Promise<void> => {
+    const raw = (a: AccountView, id: number) => a.positionRawByMarket.get(id) ?? '0';
+    const deadline = Date.now() + settleMaxMs;
+    for (;;) {
+      const after = await loadAccount(address, true).catch(() => null);
+      if (after && traded.some((id) => raw(after, id) !== raw(before, id))) break;
+      if (after === null || Date.now() + 1_000 > deadline) {
+        deps.cache.bust(`boros:collaterals:${address}`);
+        break;
+      }
+      await settleSleep(1_000);
+    }
+    // After the wait, not before it: a card poll during the wait would
+    // re-read the fills before Boros shows the trade, and keep that read.
+    bustBorosFills(deps.cache, traded);
+    // /asset-view reads its own strict copy of the account, which the read
+    // above does not refresh.
+    deps.cache.bust(`boros:collaterals:strict:${address}`);
+    // A send spends gas, and a send at gas debt tops it up.
+    deps.cache.bust('boros:gas-balance');
+  };
+
   /** A book fresh enough to place an order against — never the scan's entry. */
   const loadTradeBook = async (marketId: number): Promise<BorosOrderBook | null> => {
     try {
@@ -537,10 +569,12 @@ export function createPairPricer(deps: AppDeps) {
     const eligibility = pairEligibility(legMarkets, nowSec, intent);
 
     // Only walk books once the pair is worth pricing — an ineligible pair has a
-    // reason to show, not a quote.
-    const books = eligibility.eligible
-      ? await Promise.all(legMarkets.map((m) => loadTradeBook(m.marketId)))
-      : legMarkets.map(() => null);
+    // reason to show, not a quote. The gas read needs neither, so it runs
+    // beside the books (both catch every error).
+    const [books, gasBalanceUsd] = await Promise.all([
+      eligibility.eligible ? Promise.all(legMarkets.map((m) => loadTradeBook(m.marketId))) : legMarkets.map(() => null),
+      preloaded ? preloaded.gasBalanceUsd : readGasBalance(fresh),
+    ]);
 
     const legs: BorosPairLegInput[] = legMarkets.map((market, i) => ({
       market,
@@ -564,8 +598,6 @@ export function createPairPricer(deps: AppDeps) {
       nowSec,
       takerFeeOverride,
     });
-
-    const gasBalanceUsd = preloaded ? preloaded.gasBalanceUsd : await readGasBalance(fresh);
 
     // The best-funded OTHER coin, for an open whose own coin cannot spare the
     // gas top-up after its legs.
@@ -606,7 +638,7 @@ export function createPairPricer(deps: AppDeps) {
     };
   };
 
-  return { loadMarkets, loadQuoteMarkets, loadAccount, marketOr404, readGasBalance, priceRequest };
+  return { loadMarkets, loadQuoteMarkets, loadAccount, settleAfterWrite, marketOr404, readGasBalance, priceRequest };
 }
 
 /**
@@ -627,6 +659,18 @@ function openCostPerSize(m: BorosMarket, nowSec: number): number | null {
   const fee = Number.isFinite(m.takerFeeRate) && m.takerFeeRate > 0 ? m.takerFeeRate * years : 0;
   const cost = im + fee;
   return cost > 0 ? cost : null;
+}
+
+/**
+ * Drop the cached Boros fills a write changed: the traded markets', held or
+ * closed (closed, re-opened and closed again, the closed entry would miss the
+ * new fills). No other market has a new fill from this write. Busting every
+ * market re-read each one, paced under the venue's rate limit: the cards then
+ * took about 50 s to show a trade (2026-10-16).
+ */
+function bustBorosFills(cache: AppDeps['cache'], marketIds: readonly number[]): void {
+  const traded = new Set(marketIds.map(String));
+  cache.bustWhere((key) => key.startsWith('boros:txns:') && traded.has(key.split(':')[3]));
 }
 
 export function borosPairRoutes(deps: AppDeps) {
@@ -706,7 +750,7 @@ export function borosPairRoutes(deps: AppDeps) {
     }
   };
 
-  const { loadMarkets, loadQuoteMarkets, loadAccount, marketOr404, readGasBalance, priceRequest } = createPairPricer(deps);
+  const { loadMarkets, loadQuoteMarkets, loadAccount, settleAfterWrite, marketOr404, readGasBalance, priceRequest } = createPairPricer(deps);
 
 
   return async function plugin(app: FastifyInstance): Promise<void> {
@@ -1039,8 +1083,7 @@ export function borosPairRoutes(deps: AppDeps) {
          * snapshot. The position then appeared only when the TTL happened to
          * lapse — "it takes a while, and sometimes I have to refresh by hand".
          */
-        deps.cache.bust('boros:collaterals');
-        deps.cache.bust('boros:txns');
+        await settleAfterWrite(parseAddress(body.address), account, simulation.legs.map((l) => l.marketId));
 
         if (thrown.length > 0) {
           const unknown = classifyLegFailure(thrown[0]) === 'unknown';
@@ -1093,30 +1136,41 @@ export function borosPairRoutes(deps: AppDeps) {
       // finds, an input it rejects). A 429, a 5xx or a dropped connection is
       // the next poll's problem: for those "waiting for a quote" is the truth.
       let venueError: string | null = null;
-      const venue =
-        plan?.kind === 'rollover' && orders?.simulateRollOver
-          ? await orders.simulateRollOver(plan.legs).catch((err: unknown) => {
-              const status = err instanceof CoreError ? (err.details as { status?: number } | undefined)?.status : undefined;
-              venueError = status !== undefined && status < 500 && status !== 429 ? describeLegFailure(err) : null;
-              return null;
-            })
-          : null;
+      // The roll closes the short-dated legs, so their resting orders go in
+      // the same batch: one left behind could re-open a leg the roll just moved.
+      // The preview cancels the same ones, or an order in a close's path
+      // (MarketSelfSwap) blocks a roll the send would pass.
+      const cancelOrdersOn = plan ? [...new Set(plan.closes.map((o) => o.marketId))].filter((id) => account.restingOrderMarkets.has(id)) : [];
+      const preview = plan ? orders?.simulateRollOver?.(plan.closes, plan.opens, { cancelOrdersOn, fresh }) : undefined;
+      const venue = preview
+        ? await preview.catch((err: unknown) => {
+            const status = err instanceof CoreError ? (err.details as { status?: number } | undefined)?.status : undefined;
+            venueError =
+              status === 429
+                ? 'Boros rate limit reached. It retries in 10 s.'
+                : status !== undefined && status < 500
+                  ? describeLegFailure(err)
+                  : null;
+            return null;
+          })
+        : null;
       const gate = evaluateRollGate({
         exit: { simulation: exit.simulation, gate: exit.gate, legs: exit.legs },
         entry: { simulation: entry.simulation, gate: entry.gate, legs: entry.legs },
         venue,
         venueError,
       });
-      return { exit, entry, gate, venue, account, openSizeWei, plan, simulatedAtMs: Math.min(exit.simulatedAtMs, entry.simulatedAtMs) };
+      return { exit, entry, gate, venue, account, openSizeWei, plan, cancelOrdersOn, simulatedAtMs: Math.min(exit.simulatedAtMs, entry.simulatedAtMs) };
     };
 
     app.post('/boros/roll/simulate', async (req, reply) => {
-      const { exit, entry, gate, venue, simulatedAtMs } = await priceRoll(req.body as RollBody, false);
+      const { exit, entry, gate, venue, cancelOrdersOn, simulatedAtMs } = await priceRoll(req.body as RollBody, false);
       return reply.ok({
         exit: { simulation: exit.simulation, gate: exit.gate },
         entry: { simulation: entry.simulation, gate: entry.gate },
         gate,
         venue,
+        cancelOrdersOn,
         simulatedAtMs,
         gasBalanceUsd: entry.gasBalanceUsd ?? null,
       });
@@ -1159,8 +1213,8 @@ export function borosPairRoutes(deps: AppDeps) {
       const unlockRoll = lockCloses([...parseLegs(body.exit?.legs), ...parseLegs(body.entry?.legs)].map((leg) => leg.marketId));
       if (!unlockRoll) return refuse(reply, { code: 409, category: 'validation', message: ORDER_RUNNING, retryable: false });
       try {
-        const { exit, entry, gate, venue, account, openSizeWei, plan: priced } = await priceRoll(body, true);
-        if (priced?.kind === 'rollover' && (!orders.rollOver || !orders.simulateRollOver)) {
+        const { exit, entry, gate, venue, account, openSizeWei, cancelOrdersOn } = await priceRoll(body, true);
+        if (!orders.simulateRollOver) {
           throw new CoreError('Boros roll-over is not configured on this install.', 'not-configured');
         }
         if (gate.blockers.length > 0) {
@@ -1179,10 +1233,6 @@ export function borosPairRoutes(deps: AppDeps) {
 
         const raced = recentRolls.get(memoKey);
         if (raced) return reply.ok({ ...(await raced.result), replayed: true });
-        // The roll closes the short-dated legs, so their resting orders go in
-        // the same batch: one left behind could re-open a leg the roll just moved.
-        const exitIds = plan.kind === 'rollover' ? plan.legs.map((l) => l.fromMarketId) : plan.closes.map((o) => o.marketId);
-        const cancelOrdersOn = [...new Set(exitIds)].filter((id) => account.restingOrderMarkets.has(id));
         const gasTopUpMarket = gasTopUpMarketFor(exit.markets, account, venue?.availableAfter);
         const pending: Promise<RollPayload> = submitBorosRoll(orders, plan, { cancelOrdersOn, gasTopUpMarket }).then((result) => ({
           result,
@@ -1192,8 +1242,11 @@ export function borosPairRoutes(deps: AppDeps) {
         }));
         rememberRoll(memoKey, pending);
         const payload = await pending;
-        deps.cache.bust('boros:collaterals');
-        deps.cache.bust('boros:txns');
+        await settleAfterWrite(
+          parseAddress(body.address),
+          account,
+          [...exit.simulation.legs, ...entry.simulation.legs].map((l) => l.marketId),
+        );
         return reply.ok({ ...payload, replayed: false });
       } finally {
         unlockRoll();
@@ -1350,6 +1403,10 @@ export function borosPairRoutes(deps: AppDeps) {
           const current = account.positionByMarket.get(marketId) ?? 0;
 
           if (current === 0) {
+            // The read above came 0–2 s after the cancel, so it can still list the
+            // cancelled orders. Do not keep it for the cards.
+            deps.cache.bust(`boros:collaterals:${address}`);
+            deps.cache.bust(`boros:collaterals:strict:${address}`);
             return reply.ok({ marketId, cancelled: true, closed: false, fill: null });
           }
           // Reduce = trade the opposite way to the position's sign.
@@ -1402,8 +1459,7 @@ export function borosPairRoutes(deps: AppDeps) {
            * the CrossEx writes: a write busts what it changed (deals.ts busts
            * `account`, leverage.ts busts `positions`).
            */
-          deps.cache.bust('boros:collaterals');
-          deps.cache.bust('boros:txns');
+          await settleAfterWrite(address, account, [marketId]);
 
           return reply.ok({
             marketId,
@@ -1419,6 +1475,11 @@ export function borosPairRoutes(deps: AppDeps) {
             openSize,
           });
         } catch (err) {
+          // The cancel landed, and a close that timed out may have filled: the
+          // cards must not keep a read from before either.
+          deps.cache.bust(`boros:collaterals:${address}`);
+          deps.cache.bust(`boros:collaterals:strict:${address}`);
+          bustBorosFills(deps.cache, [marketId]);
           const msg = err instanceof Error ? err.message : String(err);
           throw new CoreError(
             // "any", not "the": cancelOrders sends cancelAll and reports no

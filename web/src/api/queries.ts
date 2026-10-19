@@ -431,6 +431,7 @@ export function useDealView(id: string | null) {
     void qc.invalidateQueries({ queryKey: qk.positions });
     void qc.invalidateQueries({ queryKey: ['assetView'] });
     void qc.invalidateQueries({ queryKey: qk.account });
+    void qc.invalidateQueries({ queryKey: qk.openOrders });
   }, [id, mode, qc]);
 
   return query;
@@ -707,7 +708,9 @@ export function useExecuteBorosPair() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['boros', 'pair', 'context'] });
       void qc.invalidateQueries({ queryKey: ['assetView'] });
-      void qc.invalidateQueries({ queryKey: qk.positions });
+      // The header margin reads the same server entry the trade just refreshed.
+      // CrossEx positions are left alone: a Boros trade cannot change them.
+      void qc.invalidateQueries({ queryKey: ['borosMargin'] });
     },
   });
 }
@@ -719,13 +722,13 @@ export function useExecuteBorosPair() {
  * The whole request is the key, so any field change is a different quote, and
  * a stale quote never survives a remount (gcTime 0).
  */
-export function useBorosRollSimulation(req: BorosRollRequest | null, enabled = true) {
+export function useBorosRollSimulation(req: BorosRollRequest | null, enabled = true, refetchInterval = 4_000) {
   return useQuery({
     queryKey: ['boros', 'roll', 'simulate', JSON.stringify(req)] as const,
     queryFn: () => postJson<BorosRollSimulateResponse>('/boros/roll/simulate', req),
     enabled: Boolean(req) && enabled,
     placeholderData: keepPreviousData,
-    refetchInterval: 4_000,
+    refetchInterval,
     gcTime: 0,
   });
 }
@@ -741,7 +744,9 @@ export function useExecuteBorosRoll() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['boros', 'pair', 'context'] });
       void qc.invalidateQueries({ queryKey: ['assetView'] });
-      void qc.invalidateQueries({ queryKey: qk.positions });
+      // The header margin reads the same server entry the trade just refreshed.
+      // CrossEx positions are left alone: a Boros trade cannot change them.
+      void qc.invalidateQueries({ queryKey: ['borosMargin'] });
     },
   });
 }
@@ -812,7 +817,9 @@ export function useBorosCancelAndClose() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['boros', 'pair', 'context'] });
       void qc.invalidateQueries({ queryKey: ['assetView'] });
-      void qc.invalidateQueries({ queryKey: qk.positions });
+      // The header margin reads the same server entry the trade just refreshed.
+      // CrossEx positions are left alone: a Boros trade cannot change them.
+      void qc.invalidateQueries({ queryKey: ['borosMargin'] });
     },
   });
 }
