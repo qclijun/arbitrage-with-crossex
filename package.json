@@ -21,7 +21,10 @@
     "dev": "concurrently -n server,web -c blue,magenta \"tsx watch src/server/index.ts\" \"yarn --cwd web dev\"",
     "start": "yarn --cwd web build && tsx src/server/index.ts",
     "stop": "bash scripts/stop.sh",
-    "verify": "tsc --noEmit && yarn test && yarn --cwd web typecheck && yarn --cwd web test"
+    "check:size": "node scripts/check-file-size.mjs --staged",
+    "check:size:all": "node scripts/check-file-size.mjs --all",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "verify": "tsc --noEmit && node scripts/check-file-size.mjs --all && yarn test && yarn --cwd web typecheck && yarn --cwd web test"
   },
   "dependencies": {
     "@fastify/static": "^9.1.3",

@@ -1,0 +1,9 @@
+{
+  "comment": "Token budget for committed text files. Enforced by .githooks/pre-commit (staged files) and `yarn verify` / `yarn check:size:all` (all files). Raise 'limit' only with a reason: the number exists so one file fits in a single agent read. 'ignore' is for generated files and recorded data, not for prose or code that is merely long.",
+  "limit": 5000,
+  "ignore": [
+    ".scratch/**/evidence/**",
+    "docs/validation/**/*.json"
+  ],
+  "allow": []
+}

@@ -18,6 +18,7 @@
 - Use Node.js >=22.13 and Yarn 1.22.22; install root and `web/` dependencies separately with `--frozen-lockfile`.
 - Match surrounding strict TypeScript style: two spaces, single quotes, semicolons. Add offline unit/server tests for behavior changes.
 - Run `yarn verify` for TypeScript/offline checks and `yarn --cwd web build` for the production UI bundle.
+- Keep committed text files under 5,000 estimated tokens; the `.githooks/pre-commit` guard enforces it on staged files and `yarn verify` on the whole tree. Split oversized files rather than raising `.token-budget.json` — see [development](docs/agents/development.md#file-size-budget).
 - Python tools under `scripts/` are standard-library-only and read-only; `yarn verify` does not cover them. Run the relevant `tests/monitor` or `tests/screening` unittest suite.
 - Server tests use `app.inject()` with real HTTP blocked; never `listen()`.
 

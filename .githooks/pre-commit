@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-commit guard: blocks files that exceed the token budget.
+#
+# Installed via `git config core.hooksPath .githooks` (see package.json
+# "prepare"). Bypass with `git commit --no-verify`, but then nothing has
+# checked the commit: run `node scripts/check-file-size.mjs --all` before
+# pushing.
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found on PATH, cannot run the token budget check." >&2
+  echo "  install Node >= 22.13, or commit with --no-verify" >&2
+  exit 1
+fi
+
+exec node scripts/check-file-size.mjs --staged

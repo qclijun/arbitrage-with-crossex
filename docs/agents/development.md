@@ -20,6 +20,35 @@ python3 -m unittest discover -s tests/screening -v    # opportunity screening
 ```
 
 There is no formatter or linter script. Match the surrounding style.
+
+## File size budget
+
+No committed text file may exceed 5,000 tokens (`tokens ~= asciiChars / 4 +
+nonAsciiChars * 1.2`). A file past that size cannot be read in one pass, so an
+agent either skips it or burns context reconstructing it. The budget is about
+how much a reader has to hold, not about layout: do not reflow code onto long
+lines or minify it to dodge the check.
+
+The `pre-commit` hook in `.githooks/` checks staged files only; `yarn verify`
+re-checks the whole tree. `.token-budget-baseline.json` records files that were
+already oversized when the guard landed — those may shrink but not grow beyond
+2% (minimum 500 tokens). When the hook fails:
+
+- **Split by responsibility** — pull cohesive symbols into sibling modules and
+  re-export from the existing entry point; for docs, keep a short index and move
+  sections into their own files. The error message names the file type and the
+  command to list its top-level symbols.
+- **Ignore derived files and data** — if a tool generates the file, or it is
+  recorded data rather than something a reader works through (evidence dumps,
+  validation snapshots), add a glob to `ignore` in `.token-budget.json` rather
+  than splitting it.
+- **Record the debt** — `node scripts/check-file-size.mjs --update-baseline`
+  only lowers or drops entries; run it after a baseline file shrinks. Adding a
+  file or raising an entry needs `--allow-growth`: use it only when the growth
+  is intentional, and say why in the commit message.
+
+`git commit --no-verify` skips the hook, but `yarn verify` will still fail.
+
 ## Coding Style & Naming Conventions
 
 Use strict TypeScript, two-space indentation, single-quoted strings, and semicolons, matching nearby code. Keep modules focused; use kebab-case for most source and test filenames, and PascalCase for React component files. No formatter or linter script is configured, so follow the surrounding style.
