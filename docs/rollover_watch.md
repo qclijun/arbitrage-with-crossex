@@ -69,7 +69,7 @@ C 的 2026-10-19 历史研究快照见 [C 研究快照](ROLLOVER-C-SNAPSHOT-2026
 
 汇报保持精炼：结论一行 + 关键数字表 + 当日建议。
 
-Risk 页面对应：`rollover.full_batch_ready` 单独显示 R 的全量状态；`rollover.atomic_batch_ready`、`depth_coverage_ratio` 和阶段保证金属于所选候选 q；`rollover.roll_path=A_PRIME` 表示小批技术候选；FULL_PREVIEW 仅表示全量预检通过，监控不自动收集/认证实际receipt，仍不能据此自动建议 A。`rollover.execution_admission=UNKNOWN` 单列实盘准入缺口，非执行许可。remaining_eth/rolled_eth 显示逐腿进度。完整仓位证明已滚完/已退出时预检指标为 NA；资料缺失/异常保持 UNKNOWN。每日账本只展示与当前 R、q 同口径的记录，过期标为历史；后台监控与页面共用同一判断。
+Risk 页面对应：`rollover.full_batch_ready` 单独显示 R 的全量状态；`rollover.atomic_batch_ready`、`depth_coverage_ratio` 和阶段保证金属于所选候选 q；`rollover.roll_path=A_PRIME` 表示小批技术候选；FULL_PREVIEW 仅表示全量预检通过，监控不自动收集/认证实际receipt，仍不能据此自动建议 A。`rollover.execution_admission=UNKNOWN` 单列实盘准入缺口，非执行许可。remaining_eth/rolled_eth 显示逐腿进度。完整仓位证明已滚完/已退出时预检指标为 NA；资料缺失/异常保持 UNKNOWN。**零头（dust）**：剩余旧腿名义金额不高于最小下单价值（每腿 $10，含边界——交易所按自己的抵押品报价折算，USDT 报价略低于 $1 时 10 units 实算 $9.998 会被拒）时，交易所不接受该规模的任何委托，这条腿只能到期结算；它不参与 `rollover.days_to_maturity` 的取最小值，展期预检类指标为 NA（原因写明 dust），避免为无法执行的零头持续告警。该豁免只在名义金额已核验时成立，`notionalUsd` 缺失仍按原路径预检并保持 UNKNOWN。每日账本只展示与当前 R、q 同口径的记录，过期标为历史；后台监控与页面共用同一判断。
 
 
 v3 费用与实盘核对纪律：

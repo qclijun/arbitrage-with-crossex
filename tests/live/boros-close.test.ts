@@ -23,7 +23,8 @@ import {
   type BorosMarket,
 } from '../../src/core/boros/client';
 import type { BorosOrderClient } from '../../src/core/boros/orders';
-import { MIN_ORDER_VALUE_USD, type BorosLegDirection, type PairIntent } from '../../src/core/boros/pair';
+import { type BorosLegDirection, type PairIntent } from '../../src/core/boros/pair';
+import { MIN_ORDER_VALUE_USD } from '../../src/core/risk';
 import { buildApp } from '../../src/server/app';
 import { readBorosAgentConfig, type BorosAgentConfig } from '../../src/server/borosAgent';
 import { TTL, TtlCache } from '../../src/server/cache';

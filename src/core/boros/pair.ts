@@ -46,6 +46,7 @@ import {
 } from './client';
 import { isSpreadMarket, knownRateOf } from './spread';
 import { absWei, decimalString } from './borosApi';
+import { MIN_ORDER_VALUE_USD } from '../risk';
 import { parseUnits } from 'viem';
 
 /** Default per-leg tolerance: 25 ticks of APR. Wide enough that a normal
@@ -123,16 +124,6 @@ export function chooseGasTopUpZone(input: GasTopUpZones & { amountUsd: number; p
   }
   return { ok: true, marketId: best.marketId, tokenId: best.tokenId, symbol: symbolOf(best.tokenId), freeUsd: best.freeUsd };
 }
-
-/** Boros refuses any order worth less than this (`DEFAULT_MIN_ORDER_VALUE`
- * in the backend's trade.service). Checked here so the refusal arrives while
- * the size is being typed rather than after Confirm.
- *
- * The BOUNDARY is blocked too, not just below it. The venue prices the order
- * with its own collateral quote, and a USDT quote a hair under $1 makes 10
- * units worth $9.998 — observed live: a 10-unit pair came back "Order value
- * must be greater than 10 USD". Blocking exactly $10 costs nobody a trade. */
-export const MIN_ORDER_VALUE_USD = 10;
 
 /** How long a simulation may back a confirm before it is refused as stale
  * (§7). The panel re-simulates well inside this. */
@@ -1012,11 +1003,15 @@ export function evaluatePairGate(input: EvaluatePairInput): PairGate {
 
   for (const { index, sim: leg, input: legIn } of legs) {
     if (Math.abs(leg.sizing.deltaSize) === 0) continue;
-    // Boros refuses an order worth under $10 (DEFAULT_MIN_ORDER_VALUE,
-    // trade.service) and phrases it as a raw HTTP 400 at the calldata builder —
-    // AFTER the user has pressed Confirm. Say it here instead, in the panel
-    // that set the size. A delta that lands the position exactly flat is
-    // exempt at the venue, so it is exempt here.
+    // Boros refuses an order worth $MIN_ORDER_VALUE_USD or less
+    // (DEFAULT_MIN_ORDER_VALUE, trade.service) and phrases it as a raw HTTP 400
+    // at the calldata builder — AFTER the user has pressed Confirm. Say it here
+    // instead, in the panel that set the size. The boundary is inclusive: the
+    // venue quotes collateral itself, so a USDT quote a hair under $1 makes a
+    // $10 leg worth $9.998 and it is refused. One shared constant (risk.ts)
+    // keeps this blocker and the risk-side dust exemption on the same line.
+    // A delta that lands the position exactly flat is exempt at the venue, so
+    // it is exempt here.
     // No collateral price means no USD value to test. Let it through and let
     // the venue answer: blocking on an unknown would refuse valid sizes.
     const value =

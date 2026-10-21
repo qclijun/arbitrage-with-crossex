@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rolloverEvidence, WATCH_ADDRESS as address } from '../../src/server/rolloverEvidence';
-import { evaluateRisk, type RiskScope } from '../../src/core/risk';
+import { evaluateRisk, MIN_ORDER_VALUE_USD, type RiskScope } from '../../src/core/risk';
 import type { AppDeps } from '../../src/server/app';
 
 const now = 1792280000, size = 3.9888313;
@@ -20,7 +20,7 @@ function fixture() {
   mkdirSync(path.join(dataDir, 'risk-monitor'));
   const positions = [198, 196].map((marketId, i) => ({ marketId, marketAcc: address + '000002ffffff',
     tokenId: 2, base: 'ETH', venue: i ? 'HYPERLIQUID' : 'OKX', side: i ? 'SHORT' : 'LONG', sizeToken: size,
-    entryApr: i ? .077667 : .031072, maturity: 1793318400 }));
+    entryApr: i ? .077667 : .031072, maturity: 1793318400, notionalUsd: size * 2500 }));
   const asset = { risk: { version: 2, address, accountId: 0, positionsComplete: true, stale: false, observedAt: now * 1000, positions } };
   const legs = [198, 196, 213, 209].map((marketId, i) => ({ marketId, base: 'ETH', venue: i % 2 ? 'Hyperliquid' : 'OKX',
     direction: i === 0 || i === 3 ? 'short' : 'long', bookStatus: 'ok', execApr: .06, midApr: .06,
@@ -161,6 +161,23 @@ describe('watch-profile read-only four-leg evidence', () => {
       else if (kind === 'fees') expect(m['rollover.next_net_apr'].value).toBeNull();
       else expect(m['rollover.atomic_batch_ready'].value).toBeNull();
     });
+  it('treats a sub-minimum remainder as not applicable instead of demanding an impossible batch', async () => {
+    const f = fixture();
+    // Exactly the minimum order value, which the venue also refuses.
+    for (const p of f.asset.risk.positions) p.notionalUsd = MIN_ORDER_VALUE_USD;
+    const m = await f.read();
+    expect(f.calls.filter(c => c.method === 'POST')).toHaveLength(0);
+    expect(m['rollover.roll_path'].value).toBe('UNKNOWN');
+    expect(m['rollover.roll_path'].details).toContainEqual(expect.objectContaining({ label: 'Dust remainder' }));
+    expect(m['rollover.remaining_eth'].value).toBeCloseTo(size);
+    expect(m['rollover.rolled_eth'].value).toBe(0);
+    for (const id of ['rollover.atomic_batch_ready', 'rollover.next_net_apr', 'rollover.execution_admission',
+      'rollover.full_batch_ready', 'rollover.batch_size_eth', 'rollover.atomic_margin_need_usd']) {
+      expect(m[id]).toMatchObject({ value: null, applicability: 'NA', complete: true });
+    }
+    expect(evaluateRisk(scope, m, now).checks.find(c => c.id === 'rollover.incremental_margin_usd')?.status).toBe('OK');
+    expect(evaluateRisk(scope, m, now).checks.find(c => c.id === 'rollover.next_net_apr')?.status).toBe('OK');
+  });
   it.each(['localhost', '127.0.0.1'])('shows scoped v3 cash and risk-adjusted economics from %s without mixing legacy profit', async host => {
     const f = fixture();
     const row = { v: 3, quote_size_eth: size, remaining_eth: size, ts: '2026-10-18', now_unix: now - 30, S: .025, E: .03, S_r_star: .027, S_cons: .024, M: -.003,

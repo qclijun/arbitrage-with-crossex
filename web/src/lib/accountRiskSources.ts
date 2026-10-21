@@ -1,5 +1,5 @@
 import { readEvidence, type ReadEvidence } from '../api/client';
-import { contracts, FUNDING_GAP_MIN_USD, fundingGapFingerprint, fundingQuantityVerified, scopeKey, type MetricEvidence, type RiskScope } from './risk';
+import { contracts, FUNDING_GAP_MIN_USD, fundingGapFingerprint, fundingQuantityVerified, materialBorosLeg, MIN_ORDER_VALUE_USD, scopeKey, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
 import { fx, fxStr, type Fx } from '../../../src/engine/fx';
@@ -342,8 +342,16 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     seenAt, matchComplete, 'Incomplete funding quantities', gaps);
   const maturityMatch = boros.every(b => b.maturity! > now);
   put('hedge.maturity_match', borosComplete ? maturityMatch : null, asset?.time ?? null, borosComplete, 'Incomplete live funding maturities');
-  const days = borosComplete && boros.length ? (Math.min(...boros.map(b => b.maturity!)) - now) / 86400 : null;
+  // Dust (at or below the venue's minimum order value) can only settle, so it
+  // must not set the rollover clock: a $2 remainder would otherwise keep a fully
+  // rolled position "9 days from maturity" and page the operator forever.
+  const clockLegs = boros.filter(materialBorosLeg);
+  const days = borosComplete && clockLegs.length ? (Math.min(...clockLegs.map(b => b.maturity!)) - now) / 86400 : null;
   put('rollover.days_to_maturity', days, asset?.time ?? null, borosComplete, 'Missing complete live maturities; empty account has no maturity clock');
+  if (borosComplete && boros.length && !clockLegs.length) {
+    metrics['rollover.days_to_maturity'].applicability = 'NA';
+    metrics['rollover.days_to_maturity'].reason = `Only sub-minimum legs remain (each at or below $${MIN_ORDER_VALUE_USD}); nothing is executable, so there is no rollover clock`;
+  }
   const complete = Boolean(account && perpsComplete && borosComplete && poolComplete && settlementComplete
     && settlementUsdComplete && borosPnl !== null && borosEquity !== null && gatePnl !== null && residual !== null);
   put('data.coverage_complete', complete, seenAt, true, 'Incomplete ETH/BTC account / collateral pool evidence');

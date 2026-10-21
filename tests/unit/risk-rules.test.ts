@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contracts, evaluateRisk, rules, type MetricEvidence, type RiskScope } from '../../web/src/lib/risk';
+import { contracts, evaluateRisk, materialBorosLeg, MIN_ORDER_VALUE_USD, rules, type MetricEvidence, type RiskScope } from '../../web/src/lib/risk';
 
 const scope: RiskScope = { credentialId: 'account-a', address: '0x' + '1'.repeat(40), accountId: 0, pool: 'ETH-cross' };
 const now = 1800000000;
@@ -48,5 +48,31 @@ describe('Risk catalog evaluation', () => {
     for (const extra of [{ value: 0 }, { observedAt: now + 1 }, { observedAt: now - 3601 }, { unit: 'USD' }, { scope: { ...scope, credentialId: 'other' } }]) expect(run(extra).status).toBe('UNKNOWN');
     const unsafeMinimum = evidence(.1, { unit: 'ratio', lowerBound: true, complete: false });
     expect(evaluateRisk(scope, { 'gate.im_coverage': unsafeMinimum }, now).checks.find(c => c.id === 'gate.im_coverage')?.status).toBe('UNKNOWN');
+  });
+});
+
+describe('Boros minimum order value', () => {
+  /**
+   * The venue prices an order with its own collateral quote, so a USDT quote a
+   * hair under $1 makes 10 units worth $9.998 and the order comes back "Order
+   * value must be greater than 10 USD". A leg exactly at the floor is therefore
+   * as un-orderable as one under it, and must not own the rollover clock.
+   */
+  it('counts a leg at the floor itself as dust', () => {
+    expect(materialBorosLeg({ notionalUsd: MIN_ORDER_VALUE_USD - 0.01 })).toBe(false);
+    expect(materialBorosLeg({ notionalUsd: MIN_ORDER_VALUE_USD })).toBe(false);
+    expect(materialBorosLeg({ notionalUsd: MIN_ORDER_VALUE_USD + 0.001 })).toBe(true);
+  });
+  it('keeps a leg it cannot size material, so nothing big hides behind an unknown', () => {
+    for (const notionalUsd of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY] as const) {
+      expect(materialBorosLeg({ notionalUsd })).toBe(true);
+    }
+    expect(materialBorosLeg({})).toBe(true);
+  });
+  it('has exactly one definition, shared with the confirm-time blocker', async () => {
+    // A second copy in boros/pair.ts is how the risk exemption and the order
+    // floor drifted apart before: one used `<`, the other `<=`.
+    const pair = await import('../../src/core/boros/pair');
+    expect('MIN_ORDER_VALUE_USD' in pair).toBe(false);
   });
 });

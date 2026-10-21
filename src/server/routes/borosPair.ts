@@ -65,13 +65,13 @@ import {
   simulateBorosPair,
   DEFAULT_SLIPPAGE_APR,
   MAX_SLIPPAGE_APR,
-  MIN_ORDER_VALUE_USD,
   type BorosLegDirection,
   type BorosMarginBucket,
   type BorosPairAccountState,
   type BorosPairLegInput,
   type PairIntent,
 } from '../../core/boros/pair';
+import { MIN_ORDER_VALUE_USD } from '../../core/risk';
 import { CoreError } from '../../core/errors';
 import { collateralView } from '../../core/boros/collateral';
 import type { AppDeps } from '../app';

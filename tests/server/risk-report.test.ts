@@ -153,6 +153,24 @@ describe('read-only shared Risk report', () => {
     expect(metric(r, 'hedge.quantity_verified').value).toBe(false);
     expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('CRITICAL');
   });
+  it('never lets a sub-minimum dust leg own the rollover clock', async () => {
+    const f = await fixture(), s = f.snapshots;
+    s.asset.risk.positions.push({ ...s.asset.risk.positions[0], marketId: 196, sizeToken: .0008313, sizeBase: '0.0008313',
+      maturity: now + 9 * 86400, mtmUsd: 0, mtmUsdExact: '0', notionalUsd: 1.98, notionalUsdExact: '1.98' });
+    const r = await readReport(f);
+    expect(metric(r, 'rollover.days_to_maturity').value).toBeCloseTo(80, 6);
+    expect(r.checks.find((c: any) => c.id === 'rollover.days_to_maturity').status).toBe('OK');
+    expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('OK');
+  });
+  it('reports no rollover clock when only dust remains', async () => {
+    const f = await fixture(), s = f.snapshots;
+    // Exactly the minimum order value: the venue rejects that size too (its own
+    // collateral quote makes $10 of USDT worth $9.998), so it must count as dust.
+    s.asset.risk.positions.forEach((p: any) => { p.notionalUsd = 10; p.maturity = now + 9 * 86400; });
+    const r = await readReport(f);
+    expect(metric(r, 'rollover.days_to_maturity')).toMatchObject({ value: null, applicability: 'NA', complete: true });
+    expect(r.checks.find((c: any) => c.id === 'rollover.days_to_maturity').status).toBe('OK');
+  });
   it.each([
     ['3.003', 'OK'], ['3.003000000000000001', 'WARNING'],
     ['3.03', 'WARNING'], ['3.03000000000000001', 'CRITICAL'],

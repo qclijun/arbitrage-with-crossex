@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './app';
 import { sameRiskTerminal } from './riskTerminal';
-import { contracts, type MetricEvidence, type RiskScope } from '../core/risk';
+import { contracts, materialBorosLeg, MIN_ORDER_VALUE_USD, type MetricEvidence, type RiskScope } from '../core/risk';
 import type { AssetViewResponse } from '../../web/src/api/types';
 
 import { rolloverWatchProfile as profile, watchProgress, watchPreview, watchRequest, nextWatchProbe,
@@ -94,6 +94,24 @@ export async function rolloverEvidence(app: FastifyInstance, deps: AppDeps, scop
       for (const id of ids.filter(id => !['rollover.roll_path', 'rollover.remaining_eth', 'rollover.rolled_eth'].includes(id))) {
         metrics[id] = { ...metrics[id], value: null, applicability: 'NA', complete: true, observedAt: risk.observedAt / 1000,
           evidence: 'Complete positions prove no remaining old legs; no rollover preview is required', reason: 'No remaining old legs' };
+      }
+      return metrics;
+    }
+    // Dust: every old leg's own notional is at or below the venue's minimum order
+    // value, so no batch of any size can be previewed — the venue takes nothing at
+    // that size. Demanding a batch here would page forever.
+    const oldLegs = profile.legs.map(l => ({ notionalUsd: risk.positions.find(p => p.marketId === l.marketId)?.notionalUsd ?? null }));
+    const maxLegUsd = oldLegs.every(leg => !materialBorosLeg(leg))
+      ? oldLegs.reduce<number>((max, leg) => typeof leg.notionalUsd === 'number' && leg.notionalUsd > max ? leg.notionalUsd : max, 0)
+      : null;
+    if (maxLegUsd !== null) {
+      put('rollover.roll_path', 'UNKNOWN', risk.observedAt / 1000, [
+        { label: 'Remaining old / rolled new', value: `${progress.remaining} / ${progress.rolled}`, unit: 'ETH per venue' },
+        { label: 'Dust remainder', value: `Largest remaining leg ≈ $${maxLegUsd.toFixed(2)} per venue, at or below the $${MIN_ORDER_VALUE_USD} minimum order value; nothing is executable and it settles at maturity`, unit: '' },
+      ]);
+      for (const id of ids.filter(id => !['rollover.roll_path', 'rollover.remaining_eth', 'rollover.rolled_eth'].includes(id))) {
+        metrics[id] = { ...metrics[id], value: null, applicability: 'NA', complete: true, observedAt: risk.observedAt / 1000,
+          evidence: 'Complete positions show a sub-minimum remainder; no batch preview applies', reason: 'Remaining size is dust at or below the minimum order value' };
       }
       return metrics;
     }

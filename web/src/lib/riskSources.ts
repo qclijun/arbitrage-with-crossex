@@ -2,7 +2,7 @@ import type { AccountInterest, AssetViewResponse, BorosCollateralResponse, Cross
 import { readEvidence, type ReadEvidence } from '../api/client';
 import { gateNumber, liquidationLines } from './liquidation';
 import { deriveAsset, pairMaturityProfit } from '../panels/assets/assetModel';
-import { contracts, fundingGapFingerprint, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
+import { contracts, fundingGapFingerprint, materialBorosLeg, MIN_ORDER_VALUE_USD, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
 import { accountRiskMeasurements } from './accountRiskSources';
 
 export interface RiskRead<T> { data?: T; isError?: boolean; isPending?: boolean; isPlaceholderData?: boolean }
@@ -128,9 +128,15 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   const borosComplete = Boolean(assetScopeValid && risk?.positionsComplete && boros.every(b => b.marketAcc.toLowerCase() === expectedPool && finite(b.sizeToken) && b.sizeToken > 0 && finite(b.marketId) && finite(b.maturity) && b.venue));
   const observed = asset?.observedAt ?? null;
   let days: number | null = null;
-  if (borosComplete && boros.length) days = (Math.min(...boros.map(b => b.maturity!)) - now) / 86400;
+  // A sub-minimum dust leg cannot be rolled, so it must not own the maturity clock.
+  const clockLegs = boros.filter(materialBorosLeg);
+  if (borosComplete && clockLegs.length) days = (Math.min(...clockLegs.map(b => b.maturity!)) - now) / 86400;
   put('rollover.days_to_maturity', days, 'Complete actual ETH cross-pool positions and market maturities', observed, borosComplete,
     borosComplete && !boros.length ? 'Verified no ETH funding positions; no maturity clock' : 'Missing/partial positions or unsupported subaccount');
+  if (borosComplete && boros.length && !clockLegs.length) {
+    metrics['rollover.days_to_maturity'].applicability = 'NA';
+    metrics['rollover.days_to_maturity'].reason = `Only sub-minimum legs remain (each at or below $${MIN_ORDER_VALUE_USD}); nothing is executable, so there is no rollover clock`;
+  }
   const settlement = assetScopeValid ? risk!.settlement : null;
   if (settlement) {
     const t = settlement.throughSec;

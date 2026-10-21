@@ -60,6 +60,30 @@ export interface RiskCheck {
 export const rules = catalog as RiskRule[];
 export const contracts = metricContracts as Record<string, MetricContract>;
 export const FUNDING_GAP_MIN_USD = 10;
+/**
+ * Boros rejects orders worth this much or less (`DEFAULT_MIN_ORDER_VALUE` in the
+ * backend's trade.service), so a leg at this size can only settle.
+ *
+ * The BOUNDARY is rejected too, not just what is under it: the venue prices an
+ * order with its own collateral quote, and a USDT quote a hair under $1 makes 10
+ * units worth $9.998 — observed live, a 10-unit pair came back "Order value must
+ * be greater than 10 USD". Treating exactly $10 as executable would leave a leg
+ * we cannot roll, top up or close looking executable, which is precisely the
+ * noise the dust exemption exists to remove.
+ *
+ * Single definition: `src/core/boros/pair.ts` imports this one so the confirm
+ * blocker and the risk exemption can never disagree about the boundary.
+ */
+export const MIN_ORDER_VALUE_USD = 10;
+/**
+ * Dust is a leg whose own notional is at or below the minimum executable order
+ * value: it cannot be rolled, topped up or closed on the venue, it only settles
+ * at maturity. Unknown notional stays material — never hide a leg we cannot size.
+ */
+export function materialBorosLeg(leg: { notionalUsd?: number | null }): boolean {
+  const notional = leg.notionalUsd;
+  return !(typeof notional === 'number' && Number.isFinite(notional) && notional <= MIN_ORDER_VALUE_USD);
+}
 export function fundingQuantityVerified(ratio: number, unmatched: boolean, directionMatch: boolean,
   conditions = rules.find(r => r.id === 'hedge.hl_size_gap_eth')!.account!.conditions): boolean {
   return !unmatched && directionMatch && !conditions.some(([id, op, threshold]) =>
@@ -109,7 +133,7 @@ export function validMetric(value: unknown, contract: MetricContract): boolean {
 }
 export function validateEvidence(id: string, entry: MetricEvidence, scope: RiskScope, now: number): string | null {
   const contract = contracts[id];
-  const na = (id === 'boros.buffer_runway_days' || ['rollover.next_net_apr', 'rollover.depth_coverage_ratio',
+  const na = (id === 'boros.buffer_runway_days' || ['rollover.days_to_maturity', 'rollover.next_net_apr', 'rollover.depth_coverage_ratio',
     'rollover.atomic_batch_ready', 'rollover.atomic_margin_need_usd', 'rollover.atomic_available_after_usd',
     'rollover.atomic_margin_shortfall_usd', 'rollover.execution_admission', 'rollover.full_batch_ready', 'rollover.batch_size_eth'].includes(id))
     && entry.applicability === 'NA' && entry.value === null;
