@@ -40,4 +40,25 @@ python3 scripts/risk_report.py --json
 
 按实际触发的阈值解释结果，不把初始保证金预警线当作交易所强平线。避免仅凭单腿浮亏或杠杆倍数判定整个对冲组合的风险。
 
+## 收益归因（问了"到底赚不赚钱"时）
+
+风险判定之外，若要回答"Boros 那笔流出是不是成本""这个仓位实际收益多少"，用只读脚本把两端的已实现收付拆开：
+
+```bash
+yarn -s attribute:carry                              # 默认 24h / 72h / 168h
+yarn -s attribute:carry --equity 3813                # 追加折权益年化
+yarn -s attribute:carry --hours 24 --json            # 单窗口 + 结构化
+```
+
+口径必须讲清：
+
+- 资金费来自 CrossEx 账户流水（`listCrossexAccountBook`）：CROSSEX 腿是付方、HYPERLIQUID 腿是收方，净额才是结果，不要只报单边。
+- Boros 侧读 `data/boros-ledger-<root>.json` 的 `settlementToken`，它已含费用，**不得二次扣费**。
+- USDT/USDC 按 1:1；ETH/BTC 用 Gate 现货最新价，与风险报告（Boros 抵押品价）会有小数级差异，属正常。
+- `TRANSFER_IN/OUT` 是本金移动，脚本已排除，报数时不要算成收益。
+- 退出码 0 正常、2 存在覆盖缺口（看输出里的 ⚠）、1 查询失败。
+
+不要用单日 Boros 结算给成本定性：它在正负之间切换，必须并列多窗口。折权益年化与折名义年化相差一个杠杆倍数，报数时指明用的是哪个。
+
 范围是查询和报告；交易、转账、授权、测试通知及服务操作需要用户另行提出。
+

@@ -23,6 +23,7 @@
     "stop": "bash scripts/stop.sh",
     "check:size": "node scripts/check-file-size.mjs --staged",
     "check:size:all": "node scripts/check-file-size.mjs --all",
+    "attribute:carry": "tsx scripts/attribute_carry.ts",
     "prepare": "git config core.hooksPath .githooks || true",
     "verify": "tsc --noEmit && node scripts/check-file-size.mjs --all && yarn test && yarn --cwd web typecheck && yarn --cwd web test"
   },
