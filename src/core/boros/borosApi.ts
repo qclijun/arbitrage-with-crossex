@@ -49,7 +49,6 @@ import { BOROS_NETWORK } from '../../../web/src/lib/borosNetwork';
 import { keccak256, formatUnits, parseUnits, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { CoreError } from '../errors';
-import type { BorosLegDirection } from './pair';
 import {
   classifyLegFailure,
   describeLegFailure,
