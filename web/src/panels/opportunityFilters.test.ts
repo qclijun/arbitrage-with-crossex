@@ -26,6 +26,7 @@ import {
   toRows,
   type OpportunityFilters,
 } from './opportunityFilters';
+import { heldPerpsOf } from './heldPerps';
 
 /** Distinct id per (side, venue) — deriving ids from the venue NAME's length
  * collapsed two venues of equal length onto one id, and the two market ids are
@@ -120,6 +121,42 @@ describe('toRows', () => {
     expect(rows[0].asset).toBe('ETH');
     expect(rows[0].days).toBe(30);
     expect(rows[0].key).toContain(String(rows[0].pair.borosLegs[0].marketId));
+  });
+
+  it('keeps a spread and its two singles as two rows, each tagged and counted on its own', () => {
+    // ADR 0002: the same venues, asset and maturity on two routes.
+    const singles = pair(0.05, 'HYPERLIQUID', 'GATE');
+    const spread = pair(0.04, 'Hyperliquid', 'GATE', {
+      borosLegs: [
+        makeOpportunityBorosLeg({ marketId: 59, venue: 'HL-GATE', spreadVenues: ['HYPERLIQUID', 'GATE'] }),
+      ],
+    });
+    const held = heldPerpsOf([
+      {
+        base: 'ETH',
+        perps: [
+          { venue: 'HYPERLIQUID', side: 'SHORT' },
+          { venue: 'GATE', side: 'LONG' },
+        ],
+        boros: [
+          { venue: 'HYPERLIQUID', maturity: OPP_MATURITY - 86_400 },
+          { venue: 'GATE', maturity: OPP_MATURITY - 86_400 },
+        ],
+      },
+    ]);
+    const rows = toRows([makeOpportunityGroup({ pairs: [singles, spread] })], undefined, {
+      held,
+      notionalUsd: OPP_NOTIONAL,
+    });
+
+    expect(rows.map((r) => r.pair)).toEqual([singles, spread]);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    expect(rows.map((r) => r.held)).toEqual(['rollover', 'rollover']);
+    const venues = facets(rows, filters()).venues.map((v) => [v.value, v.count]);
+    expect(venues).toEqual([
+      ['GATE', 2],
+      ['HYPERLIQUID', 2],
+    ]);
   });
 
   it('keys the asset on the cohort underlying, never a leg ticker', () => {

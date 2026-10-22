@@ -5,6 +5,8 @@ import {
   makeOpportunitiesResult,
   makeOpportunityBorosLeg,
   makeOpportunityGroup,
+  makeOpportunityLeg,
+  makeOpportunityPair,
   makeSpreadOpportunityPair,
   opportunitiesHandler,
   SPREAD_OPP_MATURITY,
@@ -12,11 +14,12 @@ import {
 } from '../test/fixtures';
 import { server } from '../test/server';
 import { renderWithClient } from '../test/utils';
+import { useTradeFlow } from '../trade/TradeFlow';
 import { OpportunitiesPanel } from './OpportunitiesPanel';
 
 const toggles = () => screen.getAllByRole('button', { name: /^(Show|Hide) details for/ });
 
-const spreadResult = (pair = makeSpreadOpportunityPair()) =>
+const spreadResult = (...pairs: ReturnType<typeof makeSpreadOpportunityPair>[]) =>
   makeOpportunitiesResult({
     groups: [
       makeOpportunityGroup({
@@ -25,7 +28,7 @@ const spreadResult = (pair = makeSpreadOpportunityPair()) =>
         collateralPriceUsd: 1900,
         maturity: SPREAD_OPP_MATURITY,
         secondsToMaturity: SPREAD_OPP_MATURITY - SPREAD_OPP_NOW,
-        pairs: [pair],
+        pairs: pairs.length ? pairs : [makeSpreadOpportunityPair()],
       }),
     ],
   });
@@ -93,5 +96,74 @@ describe('OpportunitiesPanel — spread market', () => {
     expect(screen.getAllByText(/ Fixed$/)).toHaveLength(2);
     expect(screen.getAllByTitle(/^Modelled minimum capital .+ across the four legs$/)).toHaveLength(2);
     expect(screen.getByTitle('The minimum capital this trade posts across the four legs.')).toBeInTheDocument();
+  });
+});
+
+/** The same HL/GATE ETH cohort on its two single markets — the four-leg route
+ * ADR 0002 lists beside the spread. Its capital APR sits above the spread's. */
+const singlesPair = () => {
+  const spread = makeSpreadOpportunityPair();
+  const base = makeOpportunityPair();
+  return makeOpportunityPair({
+    longLeg: makeOpportunityLeg({ venue: 'GATE', crossexVenue: 'GATE', crossexSymbol: 'GATE_FUTURE_ETH_USDT' }),
+    borosLegs: [
+      { ...base.borosLegs[0], marketId: 51 },
+      { ...base.borosLegs[1], marketId: 60, venue: 'GATE' },
+    ],
+    secondsToMaturity: spread.secondsToMaturity,
+    netFixedAprOnCapital: (spread.netFixedAprOnCapital as number) + 0.01,
+  });
+};
+
+const wizardSeen: Array<Record<string, unknown>> = [];
+function WizardProbe() {
+  const w = useTradeFlow().wizard as unknown as Record<string, unknown> | null;
+  if (w && wizardSeen.at(-1) !== w) wizardSeen.push(w);
+  return null;
+}
+
+const cards = () => screen.getAllByRole('button', { name: /^Open this strategy — / });
+
+describe('OpportunitiesPanel — spread and singles side by side', () => {
+  it('lists both routes as their own cards, ranked on capital and labelled by leg count', async () => {
+    server.use(opportunitiesHandler(spreadResult(makeSpreadOpportunityPair(), singlesPair())));
+    renderWithClient(<OpportunitiesPanel />);
+    await waitFor(() => expect(cards()).toHaveLength(2));
+
+    // The four-leg route out-earns the spread here, so it leads.
+    expect(cards()[0]).toHaveAccessibleName(/4 legs/);
+    expect(cards()[1]).toHaveAccessibleName(/3 legs/);
+    const [four, three] = screen.getAllByText(/^[34] legs$/);
+    expect(four).toHaveTextContent('4 legs');
+    expect(three).toHaveTextContent('3 legs');
+
+    await userEvent.click(toggles()[0]);
+    await userEvent.click(toggles()[1]);
+    expect(screen.getByText(/four legs ·/)).toBeInTheDocument();
+    expect(screen.getByText(/three legs ·/)).toBeInTheDocument();
+  });
+
+  it.each([
+    [0, 'singles'],
+    [1, 'spread'],
+  ] as const)('card %i opens the wizard on its own route (%s)', async (index, route) => {
+    server.use(opportunitiesHandler(spreadResult(makeSpreadOpportunityPair(), singlesPair())));
+    wizardSeen.length = 0;
+    renderWithClient(
+      <>
+        <OpportunitiesPanel />
+        <WizardProbe />
+      </>,
+    );
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    await userEvent.click(cards()[index]);
+
+    await waitFor(() => expect(wizardSeen).toHaveLength(1));
+    expect(wizardSeen[0]).toMatchObject({
+      borosRoute: route,
+      borosShortVenue: 'HYPERLIQUID',
+      borosLongVenue: 'GATE',
+      maturity: SPREAD_OPP_MATURITY,
+    });
   });
 });

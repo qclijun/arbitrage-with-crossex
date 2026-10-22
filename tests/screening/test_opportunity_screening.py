@@ -107,6 +107,28 @@ class ScreeningTest(unittest.TestCase):
                 self.assertEqual(report['candidates'], [])
                 self.assertEqual(report['excluded'][0]['status'], 'UNKNOWN')
 
+    def with_spread_beside(self, envelope):
+        # ADR 0002: the API lists a pair's spread beside its two single markets.
+        group = envelope['data']['groups'][0]
+        spread = copy.deepcopy(group['pairs'][0])
+        spread['borosLegs'] = [dict(marketId=9, side='SHORT', venue='OKX-BINANCE', spreadVenues=['OKX', 'BINANCE'], execApr=.06)]
+        spread['capital']['borosIms'] = [dict(marketId=9, imUsd=50)]
+        group['pairs'].append(spread)
+        return envelope
+
+    def test_four_leg_candidate_beside_a_spread_is_screened_on_its_own(self):
+        code, report = self.run_scan(self.with_spread_beside(self.current_response()),
+                                     self.with_spread_beside(self.current_response('roll')))
+        self.assertEqual([(row['shortLeg']['marketId'], row['longLeg']['marketId']) for row in report['candidates']], [(1, 2)])
+        self.assertEqual(report['candidates'][0]['roll']['status'], 'VALID')
+        self.assertEqual(report['candidates'][0]['roll']['costs']['totalUsd'], 8)
+        reasons = [r for item in report['excluded'] for r in item['reasons']]
+        self.assertEqual(len(report['excluded']), 2)
+        self.assertIn('unsupported or incomplete Boros market plan for two-market screening', reasons)
+        self.assertNotIn('duplicate combination identity', reasons)
+        # The spread itself stays outside this model, as before.
+        self.assertEqual(code, 2)
+
     def test_assumed_fees_are_reference_only_unknown(self):
         close = response()
         close['data']['warnings'] = ['Perp fees assume the VIP0 Gate CrossEx schedule — secret synthetic-token']

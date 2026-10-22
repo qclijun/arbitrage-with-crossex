@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
+import nock from 'nock';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpportunitiesResult, OpportunityPair } from '../../src/core/boros/opportunities';
 import { raw } from '../helpers/boros-fixtures';
@@ -104,13 +105,37 @@ async function opportunities(
   return res.json().data as OpportunitiesResult;
 }
 
+/** Deep, tight HL and Gate perp books, so both routes price a net APR on capital. */
+function mockPerpBooks(): void {
+  nock('https://api.hyperliquid.xyz')
+    .persist()
+    .post('/info')
+    .reply(200, { levels: [[{ px: '2571', sz: '5000' }], [{ px: '2572', sz: '5000' }]] });
+  nock('https://api.gateio.ws')
+    .persist()
+    .get(/\/api\/v4\/futures\/usdt\/contracts\/.+/)
+    .reply(200, { quanto_multiplier: '0.01' });
+  nock('https://api.gateio.ws')
+    .persist()
+    .get(/\/api\/v4\/futures\/usdt\/order_book/)
+    .reply(200, { bids: [{ p: '2571', s: 500_000 }], asks: [{ p: '2572', s: 500_000 }] });
+}
+
 const pairsAt = (data: OpportunitiesResult, maturity: number, tokenId = ETH): OpportunityPair[] =>
   data.groups.filter((g) => g.maturity === maturity && g.tokenId === tokenId).flatMap((g) => g.pairs);
 
-const hlGatePair = (data: OpportunitiesResult, maturity: number, tokenId = ETH): OpportunityPair | undefined =>
-  pairsAt(data, maturity, tokenId).find((p) =>
+const hlGatePairs = (data: OpportunitiesResult, maturity: number, tokenId = ETH): OpportunityPair[] =>
+  pairsAt(data, maturity, tokenId).filter((p) =>
     [p.shortLeg.crossexVenue, p.longLeg.crossexVenue].sort().join('/') === 'GATE/HYPERLIQUID',
   );
+
+/** The HL/GATE pair on its spread (three legs). */
+const hlGatePair = (data: OpportunitiesResult, maturity: number, tokenId = ETH): OpportunityPair | undefined =>
+  hlGatePairs(data, maturity, tokenId).find((p) => p.borosLegs.some((l) => l.spreadVenues !== null));
+
+/** The HL/GATE pair on its two single markets (four legs). */
+const hlGateSingles = (data: OpportunitiesResult, maturity: number, tokenId = ETH): OpportunityPair | undefined =>
+  hlGatePairs(data, maturity, tokenId).find((p) => p.borosLegs.every((l) => l.spreadVenues === null));
 
 describe('GET /api/opportunities with spread markets', () => {
   it('spread is not a venue', async () => {
@@ -121,7 +146,7 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(warnings.filter((w) => w.toLowerCase().includes('hyperliquid-gate'))).toEqual([]);
   });
 
-  it('pair uses the spread', async () => {
+  it('the spread route trades one Boros market', async () => {
     const data = await opportunities(fixture.results);
     const pair = hlGatePair(data, NOV_27);
     expect(pair?.shortLeg.venue).toBe('Hyperliquid');
@@ -136,8 +161,27 @@ describe('GET /api/opportunities with spread markets', () => {
     });
     expect(pair?.grossSpreadApr).toBeCloseTo(0.060003169697689526, 12);
     expect(pair?.execSpreadApr).toBeCloseTo(0.0599, 12);
-    const ids = pairsAt(data, NOV_27).map((p) => p.borosLegs.map((l) => l.marketId).sort());
-    expect(ids).not.toContainEqual([51, 60]);
+  });
+
+  it('ETH 11-27 HL/GATE lists the spread and the two singles side by side, ranked on capital', async () => {
+    mockPerpBooks();
+    const data = await opportunities(fixture.results);
+    const routes = hlGatePairs(data, NOV_27);
+    expect(routes).toHaveLength(2);
+    const singles = hlGateSingles(data, NOV_27)!;
+    const spread = hlGatePair(data, NOV_27)!;
+    expect(singles.shortLeg).toMatchObject({ venue: 'Hyperliquid', crossexVenue: 'HYPERLIQUID', crossexSymbol: 'HYPERLIQUID_FUTURE_ETH_USDC' });
+    expect(singles.longLeg).toMatchObject({ crossexVenue: 'GATE', crossexSymbol: 'GATE_FUTURE_ETH_USDT' });
+    expect(singles.borosLegs.map((l) => [l.marketId, l.side, l.spreadVenues])).toEqual([
+      [51, 'SHORT', null],
+      [60, 'LONG', null],
+    ]);
+    // Each route prices its own Boros fees and margin: two markets vs one.
+    expect(singles.capital.borosIms.map((l) => l.marketId)).toEqual([51, 60]);
+    expect(spread.capital.borosIms.map((l) => l.marketId)).toEqual([59]);
+    expect(spread.netFixedAprOnCapital).toBeGreaterThan(singles.netFixedAprOnCapital!);
+    // At the fixture's rates the spread out-earns the singles on capital, so it ranks first.
+    expect(pairsAt(data, NOV_27).map((p) => p.borosLegs.map((l) => l.marketId))).toEqual([[59], [51, 60]]);
   });
 
   it('direction follows the perps', async () => {
@@ -195,7 +239,7 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(pair?.grossSpreadApr).toBeCloseTo(0.03, 12);
   });
 
-  it('a spread on any two CrossEx venues takes their pair', async () => {
+  it('a spread on any two CrossEx venues lists beside their singles', async () => {
     const results = [
       ...fixture.results,
       withRates(onPlatform(rowOf(64), 901, 'OKX'), 0.08),
@@ -208,8 +252,8 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(pair?.borosLegs[0]).toMatchObject({ side: 'SHORT', venue: 'OKX-LIGHTER', spreadVenues: ['OKX', 'LIGHTER'] });
     expect(pair?.shortLeg.crossexVenue).toBe('OKX');
     expect(pair?.longLeg).toMatchObject({ crossexVenue: 'LIGHTER', crossexSymbol: 'LIGHTER_FUTURE_ETH_USDC' });
-    const ids = pairsAt(data, DEC_25).map((p) => p.borosLegs.map((l) => l.marketId).sort());
-    expect(ids).not.toContainEqual([901, 902]);
+    const ids = pairsAt(data, DEC_25).map((p) => p.borosLegs.map((l) => l.marketId));
+    expect(ids).toContainEqual([901, 902]);
   });
 
   it('a spread listed Gate first, priced Gate − HL, keeps the same two perps on the other Boros side', async () => {
@@ -231,7 +275,7 @@ describe('GET /api/opportunities with spread markets', () => {
       r.marketId === 59 ? { ...r, metadata: { ...(r.metadata as RawMarket), isUiWhitelisted: false } } : r,
     );
     const data = await opportunities(results);
-    expect(hlGatePair(data, NOV_27)?.borosLegs.map((l) => l.marketId)).toEqual([51, 60]);
+    expect(hlGatePairs(data, NOV_27).map((p) => p.borosLegs.map((l) => l.marketId))).toEqual([[51, 60]]);
   });
 
   it('a spread on a venue CrossEx does not list stays out', async () => {
@@ -240,11 +284,12 @@ describe('GET /api/opportunities with spread markets', () => {
     expect(data.groups.flatMap((g) => g.pairs.flatMap((p) => p.borosLegs.map((l) => l.marketId)))).not.toContain(903);
   });
 
-  it('a paused or close-only spread gives the pair back to the two singles', async () => {
+  it('a paused or close-only spread leaves the pair to the two singles alone', async () => {
     for (const status of [0, 1]) {
       const results = fixture.results.map((r) => (r.marketId === 59 ? withStatus(r, status) : r));
       const data = await opportunities(results);
-      const pair = hlGatePair(data, NOV_27);
+      expect(hlGatePairs(data, NOV_27)).toHaveLength(1);
+      const pair = hlGateSingles(data, NOV_27);
       expect(pair?.borosLegs.map((l) => [l.marketId, l.spreadVenues])).toEqual([
         [51, null],
         [60, null],
@@ -255,13 +300,12 @@ describe('GET /api/opportunities with spread markets', () => {
     }
   });
 
-  it('a spread at exactly 0 is still the pair, on its first-venue-short side', async () => {
+  it('a spread at exactly 0 still lists, on its first-venue-short side', async () => {
     const results = fixture.results.map((r) => (r.marketId === 59 ? withRates(r, 0) : r));
     const data = await opportunities(results, { 59: book(-1, 1) });
     const pair = hlGatePair(data, NOV_27);
     expect(pair?.borosLegs.map((l) => [l.marketId, l.side])).toEqual([[59, 'SHORT']]);
     expect(pair?.shortLeg.crossexVenue).toBe('HYPERLIQUID');
-    expect(pairsAt(data, NOV_27).flatMap((p) => p.borosLegs.map((l) => l.marketId))).not.toContain(51);
   });
 
   it('thin book still uses the spread', async () => {

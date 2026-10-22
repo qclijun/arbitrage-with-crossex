@@ -506,6 +506,9 @@ const OpportunityCard = memo(function OpportunityCard({
   const rebateLegs = rebateChip ? rebateLegsNote(rebateChip, rebatedLegs) : '';
   const chips = cardChips(pair);
   const spreadLeg = pair.borosLegs.find((leg) => leg.spreadVenues !== null) ?? null;
+  // A pair's spread and its two singles can both be listed (ADR 0002), so
+  // every card names its route; the CTA's name carries it to tell them apart.
+  const legsLabel = spreadLeg ? '3 legs' : '4 legs';
   const shortBoros = pair.borosLegs.find((leg) => leg.side === 'SHORT');
   const longBoros = pair.borosLegs.find((leg) => leg.side === 'LONG');
   // Only the PAIR's own reasons — they explain this card's own numbers. The
@@ -587,6 +590,17 @@ const OpportunityCard = memo(function OpportunityCard({
         </span>
         <SideVenue side="SHORT" venue={pair.shortLeg.venue} />
         <SideVenue side="LONG" venue={pair.longLeg.venue} />
+        <Chip
+          sm
+          tone="neutral"
+          title={
+            spreadLeg?.spreadVenues
+              ? `Boros ${spreadName(base, spreadLeg.spreadVenues)} market plus the two perps`
+              : 'Two Boros single markets plus the two perps'
+          }
+        >
+          {legsLabel}
+        </Chip>
         {/* On the LEFT with the trade's identity, not beside "matures": the
             date is the band's one right-hand fact. No separate "rollover
             opportunity" chip — a box that starts ticked says the same thing
@@ -682,7 +696,7 @@ const OpportunityCard = memo(function OpportunityCard({
             type="button"
               className="text-[12px] text-ink-300 underline decoration-ink-400 decoration-dotted underline-offset-[3px] transition-colors hover:text-ink-50 hover:decoration-ink-200 disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50 disabled:hover:text-ink-300"
               aria-expanded={open}
-              aria-label={`${open ? 'Hide' : 'Show'} details for ${base} short ${prettyVenue(pair.shortLeg.venue)} / long ${prettyVenue(pair.longLeg.venue)}, ${group.collateral}-margined ${fmtDateLocal(group.maturity)}`}
+              aria-label={`${open ? 'Hide' : 'Show'} details for ${base} short ${prettyVenue(pair.shortLeg.venue)} / long ${prettyVenue(pair.longLeg.venue)}, ${legsLabel}, ${group.collateral}-margined ${fmtDateLocal(group.maturity)}`}
               disabled={detailsDisabled}
               title={detailsTitle}
               onClick={() => setOpen((v) => !v)}
@@ -758,7 +772,7 @@ const OpportunityCard = memo(function OpportunityCard({
             <button
               type="button"
               className="btn btn-primary px-4 font-semibold"
-              aria-label={`Open this strategy — ${base} short ${prettyVenue(pair.shortLeg.venue)} / long ${prettyVenue(pair.longLeg.venue)}, ${group.collateral}-margined ${fmtDateLocal(group.maturity)}`}
+              aria-label={`Open this strategy — ${base} short ${prettyVenue(pair.shortLeg.venue)} / long ${prettyVenue(pair.longLeg.venue)}, ${legsLabel}, ${group.collateral}-margined ${fmtDateLocal(group.maturity)}`}
               disabled={executeDisabled}
               title={executeTitle}
               onClick={() =>
@@ -1099,6 +1113,9 @@ export function OpportunitiesPanel() {
         maturity: maturitySec,
         crossexLongVenue: pair.longLeg.crossexVenue,
         crossexShortVenue: pair.shortLeg.crossexVenue,
+        // The card's own route: a four-leg card must not be re-routed onto a
+        // spread that covers its two singles (ADR 0002).
+        borosRoute: pair.borosLegs.some((leg) => leg.spreadVenues !== null) ? 'spread' : 'singles',
         notionalUsd: pricedNotionalUsd,
         // Present only for token-margined cohorts, where the collateral IS the
         // base coin and every leg can be sized in the same unit.

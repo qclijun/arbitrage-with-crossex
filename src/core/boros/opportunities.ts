@@ -991,10 +991,8 @@ export function buildOpportunities(
         const b = tradable[j];
         if (directionApr(a, options) <= directionApr(b, options)) continue;
         if (a.row.crossexVenue === b.row.crossexVenue) continue;
-        const venues = [a.row.crossexVenue, b.row.crossexVenue];
-        // A tradable spread replaces the two singles, even with an empty book.
-        // A paused or close-only one cannot open, so the singles stand.
-        if (plan.spreads.some((m) => m.state === 'Normal' && m.spreadVenues?.every((v) => venues.includes(v)))) continue;
+        // A tradable spread covering these two venues is priced on its own
+        // below; the singles still list beside it (ADR 0002).
         const boros: BorosLegBuild[] = [
           { build: a, side: 'SHORT' },
           { build: b, side: 'LONG' },
@@ -1006,8 +1004,7 @@ export function buildOpportunities(
       const venues = build.market.spreadVenues;
       const rate = directionApr(build, options);
       if (!venues || !venues.every((v) => input.crossexVenues.has(v))) continue;
-      // A spread at exactly 0 is still the pair's one route (the singles were
-      // skipped for it), so it keeps the first-venue-short side, not no side.
+      // A spread at exactly 0 still lists, on the first-venue-short side.
       const side: SpreadSide = rate >= 0 ? 'SHORT' : 'LONG';
       const [shortVenue, longVenue] = side === 'SHORT' ? venues : [venues[1], venues[0]];
       const shortLeg = spreadPerpLeg(shortVenue, build, input);
