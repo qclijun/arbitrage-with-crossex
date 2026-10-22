@@ -1909,19 +1909,6 @@ describe('BorosPairTicket — spread ticket', () => {
     );
   });
 
-  it('offers no way to put a pair with a tradable spread on its singles', async () => {
-    server.use(...spreadHandlers(() => {}));
-    const user = userEvent.setup();
-    await pickHlGate(user);
-    await waitFor(() => expect(tradeOn()).toBeInTheDocument());
-    expect(screen.queryByRole('radiogroup', { name: 'Trade on' })).not.toBeInTheDocument();
-    expect(screen.queryByText('2 single markets')).not.toBeInTheDocument();
-    // Re-picking the same singles lands back on the spread.
-    await user.selectOptions(screen.getByLabelText('Leg A'), '209');
-    await waitFor(() => expect(tradeOn()).toBeInTheDocument());
-    expect(await screen.findByRole('button', { name: /Confirm · 1 Boros market order/ })).toBeInTheDocument();
-  });
-
   it('swaps sides on the spread, and the singles behind it follow', async () => {
     const bodies: Record<string, unknown>[] = [];
     server.use(...spreadHandlers((b) => bodies.push(b)));

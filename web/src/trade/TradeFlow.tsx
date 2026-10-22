@@ -90,9 +90,17 @@ export interface BorosOpenPrefill {
   size: number;
   /** The same leg in BASE-COIN units (the perp's own quantity). */
   sizeBase?: number;
+  /**
+   * Which route a pair opens on when a tradable spread covers its two singles
+   * (ADR 0002): 'singles' arms the two single markets. Omitted = the spread.
+   */
+  route?: BorosRoute;
   /** Monotonic — a new prefill with identical content still re-applies. */
   nonce: number;
 }
+
+/** A Boros pair on its spread market (three legs with the perps) or on its two single markets (four). */
+export type BorosRoute = 'spread' | 'singles';
 
 /**
  * Arm the SINGLE perp ticket with one leg.
@@ -131,6 +139,8 @@ export interface StrategyWizardIntent {
   borosShortVenue: string;
   /** Maturity of the Boros legs, unix seconds — see BorosOpenPrefill.maturity. */
   maturity?: number;
+  /** The card's route for the Boros legs — see BorosOpenPrefill.route. */
+  borosRoute?: BorosRoute;
   /** CrossEx venue keys for the perp legs; null = no mapped symbol there. */
   crossexLongVenue: string | null;
   crossexShortVenue: string | null;

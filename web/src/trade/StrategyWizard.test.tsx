@@ -805,3 +805,33 @@ describe('StrategyWizard — a spread open that fills in full', () => {
     expect(receipt.getByText('1.2 ETH')).toBeInTheDocument();
   }, 20_000);
 });
+
+describe('StrategyWizard — a four-leg card on a pair a spread covers', () => {
+  it('opens step 1 on the two single markets when the intent names the singles route', async () => {
+    const sent: { legs: { marketId: number }[] }[] = [];
+    const withSpread = http.get('/api/boros/pair/context', () =>
+      HttpResponse.json(
+        env({
+          markets: [market(), market({ marketId: BN_M, name: 'Binance ETH 31 Aug 2026', venue: 'BINANCE' })],
+          spreadMarkets: [market({ marketId: SPREAD_M, name: 'HL-Binance spread', venue: 'HL-Binance', spreadVenues: ['HYPERLIQUID', 'BINANCE'] })],
+          crossByToken: [{ tokenId: 3, available: 500_000 }],
+          isolatedByMarket: [],
+          defaultSlippageApr: 0.0025,
+          maxSlippageApr: 0.1,
+        }),
+      ),
+    );
+    const spy = http.post('/api/boros/pair/execute', async ({ request }) => {
+      sent.push((await request.clone().json()) as (typeof sent)[number]);
+      return undefined;
+    });
+    server.use(...tradableHandlers(CLEAN_FILL), ...symbolHandlers([ETH_GATE]));
+    server.use(withSpread, spy);
+    renderWizard({ ...WIZ, borosRoute: 'singles' });
+
+    await waitFor(() => expect(prefillsSeen[0]?.payload).toMatchObject({ route: 'singles' }));
+    await confirmPair();
+    await screen.findByRole('button', { name: /Rate locked/ }, { timeout: 4000 });
+    expect(sent.map((b) => b.legs.map((l) => l.marketId))).toEqual([[BN_M, HL_M]]);
+  }, 15_000);
+});

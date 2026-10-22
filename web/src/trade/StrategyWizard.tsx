@@ -181,6 +181,7 @@ function WizardBody({
         maturity: w.maturity,
         size: w.notionalUsd,
         sizeBase: w.sizeBase,
+        ...(w.borosRoute ? { route: w.borosRoute } : {}),
       });
     } else {
       armPerps(w.notionalUsd, w.sizeBase);

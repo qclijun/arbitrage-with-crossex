@@ -25,6 +25,9 @@ import { fmtDateShort, fmtDateUtc, fmtPct, fmtUsd, sigGrouped } from '../lib/fmt
 import { spreadName, type SpreadVenues } from '../lib/spread';
 import { SpreadName } from '../components/SpreadName';
 import { ChevronDown } from 'lucide-react';
+import { SegmentedToggle } from '../components/SegmentedToggle';
+import { FieldLabel } from './SymbolCombobox';
+import type { BorosRoute } from './TradeFlow';
 
 /** Was this leg actually sent to the venue? A not-submitted sentinel is
  * all-zero with no failure (orders.ts `notSubmitted`); a REJECTED leg has
@@ -216,6 +219,53 @@ export const marketName = (row: BorosPairMarketRow): string =>
   row.spreadVenues
     ? `${spreadName(row.base, row.spreadVenues)} ${fmtDateShort(row.maturity, { year: 'numeric', timeZone: 'UTC' })}`
     : row.name;
+
+/** A spread market by name, with its venue icons. */
+function SpreadLabel({ base, venues }: { base: string; venues: SpreadVenues }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-ink-50">
+      <SpreadIcon venues={venues} />
+      <span className="truncate">{spreadName(base, venues)}</span>
+    </span>
+  );
+}
+
+/**
+ * Where a Pair's order goes when a spread covers its two singles: the spread,
+ * or — when `onPick` is given — a choice between it and the singles (ADR 0002).
+ */
+export function TradeOn({
+  base,
+  venues,
+  route,
+  onPick,
+}: {
+  base: string;
+  venues: SpreadVenues;
+  route: BorosRoute;
+  onPick?: (next: BorosRoute) => void;
+}) {
+  const spread = <SpreadLabel base={base} venues={venues} />;
+  return (
+    <div className="flex flex-col gap-2">
+      <FieldLabel>Trade on</FieldLabel>
+      {onPick ? (
+        <SegmentedToggle<BorosRoute>
+          ariaLabel="Trade on"
+          value={route}
+          onChange={onPick}
+          fill
+          options={[
+            { value: 'spread', label: spread },
+            { value: 'singles', label: '2 single markets' },
+          ]}
+        />
+      ) : (
+        spread
+      )}
+    </div>
+  );
+}
 
 export const marketLabel = (m: BorosPairMarketRow): string =>
   `${m.name.replace(/\s+\d{1,2} [A-Za-z]{3,4} \d{4}$/, '')} · ${m.collateral || `token${m.tokenId}`}`;
