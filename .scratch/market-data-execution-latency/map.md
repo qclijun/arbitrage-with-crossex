@@ -51,6 +51,8 @@ Updated: 2026-10-16 Asia/Taipei
 
 - 2026-10-16：[07 原路径基线与报告](issues/07-baseline-and-readonly-report.md)工具已实现，被动索引既有明细并离线重放；整票保持 claimed。06 RSS 准入及真实三组只读基线未通过，冷热/排队/实际成交钟差缺证为 UNKNOWN，未解锁优化启用。见 [使用说明](../../docs/LATENCY-REPORT.md)。
 
+- 2026-10-23：[06 分段观测](issues/06-engine-latency-observation.md) resolved。RSS 台阶是 V8 新生代高水位，与观测器无关；两组固定 `--max-semi-space-size=1` 复测三组全部通过，用户接受。07 的阻塞解除，只剩真实只读采集，需要授权重启并开启观测。见 [复测报告](../../docs/validation/engine-observation-rss-2026-10-23.md)。
+
 - 2026-10-16：[08 引擎专用签名池](issues/08-engine-signed-transport-pool.md)默认关闭的有界传输与退役生命周期已实现，候选 1/4/8 完成合成本机验证。真实基线/RSS/最终连接数仍 UNKNOWN，保持 claimed；不启用或重启。见 [使用与证据](../../docs/ENGINE-SIGNED-POOL.md)。
 
 - 2026-10-16：[09 对冲依赖与缺价等待](issues/09-hedge-dependency-and-wait-report.md)默认关闭的离线实现已完成：共用纯决策判断 Maker/A clip 依赖，B 价后重新确认，等待报告沿用现有告警并有界节流。27 项新增引擎测试及双轴复审通过，Progress 保持 claimed。真实测量门禁保持 UNKNOWN；见 [说明](../../docs/HEDGE-DEPENDENCY.md)。

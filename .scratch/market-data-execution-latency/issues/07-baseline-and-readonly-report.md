@@ -37,6 +37,8 @@ Blocked by: 06
 
 2026-10-16：认领工具实现；06 的 RSS 准入未通过，保持测量阻塞。仅离线重放及被动读取既有观测文件，不启动引擎、不新增网络请求或真实写操作。
 
+2026-10-23：06 已 resolved（RSS 门禁按固定 V8 新生代复测通过，见 [复测报告](../../../docs/validation/engine-observation-rss-2026-10-23.md)），本票的阻塞解除。剩余唯一未勾选项是真实只读采集：需要用户自行或明确授权以 `ENGINE_OBSERVATION=1` 重启运行中的服务，并覆盖至少 3 组交替时段。Progress 保持 claimed。
+
 ## Implementation status
 
 2026-10-16：工具实现完成；Progress 保持 claimed，整票测量未验收。

@@ -75,6 +75,8 @@ node --expose-gc --import tsx tests/bench/engine-store-read-memory.cjs
 
 本票没有加入数据库或交易路径优化；内存验收保持 FAIL/UNKNOWN，工单不标记 resolved。
 
+2026-10-23 补充：固定 V8 新生代后的复测通过 RSS 门禁并经用户接受，见 [RSS 复测](engine-observation-rss-2026-10-23.md)。本节原始 FAIL 记录保留不变。
+
 有限测量不能证明任何未来运行都不会增长。额外结构证据为：队列/在途记录与标识缓存
 共同受 1 MiB 预算约束，缓存至多 64 KiB，单批在途、记录池数量有界，超时后停止收集并告警；
 重复不同订单的边界回归验证了共享预算、排空和零丢失。磁盘仅轮转本功能拥有的副本。

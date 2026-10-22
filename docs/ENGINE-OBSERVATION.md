@@ -116,6 +116,13 @@ yarn verify
 node --import tsx tests/bench/engine-observation.ts <pre-change-commit>
 ```
 
+For the RSS gate, run the benchmark with
+`NODE_OPTIONS=--max-semi-space-size=1` so both child configurations share a fixed
+V8 new-space size. With default flags, V8's new-space high-water mark makes both
+configurations step by ~140 MiB at random points, and the joint-stability check
+measures that instead of the collector. See the
+[2026-10-23 RSS rerun](validation/engine-observation-rss-2026-10-23.md).
+
 The performance command freezes original/observed source snapshots under `/tmp`,
 uses FakeVenue plus file-backed SQLite, initializes observation storage, warms
 200 ticks and measures 1000 ticks per configuration in each of three alternating
