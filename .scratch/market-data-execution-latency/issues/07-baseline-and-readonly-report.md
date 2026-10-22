@@ -39,6 +39,8 @@ Blocked by: 06
 
 2026-10-23：06 已 resolved（RSS 门禁按固定 V8 新生代复测通过，见 [复测报告](../../../docs/validation/engine-observation-rss-2026-10-23.md)），本票的阻塞解除。剩余唯一未勾选项是真实只读采集：需要用户自行或明确授权以 `ENGINE_OBSERVATION=1` 重启运行中的服务，并覆盖至少 3 组交替时段。Progress 保持 claimed。
 
+2026-10-23：真实采集前核对。引擎每 tick 只处理活动 deal（`src/engine/loop.ts:846` `listPairs({ activeOnly: true })`），没有活动 deal 时不发 Venue 请求，观测也不产生样本；当时 4 个 deal 均为 DONE。本票禁止为凑样本加速或制造交易，所以样本只能在用户本来就要做的计划交易（如 11-27 展期）中积累。按单个 `best` deal 约 90 秒、约 1 秒一次订单与盘口读取估算，每个时段需要约 2 个 deal 才能达到每操作 100 个成功样本，3 组约 6 个 deal。明细只保留 7 天/100 MiB，每个时段结束后应在 7 天内运行 `collect`。
+
 ## Implementation status
 
 2026-10-16：工具实现完成；Progress 保持 claimed，整票测量未验收。
