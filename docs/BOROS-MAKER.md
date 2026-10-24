@@ -2,6 +2,8 @@
 
 讨论日期：2026-10-10。本文记录设计讨论，尚未实施。
 
+> **2026-10-24 更新：** 已决定采用“一条 Maker 腿 + 补齐腿”，适用于新开仓与展期，见 [ADR 0003](adr/0003-boros-single-maker-leg-with-completion.md)；决策记录与实施工单见 `.scratch/boros-maker-rollover/`。下文为当时的讨论，保留原样。
+
 **Boros Maker 可以实现，但省下的交易费，要与等待、补腿滑点和额外 Gas 一起算。建议第一版先做“一条 Boros Maker，另一条按实际成交量 Taker 补齐”。**
 
 本文先按新开套利仓位讨论；移仓还涉及旧仓退出，需要另行设计。
