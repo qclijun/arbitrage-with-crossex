@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef } from 'react';
 import { copyReadEvidence, del, fetchJson, patchJson, postJson, putJson } from './client';
 import type { BorosLiquidityResponse } from './borosLiquidity';
+import type { FundingSpreadsResponse } from './fundingSpreads';
 import { useTabActive } from '../components/TabBar';
 import { uuid } from '../lib/uuid';
 import type {
@@ -935,6 +936,18 @@ export function useCancelTelegramLink() {
       qc.invalidateQueries({ queryKey: qk.telegram });
       qc.invalidateQueries({ queryKey: qk.telegramLink });
     },
+  });
+}
+
+/** Perp-vs-perp funding spreads across every CrossEx venue — read-only, refreshed each minute. */
+export function useFundingSpreads() {
+  const shown = useTabActive();
+  return useQuery({
+    queryKey: ['funding', 'spreads'],
+    queryFn: () => fetchJson<FundingSpreadsResponse>('/funding-spreads'),
+    enabled: (query) => canFetch(shown, query),
+    refetchInterval: shown ? 60_000 : false,
+    placeholderData: keepPreviousData,
   });
 }
 

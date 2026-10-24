@@ -26,6 +26,7 @@ const ASSET_VIEW_PATH = `/api/asset-view/${ADDRESS}`;
 const TAB_POLLS: Record<TabId, readonly string[]> = {
   opportunities: ['/api/opportunities'],
   positions: [ASSET_VIEW_PATH],
+  funding: ['/api/funding-spreads'],
   collateral: ['/api/boros/collateral'],
   liquidity: ['/api/boros/liquidity'],
   risk: ['/api/account/interest', '/api/risk/evidence', '/api/health'],

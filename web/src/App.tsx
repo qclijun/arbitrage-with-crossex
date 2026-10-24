@@ -19,6 +19,7 @@ import { BorosLiquidityPanel } from './panels/BorosLiquidityPanel';
 import { CollateralPanel } from './panels/CollateralPanel';
 import { RiskPanel } from './panels/RiskPanel';
 import { FeesPanel } from './panels/FeesPanel';
+import { FundingSpreadsPanel } from './panels/FundingSpreadsPanel';
 import { OpenOrdersPanel } from './panels/OpenOrdersPanel';
 import { OpportunitiesPanel } from './panels/OpportunitiesPanel';
 import { AssetsHome } from './panels/assets/AssetsHome';
@@ -223,6 +224,7 @@ export default function App() {
                     // Forward-looking: what to put on next, then what is on.
                     { id: 'opportunities', label: 'Opportunities', primary: true },
                     { id: 'positions', label: 'Positions', primary: true },
+                    { id: 'funding', label: 'Funding Spreads' },
                     { id: 'liquidity', label: 'Liquidity' },
                     { id: 'collateral', label: 'Collateral' },
                     { id: 'risk', label: 'Risk' },
@@ -259,6 +261,9 @@ export default function App() {
                   </TabPanel>
                   <TabPanel id="positions" active={activeTab === 'positions'}>
                     <AssetsHome />
+                  </TabPanel>
+                  <TabPanel id="funding" active={activeTab === 'funding'}>
+                    <FundingSpreadsPanel />
                   </TabPanel>
                   <TabPanel id="balances" active={activeTab === 'balances'}>
                     <BalancesPanel />

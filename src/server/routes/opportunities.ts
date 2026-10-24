@@ -119,7 +119,7 @@ function resolveHedgeSymbols(rules: RuleSymbol[]): Map<string, string> {
  * `/crossex/rule/risk_limits` need no credentials, so the market view serves the
  * real universe and the real leverage caps with or without keys.
  */
-function ruleClient(deps: AppDeps): CrossExApi {
+export function ruleClient(deps: AppDeps): CrossExApi {
   try {
     return deps.getClients().crossEx;
   } catch {

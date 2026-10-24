@@ -23,7 +23,7 @@ let proxyPool: { url: string; agent: HttpsProxyAgent<string> } | undefined;
 
 /** Keep public market-data tunnels alive without changing signed Gate clients.
  * Axios's implicit proxy agent uses v5, which closes every completed socket. */
-function bookRequestOptions(): AxiosRequestConfig {
+export function bookRequestOptions(): AxiosRequestConfig {
   const proxy = gateProxy();
   if (!proxy) {
     proxyPool?.agent.destroy();
