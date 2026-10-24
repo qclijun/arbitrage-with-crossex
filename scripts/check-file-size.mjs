@@ -177,7 +177,7 @@ function stagedBlobs(root, files) {
   const input = files.map((file) => `:${file}`).join('\n') + '\n';
   let raw;
   try {
-    raw = git(['cat-file', '--batch'], { cwd: root, input, encoding: 'buffer' });
+    raw = git(['cat-file', '--batch'], { cwd: root, input });
   } catch {
     // Falls back to the worktree copy, which differs from the index when a file
     // is only partially staged. Rare enough to accept over failing the commit.
