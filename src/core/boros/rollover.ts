@@ -122,8 +122,6 @@ const same = (a: number, b: number): boolean => Math.abs(a - b) <= FULL_FILL_TOL
 const heldSide = (leg: SimulatedLeg): BorosLegDirection | null =>
   leg.sizing.currentSize > 0 ? 'long' : leg.sizing.currentSize < 0 ? 'short' : null;
 const opposite = (side: BorosLegDirection): BorosLegDirection => (side === 'long' ? 'short' : 'long');
-const sum = (xs: Array<number | null>): number | null =>
-  xs.every((x): x is number => x !== null) ? xs.reduce((t, x) => t + x, 0) : null;
 const venuesOf = (m: BorosMarket): readonly string[] => m.spreadVenues ?? [normalizeVenue(m.venue)];
 
 /** `MarketSelfSwap` (MarketOrderAndOtc.sol): the order would fill against the
