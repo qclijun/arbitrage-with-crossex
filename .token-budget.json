@@ -3,7 +3,8 @@
   "limit": 5000,
   "ignore": [
     ".scratch/**/evidence/**",
-    "docs/validation/**/*.json"
+    "docs/validation/**/*.json",
+    ".agents/skills/binance-agentic-wallet/**"
   ],
   "allow": []
 }
