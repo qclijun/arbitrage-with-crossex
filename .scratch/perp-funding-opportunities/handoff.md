@@ -7,3 +7,7 @@
 ## 工单01完成交接
 
 用户已全部确认Q1—Q4，工单01「历史证据与机会资格」已resolved，答案同步history-and-eligibility.md、规格和地图。规则为UTC整点共同截止、逐腿逐窗口严格覆盖、局部失败隔离及后台15分钟刷新，stale仅观察。分支docs/perp-funding-opportunities，提交基准ce42320；本轮提交范围仅8份文档。07可开展历史源研究，08/09预拆且由06阻塞；下一张决策票为02，整体规格仍draft。15份文档的37个本地链接、9票依赖无环、差异空白及8份暂存文件token检查通过；全量verify和web build因未安装依赖、缺tsc未运行成功。双轴审查无规则缺陷，已修正审查指出的交接过时。证据：/tmp/perp01-doc-validation.txt、perp01-standards-review.md、perp01-spec-review.md及perp01-verify.log、perp01-web-build.log（均在/tmp）。按用户要求提交当前分支，不推送；未改产品代码、启动服务或交易。
+
+## 工单02完成交接
+
+用户两轮确认Q1—Q7，工单02已resolved，契约在pairs-costs-and-ranking.md，规格/地图已同步。全有向组合保留零/负/反向；真实成本UNKNOWN不影响历史分数但阻止下单。maker＋hedge开仓、双taker平仓仅作情景，回本按逐腿名义金额与净日收入计算，未来基差/汇率风险未覆盖。分支docs/perp-funding-opportunities，基准90839e2；本轮仅7份文档。10/11受06阻塞，11另等待03；下一决策票03，整体规格仍draft。按冻结锁文件安装依赖；18份文档/50个本地链接、11票无环、预算/差异空白检查通过。yarn verify通过4988项、跳过8项，web build通过；双轴审查无未解决发现。证据均在/tmp：perp02-verify.log、perp02-web-build.log、perp02-doc-validation.txt、perp02-standards-review.md、perp02-spec-review.md。按要求提交当前分支，不推送；无产品代码、服务或交易操作。

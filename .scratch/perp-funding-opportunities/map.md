@@ -27,6 +27,8 @@ Updated: 2026-10-27 Asia/Taipei
 
 - 2026-10-27：[01历史证据与资格](issues/01-history-and-eligibility.md)已resolved，用户全部确认Q1—Q4；共同UTC整点、严格逐腿逐窗口覆盖、局部失败隔离、后台15分钟刷新及stale禁止排名/下单，详见[契约](history-and-eligibility.md)。账户费率未知不影响历史排名但独立阻止下单。02解除01依赖。
 - 后续分票：[07生产历史源研究](issues/07-history-source-research.md)核查真实能力；[08证据契约与资格](issues/08-history-contract-and-eligibility.md)、[09后台采集与缓存](issues/09-history-collection-and-cache.md)为预拆实现票，均由06阻塞，当前不可实施。整体规格继续draft，下一张决策票为02。
+- 2026-10-27：[02组合、成本与历史排名](issues/02-pairs-costs-and-ranking.md)已resolved，用户确认两轮共七项决定；所有有向组合逐条排名，保留零/负/反向结果；费用/换汇证据与历史排名分离，开仓maker＋hedge、平仓双taker作情景，回本按扣持续成本后的净日收入计算。详见[组合与成本契约](pairs-costs-and-ranking.md)，03解除依赖，当前下一张决策票为03。
+- 02预拆[10全组合与历史排名](issues/10-directed-pairs-and-ranking.md)、[11成本与回本情景](issues/11-costs-and-payback-scenarios.md)，均由06阻塞，11另等待03；未授权当前实施产品。整体规格仍draft。
 
 ## Not yet specified
 
