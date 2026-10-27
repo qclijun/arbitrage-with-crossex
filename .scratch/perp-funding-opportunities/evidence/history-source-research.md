@@ -15,6 +15,10 @@
 | KRAKEN | [官方 CSV 导出](https://support.kraken.com/articles/export-historical-funding-rates) 称所有可用衍生品市场自上市起历史费率，历史下载来源 verified；CSV 逐笔结算字段 unknown；[analytics `funding`](https://docs.kraken.com/api/docs/futures-api/charts/market-analytics) 是时间桶，不证明逐笔结算。 | CSV 内字段、历史周期变更、精确上市与 CSV 更新频率均 unknown，需下载并核验 schema、末条时效。 | 自动增量接口、分页、15 分钟可用性和鉴权 unknown；不能把静态 CSV 宣称实时服务，也不能因未找到接口判整所 unsupported。 |
 | LIGHTER | [官方 SDK `GET /api/v1/fundings`](https://raw.githubusercontent.com/elliottech/lighter-python/main/docs/CandlestickApi.md) 以 `market_id,resolution,start/end,count_back` 返回 [`timestamp,rate,direction,value`](https://raw.githubusercontent.com/elliottech/lighter-python/main/docs/Funding.md)，历史来源 verified；逐条最终结算语义 unknown，需核验。跨所 `funding-rates` 是当前比较流，不能代替。 | 官方字段未给历史周期规则、生效时刻或上市时间；unknown。 | 每次最多 750，公开，无分页完成标志；需切连续时间片并核验端点边界、保留期。限流数字 unknown。 |
 
+08 实施补充核验（2026-10-27）：[Binance 官方 fundingRate 响应说明](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data)和[2026-07-23 更新日志](https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/change-log)明确 `Special` 是股票分红产生的**额外**资金费率。相同结算时间的 `Regular` 与 `Special` 是不同经济类型，分别去重后均计入总费率；同类型同事件的冲突仍须隔离。此结论不改变历史周期、分页及上市证据仍需逐合约证明的限制。
+
+[Hyperliquid 官方 `fundingHistory` 示例](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-historical-funding-rates)的 `time` 比 UTC 整点晚 76 毫秒。08 的归一化要求对这类原始时间提供可核验的结算整点映射依据；09 未证明前保持 UNKNOWN，不能直接把原始毫秒时间当作周期结算边界。
+
 ## 覆盖证明与失败用例
 
 1. 从 CrossEx **当轮 live 合约**映射精确场所 contract/market ID；拉取官方上市时间与历史规则分段，并持久保存来源版本及读取时间。文档只给当前周期时，8h→4h 边界两侧不能仅靠“行数看似正确”证明覆盖，状态为 unknown；可用官方带生效时间公告或连续、独立结算账证明分段。没有证据时不倒推周期。
