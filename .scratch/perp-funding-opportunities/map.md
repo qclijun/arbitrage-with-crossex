@@ -32,10 +32,13 @@ Updated: 2026-10-27 Asia/Taipei
 - 2026-10-27：[03预填、重报价与执行](issues/03-preflight-and-execution.md)已resolved，用户两轮确认Q1—Q7；精确候选/参数绑定，编辑与证据变化重新确认，10秒预览/800ms长按及服务端严格重验；零负情景保留人工决策，不放宽UNKNOWN/仓位冲突。用户选择保留到期转taker，初次明确授权并估转换费用，不能改成到期停止。详见[执行契约](preflight-and-execution.md)及[当前事实](evidence/preflight-review.md)，下一决策票为04。
 - 03预拆[12服务端证据准入](issues/12-preview-evidence-and-admission.md)、[13精确预填与确认](issues/13-exact-prefill-and-confirmation.md)、[14持久提交与恢复](issues/14-durable-submission-and-resume.md)，均等待06；11已补转换成本分支、解除03依赖，仍等06。单writer/幂等/未知证据等既有缺口须实施后才能宣称具备，整体规格继续draft。
 
+- 2026-10-27：[04策略归属与Risk](issues/04-ownership-and-risk.md)已resolved，用户两轮确认Q1—Q7：持久策略切片、实际成交及显式加减量；同向共享须全部相关归属可证明；场外差异UNKNOWN并阻止相关新增风险，金额证据不足不强行归因。Risk仅解除已证明浮动两腿数量的Boros覆盖要求，其它风险保留；旧仓允许凭完整当前证据显式选量从当前时点认领，不回填历史。详见[归属契约](ownership-and-risk.md)、[Risk契约](risk-applicability.md)及[数量账核查](evidence/ownership-review.md)/[Risk链核查](evidence/risk-applicability-review.md)。下一决策票为05。
+- 04预拆[15切片与对账](issues/15-strategy-slices-and-reconciliation.md)、[16逐数量Risk](issues/16-slice-risk-applicability.md)、[17当前认领与金额证据](issues/17-current-claims-and-attribution.md)，均等待06；12增加15/16依赖，未有实际归属证据不默认放行。HYPE、旧basis/rollover及独立ETH监控历史限制仍需实施处理，整体规格继续draft。
+
 ## Not yet specified
 
 - 01已确定历史产品门槛、缓存时效和冷启动UNKNOWN；具体每场所生产历史源、可证明的结算规则与限流预算由07研究，不承诺当前八场所都有全年历史。
-- 混合策略切片如何持久化、与现有资产/监控口径如何衔接，等待“策略归属与风险适用范围”确定后才能细分迁移任务。
+- 04已确定持久切片、当前认领和逐数量Risk政策；具体持久化兼容/迁移仍由06准入，15—17实施后才能声称数量账及consumer具备能力。
 - 原六张关键决策票全部解决并通过06后，将本草案收敛成最终规格，开放预拆实现任务；01resolved不代表完整下单准备度。
 
 ## Out of scope

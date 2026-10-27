@@ -15,3 +15,7 @@
 ## 工单03完成交接
 
 用户两轮确认Q1—Q7，03已resolved；契约preflight-and-execution.md及规格/地图、02成本契约、11任务同步。Q7保留到期转taker：默认300秒、30–3600秒，初次授权并展示正常/转换费用，不采用到期停止。精确预填、10秒/800ms确认、服务端重验和持久幂等均为待实现要求，IOC无用户硬价格上限。分支docs/perp-funding-opportunities，基准9dbab22；仅11份文档，12—14受06阻塞，下一决策04，整体draft。事实证据evidence/preflight-review.md：图Tier2、26路径best-effort覆盖；不能把现有fail-open、杠杆route直写当保障。23份文档/73链接、14票无环、预算/差异空白通过；yarn verify通过4988项/跳过8项，web build通过，双轴审查0项发现。日志及审查均在/tmp/perp03-*。按要求提交本分支、不推送；无产品代码、服务或交易操作。
+
+## 工单04决策闭合
+
+用户两轮确认七项决定，04已resolved。ownership-and-risk.md及risk-applicability.md规定实际成交切片、指定量加减、可证明才同向共享、差异UNKNOWN、逐数量Risk及当前认领，不倒填历史。分支docs/perp-funding-opportunities，基准1c7cb74；本轮14份文档。15—17等待06，12依赖15/16；下一决策票05，整体仍draft。事实见evidence/ownership-review.md和risk-applicability-review.md，含HYPE、旧basis/rollover及监控限制。30文档104链接、17票无环、预算及差异检查通过；双轴审查各0项。首次verify有1项弹窗等待失败，单文件2项通过，完整verify复跑4988项通过/8跳过，web build通过；证据均在/tmp/perp04-*（含verify.log、web-focused-retry.log、verify-retry.log及双轴报告）。提交当前分支、不推送；无产品代码、迁移、报警或交易改动。
