@@ -1,7 +1,7 @@
 # 规模相关成本、持有期与回本情景
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Claude
 Blocked by: 01, 02, 03, 08
 
@@ -22,6 +22,10 @@ Blocked by: 01, 02, 03, 08
 
 用离线合成证据TDD覆盖成本契约验收表，特别是UNKNOWN/零/不适用/返佣的区别、薄盘口、跨报价币缺汇率、不同两腿名义金额、持续成本吃掉正资金费差、零/负D、非正C及持有期不足。证明费用情景不改变历史主分数或放宽执行资格；类型检查、针对单文件测试、最终yarn verify及web production build，无实盘测试。
 
+## Answer
+
+2026-10-28用户签收。实现dd69055＋73d48ea交付纯模块：`src/core/funding/scenario.ts`的`estimateFundingScenario`按相同标的数量、各腿自身盘口mid及显式汇率（不假设稳定币1:1）得各腿共同币名义金额，计算逐腿日资金费、G_day、借款日成本、D、一次性C、H×D−C及回本四分支；正常maker＋hedge开仓/双taker平仓路径与A全量转taker参考路径（非上限）分列；费用按成交价、盘口冲击相对mid只计一次，薄盘口不外推，未成交maker不计价差收益、穿越盘口阻断；UNKNOWN/已知零/有据不适用/返佣分别保留，VIP0仅作`assumed`参考、真实汇总仍UNKNOWN阻止下单。`cost-evidence.ts`把`/crossex/fee`与venue盘口转成带来源及读取开始时间的证据，单次重读、不缓存不重盖时间；借款/换汇为显式证据输入。`exact.ts`精确十进制有理运算。单测16/16，默认`yarn verify`（root 3335/8跳过、web 1711）及web build通过，无实盘测试；代入10排名窗口总额证明排名/资格不变。详见[11实施交接](../evidence/11-implementation-handoff.md)。严格10秒/源有效性准入、账户借款/换汇证据由12，A页接线由13承接；不启用交易。
+
 ## Comments
 
 - 2026-10-27：由02确认决定预拆；须等待03与06，具体证据接线和实施范围在准入后收敛。
@@ -30,3 +34,4 @@ Blocked by: 01, 02, 03, 08
 - 2026-10-27：06候选定稿：消费08历史证据类型，负责真实费用、盘口/深度及必要借款/换汇的成本数据适配与来源/时间证明，12消费证据做权威准入，13接到正式A页。来源不能证明或读取失败时保持UNKNOWN，严格10秒不因预览/重读旧缓存续期。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
 - 2026-10-28：用户确认接缝（纯情景＋证据适配，借款/换汇显式输入，不接路由/页面，不解析venue时间戳），本票claimed并实施：`scenario.ts`/`cost-evidence.ts`/`exact.ts`，双轴审查后修正maker价差不计收益、穿越盘口阻断及读取抛错隔离。单测16/16，默认`yarn verify`及web build通过，详见[11实施交接](../evidence/11-implementation-handoff.md)。待用户签收。
+- 2026-10-28：用户签收，追加Answer并resolved。

@@ -74,3 +74,7 @@ Updated: 2026-10-27 Asia/Taipei
 ## 10完成验收
 
 - 2026-10-28：[10](issues/10-directed-pairs-and-ranking.md)用户签收，追加Answer并resolved。纯候选/排名模块（8df73e1）经双轴审查修正`rate-basis-mismatch`误判（c54f044），补舍入同分与09宽读路径测试；root 3319/8跳过、web build通过，默认并发web偶发UI超时仍归21复验。18不再受10阻塞（其余依赖保留）；页面/API、跨页固定snapshot与评估时间由18承接，不启用交易。
+
+## 11完成验收
+
+- 2026-10-28：[11](issues/11-costs-and-payback-scenarios.md)用户签收，追加Answer并resolved。纯情景`scenario.ts`＋证据适配`cost-evidence.ts`（dd69055），双轴审查后修正未成交maker不计价差收益、穿越盘口阻断及读取抛错隔离（73d48ea）；单测16/16，默认verify root 3335/8跳过、web 1711，build通过。12不再等待11（其余依赖保留）；严格10秒准入及账户借款/换汇证据归12，A页接线归13，不启用交易。
