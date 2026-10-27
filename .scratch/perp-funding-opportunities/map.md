@@ -66,3 +66,7 @@ Updated: 2026-10-27 Asia/Taipei
 
 - 2026-10-27：[08](issues/08-history-contract-and-eligibility.md)已追加Answer并resolved；现有历史纯计算/来源归一化验收补齐，本轮修复配置就绪先于钱包初始化/旧root恢复的竞态，确定性回归先失败后通过。默认完整verify：root3316通过/8跳过、web1711通过；生产build通过。详见[最终验收证据](evidence/08-final-validation.md)。
 - 09/10保持open并按各自验收签收；09和11不再受08阻塞，当前可按依赖认领09/11/20，10仍等待09。此前默认全量失败已保留查因与修复结果，21仍须在正式最终版本完成全部准入门槛；本次不宣称生产数据覆盖或启用人工开仓。
+
+## 09完成验收
+
+- 2026-10-28：[09](issues/09-history-collection-and-cache.md)已追加Answer并resolved。审查修复：刷新每10分钟一轮/截止4分钟（用户确认），每轮重读的腿在两次发布间保持fresh；同cutoff较窄新读按窗口保留；ASTER默认1秒间隔。默认完整verify root3318/8跳过、web1711，生产build通过；见[最终验收证据](evidence/09-final-validation.md)。10不再等待09；真实适配器、预算实测与18接线待后续，21仍须最终复验。

@@ -23,7 +23,21 @@ export const legKey = (key: HistoryLegKey): string => `${key.venue}\u0000${key.c
 export interface CachedHistoryLeg {
   /** The cutoff this leg's evidence was collected for; older than the snapshot's when its refresh failed. */
   cutoff: number;
+  /** The most recent verified read. */
   leg: FundingHistoryLeg;
+  /**
+   * An older read at the same cutoff reaching further back than `leg`: it serves
+   * the long windows `leg` does not cover, with its own (older) verification time.
+   */
+  wider?: FundingHistoryLeg;
+}
+
+const DAY = 24 * 60 * 60_000;
+
+/** The read that proves a window: the newest one covering it, else the wider one. */
+function windowLeg(cached: CachedHistoryLeg, cutoff: number, days: HistoryDays): FundingHistoryLeg {
+  const start = cutoff - days * DAY;
+  return cached.wider && cached.leg.pages.rangeStart > start ? cached.wider : cached.leg;
 }
 
 export interface HistorySnapshot {
@@ -122,7 +136,7 @@ export class FundingHistoryCache {
     if (!snap || !short || !long || snap.cutoff > snapshotCutoff(now)) return null;
     const cutoff = short.cutoff === long.cutoff ? short.cutoff : snap.cutoff;
     return evaluateFundingHistory({ snapshotId: snap.id, underlying: pair.underlying, cutoff, days: pair.days,
-      short: short.leg, long: long.leg, now });
+      short: windowLeg(short, cutoff, pair.days), long: windowLeg(long, cutoff, pair.days), now });
   }
 
   /** Server-side history admission: the caller's snapshot must still be current, at the current cutoff, and eligible now. */

@@ -1,7 +1,7 @@
 # 实施顺序与验收矩阵
 
 Status: final — 2026-10-27最终共同理解已确认，06已resolved
-来源：[06准入契约](acceptance-and-rollout.md)、[规格](spec.md)及01—05的Answer。此页是已定稿的后续实施依据，不是产品实现或启用证明；08—21已解除06阻塞，仍按真实依赖与验收推进。08—10此前获明确授权先实施；08本轮补齐默认完整验收并resolved，09/10仍待各自签收。
+来源：[06准入契约](acceptance-and-rollout.md)、[规格](spec.md)及01—05的Answer。此页是已定稿的后续实施依据，不是产品实现或启用证明；08—21已解除06阻塞，仍按真实依赖与验收推进。08—10此前获明确授权先实施；08、09已补齐默认完整验收并resolved，10仍待签收。
 
 ## 责任与依赖
 
@@ -68,6 +68,6 @@ root/web依赖分别按frozen-lockfile安装，Node≥22.13、Yarn1.22.22。受�
 
 默认全量失败时保存失败日志，单跑/降低并发仅诊断；若需改测试或配置，先查因、正式记录后重跑完整标准门槛。不能把原型阶段4988通过的组合结果冒充新的正式实现全绿。迁移、停用、UI和source支持矩阵是独立证据项，不因verify或build通过而自动合格。
 
-06候选文档阶段的默认verify仍有两项前端失败；08—10实施交接也记录默认全量PairTicket/App设置等UI失败，单独诊断/降低并发通过未替代全量结果，详见[06核查](evidence/delivery-readiness-review.md)及[08](evidence/08-implementation-handoff.md)/[09](evidence/09-implementation-handoff.md)/[10交接](evidence/10-implementation-handoff.md)。08本轮已查明并修复配置就绪竞态，通过默认完整verify/build后resolved，见[最终验收](evidence/08-final-validation.md)；09/10仍待各自签收。此前PairTicket超时本轮未复现，耗时贴近5秒的诊断线索仍留21关注。其余票须满足各自依赖及完整验收，不反向等待21 resolved；21在最终正式实现版本重新完成全部门槛后签收。
+06候选文档阶段的默认verify仍有两项前端失败；08—10实施交接也记录默认全量PairTicket/App设置等UI失败，单独诊断/降低并发通过未替代全量结果，详见[06核查](evidence/delivery-readiness-review.md)及[08](evidence/08-implementation-handoff.md)/[09](evidence/09-implementation-handoff.md)/[10交接](evidence/10-implementation-handoff.md)。08本轮已查明并修复配置就绪竞态，通过默认完整verify/build后resolved，见[最终验收](evidence/08-final-validation.md)；09于2026-10-28通过默认完整verify/build并resolved，见[09最终验收](evidence/09-final-validation.md)；10仍待签收。此前PairTicket超时本轮未复现，耗时贴近5秒的诊断线索仍留21关注。其余票须满足各自依赖及完整验收，不反向等待21 resolved；21在最终正式实现版本重新完成全部门槛后签收。
 
 06最终确认仅使此规格/任务可交接，不把未来矩阵结果填PASS，也不自动认领或实施下一票。

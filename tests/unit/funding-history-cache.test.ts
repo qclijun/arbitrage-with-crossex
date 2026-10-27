@@ -163,6 +163,29 @@ describe('funding history cache reads', () => {
   });
 
 
+  it('keeps short windows fresh on a narrower re-read while the wider old read still serves long ones', async () => {
+    let binanceCalls = 0;
+    let failAfter = Infinity;
+    const { cache, refresher } = setup({ binance: { fail: () => (binanceCalls++ > failAfter ? 'error' : null) } });
+    await run(refresher);
+
+    // Same cutoff: Binance re-reads only its 7-day segment, then fails.
+    vi.setSystemTime(T + 5 * M);
+    failAfter = binanceCalls;
+    await run(refresher);
+    const reread = cache.evaluate(pair(7), Date.now())!.short;
+    expect(reread).toMatchObject({ coverage: 'complete', fresh: true, lastAttempt: { outcome: 'error', reason: 'error' } });
+    expect(reread.verifiedAt).toBeGreaterThanOrEqual(T + 5 * M);
+    expect(cache.evaluate(pair(365), Date.now())!.short).toMatchObject({ coverage: 'complete', fresh: true, verifiedAt: T + M });
+
+    // Past the full read's 15 minutes: only the windows the re-read proved stay fresh.
+    const later = T + 16 * M + 1;
+    expect(cache.evaluate(pair(7), later)).toMatchObject({ coverage: 'complete', fresh: true, historyEligible: true });
+    expect(cache.evaluate(pair(30), later)).toMatchObject({ coverage: 'complete', fresh: false, historyEligible: false });
+    const snapshotId = cache.view(later).snapshotId!;
+    expect(cache.recheck({ snapshotId, ...pair(7) }, later)).toMatchObject({ admitted: true });
+  });
+
   it('rejects a preview bound to a superseded snapshot even when the new one is eligible', async () => {
     const { cache, refresher } = setup();
     await run(refresher);

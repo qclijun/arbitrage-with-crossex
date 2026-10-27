@@ -17,7 +17,7 @@ export const T = Date.UTC(2026, 9, 1, 10);
 export type Fail = 'rate-limited' | 'error' | 'hang';
 
 /** One venue serving settled 8-hour history; `fail` and `pageSize` script its behavior. */
-export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number; fail?: () => Fail | null; drop?: number } = {}) {
+export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number; fail?: () => Fail | null; drop?: number; delayMs?: number } = {}) {
   const calls: string[] = [];
   let inflight = 0;
   let peak = 0;
@@ -38,7 +38,7 @@ export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number
       inflight += 1;
       peak = Math.max(peak, inflight);
       try {
-        await Promise.resolve();
+        await (opts.delayMs ? new Promise((resolve) => setTimeout(resolve, opts.delayMs)) : Promise.resolve());
         const failure = opts.fail?.() ?? null;
         if (failure === 'hang') await new Promise(() => undefined);
         if (failure === 'rate-limited') throw Object.assign(new Error('429'), { response: { status: 429 } });

@@ -112,22 +112,39 @@ describe('funding history refresher', () => {
     expect(Object.values(report.venues).map((v) => v.stopped)).toContain('budget-exhausted');
   });
 
-  it('runs on the quarter hour plus one minute, never two rounds at once, until stopped', async () => {
+  it('runs every ten minutes plus one minute, never two rounds at once, until stopped', async () => {
     vi.setSystemTime(T + 3 * M);
     const { cache, binance, refresher } = setup();
     refresher.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(cache.view(Date.now()).state).toBe('ready');
-    const rounds = () => binance.calls.filter((c) => c.endsWith(`:${T - 7 * D}:`) || c.includes(`:${T + 15 * M}`)).length;
+    const rounds = () => binance.calls.filter((c) => c.endsWith(`:${T - 7 * D}:`)).length;
     expect(rounds()).toBe(1);
-    await vi.advanceTimersByTimeAsync(13 * M - 1);
+    await vi.advanceTimersByTimeAsync(8 * M - 1);
     expect(rounds()).toBe(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(rounds()).toBe(2);
-    expect(cache.view(Date.now()).lastRound!.startedAt).toBe(T + 16 * M);
+    expect(cache.view(Date.now()).lastRound!.startedAt).toBe(T + 11 * M);
     refresher.stop();
     await vi.advanceTimersByTimeAsync(H);
     expect(rounds()).toBe(2);
+  });
+
+  it('keeps a leg re-read every round fresh between publishes, not only at them', async () => {
+    // Three Binance legs on two workers: the first two are verified well before the round publishes.
+    const legs = [BTC.binance, leg('BINANCE', 'ETHUSDT'), leg('BINANCE', 'SOLUSDT'), BTC.bybit];
+    const { cache, refresher } = setup({ legs, binance: { delayMs: 4_000 }, bybit: { delayMs: 4_000 } });
+    refresher.start();
+    await vi.advanceTimersByTimeAsync(3 * M);
+    const stale: number[] = [];
+    while (Date.now() < T + H - 10_000) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      for (const short of legs.slice(0, 3)) {
+        if (!cache.evaluate({ underlying: 'BTC', short, long: BTC.bybit, days: 7 }, Date.now())!.fresh) stale.push(Date.now());
+      }
+    }
+    refresher.stop();
+    expect(stale).toEqual([]);
   });
 
   it('counts Hyperliquid rows stamped off the hour only through a proven settlement-hour mapping', async () => {
@@ -186,8 +203,8 @@ describe('funding history refresher', () => {
     binance.source.context = () => new Promise(() => undefined);
     const report = await run(refresher);
     expect(report).toMatchObject({ outcome: 'published' });
-    // 12-minute deadline plus one request's worst case: two 5 s attempts and a 1 s jitter.
-    expect(report.finishedAt - report.startedAt).toBeLessThanOrEqual(12 * M + 11_000);
+    // 4-minute deadline plus one request's worst case: two 5 s attempts and a 1 s jitter.
+    expect(report.finishedAt - report.startedAt).toBeLessThanOrEqual(4 * M + 11_000);
     expect(cache.evaluate({ underlying: 'BTC', short: BTC.binance, long: BTC.binance, days: 7 }, Date.now())!.short.lastAttempt)
       .toMatchObject({ reason: 'deadline' });
   });

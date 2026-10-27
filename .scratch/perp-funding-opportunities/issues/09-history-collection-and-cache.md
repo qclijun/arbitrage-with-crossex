@@ -1,8 +1,8 @@
 # 有界后台历史采集与缓存新鲜度
 
 Type: task
-Status: open
-Assignee: none
+Status: resolved
+Assignee: Claude
 Blocked by: 01, 07, 08
 
 ## Goal
@@ -29,3 +29,7 @@ Blocked by: 01, 07, 08
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。 已有实现4fe5f6d，见[09实施交接](../evidence/09-implementation-handoff.md)；仍依赖08且默认全量验收未通过，保持open。此前明确的可注入端口范围及真实HTTP适配器/生产取证待办继续保留，不冒充生产接线完成。
 
 - 2026-10-27：08已完成正式默认verify/build并resolved，本票前置依赖全部满足；仍open、未认领，按此前确认的可注入端口范围及本票验收另行签收，不由08自动关闭。
+
+## Answer
+
+2026-10-28完成验收。实现4fe5f6d按确认的端口范围覆盖共同cutoff、原子发布、尝试与成功分离、失败不延寿、跨cutoff不拼接、冷启动/限流/预算耗尽/局部失败原因及服务端`recheck`。双轴审查后修复三项并各有先失败后通过的回归：用户确认刷新改为每10分钟一轮、截止4分钟，消除每轮必现的15分钟stale空窗；同cutoff较窄新读不再被丢弃，按窗口选用覆盖它的最新核验；ASTER改默认1秒间隔。默认完整yarn verify通过（root 3318/8跳过，web 1711），web生产构建通过。详见[最终验收证据](../evidence/09-final-validation.md)。本票resolved；真实适配器、预算实测校准与18接线不在本票，不冒充生产采集或21最终准入。

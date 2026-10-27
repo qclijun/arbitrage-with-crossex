@@ -27,10 +27,14 @@ const DAY = 24 * 60 * MINUTE;
  * contract; Hyperliquid 1200 weight/min with weight growing with response size.
  */
 export const HISTORY_BUDGET = {
-  intervalMs: 15 * MINUTE,
-  /** Rounds start this long after each quarter hour, so the hour's settlement has posted. */
+  /**
+   * Interval plus a round's hard stop stays under the 15-minute freshness limit,
+   * so a leg re-read every round is never stale while the next round runs.
+   */
+  intervalMs: 10 * MINUTE,
+  /** Rounds start this long after each interval, so the hour's settlement has posted. */
   offsetMs: MINUTE,
-  deadlineMs: 12 * MINUTE,
+  deadlineMs: 4 * MINUTE,
   globalRequests: 240,
   venueRequests: 40,
   venueConcurrency: 2,
@@ -42,7 +46,7 @@ export const HISTORY_BUDGET = {
 export type HistoryBudget = typeof HISTORY_BUDGET;
 
 /** Minimum gap between request starts per venue; a venue whose limit 07 could not find gets the slow default. */
-export const VENUE_SPACING_MS: Record<string, number> = { BINANCE: 0, ASTER: 0, BYBIT: 0, OKX: 250, HYPERLIQUID: 2_500 };
+export const VENUE_SPACING_MS: Record<string, number> = { BINANCE: 0, BYBIT: 0, OKX: 250, HYPERLIQUID: 2_500 };
 const DEFAULT_SPACING_MS = 1_000;
 
 /**
@@ -255,17 +259,27 @@ function revised(prior: SettledFundingEvent[], fresh: SettledFundingEvent[]): Se
 }
 
 /**
- * Adopt a verified read for a newer cutoff even when narrower: older evidence
- * cannot rank at the new cutoff, while the new read can for its short windows.
- * At the same cutoff, keep the old evidence unless the new read reaches as far back.
+ * Always adopt a verified read: it is the freshest proof of the windows it covers.
+ * An older read at the same cutoff that reaches further back stays as `wider`, so
+ * the long windows keep their evidence (and its original verification time).
+ * Legs from an older cutoff are dropped, never spliced into the new one.
  */
 function merge(prior: CachedHistoryLeg | undefined, fresh: FundingHistoryLeg, cutoff: number,
   at: number, reason: HistoryAttemptReason | null): CachedHistoryLeg {
   const lastAttempt: FundingHistoryLeg['lastAttempt'] = reason ? { at, outcome: 'error', reason } : { at, outcome: 'success' };
-  const adopt = fresh.verifiedAt !== null && (!prior || prior.cutoff < cutoff
-    || prior.leg.verifiedAt === null || fresh.pages.rangeStart <= prior.leg.pages.rangeStart);
-  if (adopt) return { cutoff, leg: { ...fresh, events: [...fresh.events, ...revised(prior?.leg.events ?? [], fresh.events)], lastAttempt } };
-  if (prior) return { cutoff: prior.cutoff, leg: { ...prior.leg, lastAttempt } };
+  const priorWidest = prior?.cutoff === cutoff ? prior.wider ?? prior.leg : undefined;
+  if (fresh.verifiedAt !== null) {
+    const leg = { ...fresh, events: [...fresh.events, ...revised(prior?.leg.events ?? [], fresh.events)], lastAttempt };
+    if (!priorWidest || priorWidest.verifiedAt === null || fresh.pages.rangeStart <= priorWidest.pages.rangeStart) {
+      return { cutoff, leg };
+    }
+    return { cutoff, leg, wider: { ...priorWidest, events: [...priorWidest.events, ...revised(fresh.events, priorWidest.events)],
+      lastAttempt } };
+  }
+  if (prior) {
+    return { cutoff: prior.cutoff, leg: { ...prior.leg, lastAttempt },
+      ...(prior.wider ? { wider: { ...prior.wider, lastAttempt } } : {}) };
+  }
   return { cutoff, leg: { ...fresh, lastAttempt } };
 }
 
@@ -348,7 +362,7 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
   }
 
   let timer: ReturnType<typeof setTimeout> | null = null;
-  /** Each quarter hour plus the offset; a round still running absorbs the tick. */
+  /** Each interval plus the offset; a round still running absorbs the tick. */
   function schedule(): void {
     const now = Date.now();
     const at = Math.floor((now - budget.offsetMs) / budget.intervalMs) * budget.intervalMs + budget.intervalMs + budget.offsetMs;

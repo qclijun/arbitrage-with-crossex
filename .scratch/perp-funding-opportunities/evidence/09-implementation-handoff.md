@@ -7,3 +7,5 @@
 验证：新单测16/16通过（`tests/unit/funding-history-{cache,collector}.test.ts`），tsc及文件预算通过；根目录3305通过、8跳过；web build通过。默认并发`yarn verify`的web段有1–2个既有5秒UI超时（PairTicket／App指南，本票未改web），单独运行24/24通过，2 workers全量1710/1710通过。日志：`/tmp/ticket09-verify.log`、`/tmp/ticket09-web-limited2.log`、`/tmp/ticket09-pairticket-single.log`、`/tmp/ticket09-web-build.log`。
 
 已知限制与待办：每腿每轮全量重读（08的observedAt≥cutoff要求），40次/场所仅够约8腿/轮，超出部分轮换且明确`budget-exhausted`；整轮结束才发布，早读的腿在下一轮发布前可能短暂stale。预算数值需在公开样本上实测延迟、429和响应头后校准。以下仍待完成：真实适配器（分页/上市/周期证据、HL毫秒映射）、Retry-After及权重头解析，以及18接线。
+
+更正（2026-10-28）：最终验收改为每10分钟一轮（整10分后1分钟）、截止4分钟，同cutoff较窄新读按窗口保留，ASTER默认1秒间隔；上文“每15分钟一轮”“12分钟”及默认verify失败已被[最终验收](09-final-validation.md)取代。
