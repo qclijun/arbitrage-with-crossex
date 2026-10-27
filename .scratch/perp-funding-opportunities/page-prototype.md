@@ -1,7 +1,7 @@
 # 工单05：页面、详情与确认原型
 
-Status: awaiting-user-review — 尚未定案
-来源：[05原型票](issues/05-page-and-confirmation.md)。01—04是已确认契约，本页三个布局只是讨论资产；06仍阻塞产品实施。
+Status: accepted — 用户选择A排名工作台并验收交互（2026-10-27）
+来源：[05原型票](issues/05-page-and-confirmation.md)。01—04是已确认契约；A为已验收布局，B/C保留比较资产，06仍阻塞产品实施。
 
 ## 运行与入口
 
@@ -32,4 +32,6 @@ Status: awaiting-user-review — 尚未定案
 
 [A截图](evidence/prototype-layout-A.png)、[B截图](evidence/prototype-layout-B.png)、[C截图](evidence/prototype-layout-C.png)、[确认截图](evidence/prototype-confirmation.png)是本次原型的可审阅证据；交互检查另见[核查记录](evidence/prototype-review.md)。
 
-**等待用户选择/组合布局并明确验收交互**。可选择A/B/C，或指出想保留的部件与需要修改的步骤。未收到答复前，05保持claimed，不新增“用户已确认”的页面政策，也不解除06阻塞。按prototype技能跳过原型专用测试与生产抽象；仍执行项目既有类型、离线全套、生产构建及双轴审查。
+交付时（7b74406）等待用户比较并验收；2026-10-27用户明确答复：**“A 排名工作台，交互可验收（推荐）”**。据此采用左侧密集有向排名表＋右侧连续详情的A布局，以上历史/成本/确认/执行及归属反馈交互获验收，无附加修改要求；05已resolved。原型页面及截图保留交付时样貌，当前验收状态以本记录为准。
+
+06现已具备全部前置决策，可进入最终规格及交付准入讨论；06本身仍open，08—17仍不可实施。此次验收不将模拟数据、单轮内存执行或讨论代码当成产品能力。按prototype技能跳过原型专用测试与生产抽象；项目既有类型、离线全套、生产构建及双轴审查结果见核查记录。

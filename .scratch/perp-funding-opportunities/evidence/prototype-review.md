@@ -46,4 +46,8 @@
 
 日志：/tmp/perp05-verify.log、perp05-verify-final.log及.exit保留原失败；perp05-focused-timeouts.log、perp05-web-tests-bounded.log为复核；perp05-typecheck-review-fixes.log与perp05-web-build.log为类型/构建结果。
 
-当前记录不是用户验收，未证明真实服务端或交易执行。原型专用测试按技能跳过；现有完整离线套件仍用于保护周边产品。
+以上代理核查记录不替代用户验收，未证明真实服务端或交易执行。原型专用测试按技能跳过；现有完整离线套件仍用于保护周边产品。
+
+## 用户验收记录
+
+2026-10-27，原型7b74406交付后，用户明确选择“A 排名工作台，交互可验收（推荐）”。A布局与展示交互据此验收，05 resolved；B/C保留比较资产。此后本轮仅更新文档状态、决定及依赖，不改代码/截图，不重跑已记录的产品套件；本轮32份文档、121个本地链接及17票依赖无环检查通过，816个跟踪文本预算通过；结果见/tmp/perp05-acceptance-validation.log。06解除前置阻塞但仍open，实施与发布仍未获准入。

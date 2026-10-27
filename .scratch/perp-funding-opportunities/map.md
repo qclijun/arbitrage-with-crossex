@@ -35,9 +35,10 @@ Updated: 2026-10-27 Asia/Taipei
 - 2026-10-27：[04策略归属与Risk](issues/04-ownership-and-risk.md)已resolved，用户两轮确认Q1—Q7：持久策略切片、实际成交及显式加减量；同向共享须全部相关归属可证明；场外差异UNKNOWN并阻止相关新增风险，金额证据不足不强行归因。Risk仅解除已证明浮动两腿数量的Boros覆盖要求，其它风险保留；旧仓允许凭完整当前证据显式选量从当前时点认领，不回填历史。详见[归属契约](ownership-and-risk.md)、[Risk契约](risk-applicability.md)及[数量账核查](evidence/ownership-review.md)/[Risk链核查](evidence/risk-applicability-review.md)。下一决策票为05。
 - 04预拆[15切片与对账](issues/15-strategy-slices-and-reconciliation.md)、[16逐数量Risk](issues/16-slice-risk-applicability.md)、[17当前认领与金额证据](issues/17-current-claims-and-attribution.md)，均等待06；12增加15/16依赖，未有实际归属证据不默认放行。HYPE、旧basis/rollover及独立ETH监控历史限制仍需实施处理，整体规格继续draft。
 
-## Not yet specified
-
 - 2026-10-27：[05页面/确认原型](issues/05-page-and-confirmation.md)已claimed，[A/B/C原型](page-prototype.md)与截图供用户比较；本轮尚未验收，不能追加为已确认页面决定，也不解除06及17等后续依赖。
+- 2026-10-27：用户随后明确选择“A排名工作台，交互可验收”；[05](issues/05-page-and-confirmation.md)已resolved，采用左排名表＋右连续详情，B/C仅保留比较资产，无附加修改要求。01—05全部resolved，[06规格验收与交付准入](issues/06-acceptance-and-rollout.md)解除前置阻塞、保持open；整体规格仍draft，实施票仍等待06。原型验收不等于产品交付或实盘授权。
+
+## Not yet specified
 
 - 01已确定历史产品门槛、缓存时效和冷启动UNKNOWN；具体每场所生产历史源、可证明的结算规则与限流预算由07研究，不承诺当前八场所都有全年历史。
 - 04已确定持久切片、当前认领和逐数量Risk政策；具体持久化兼容/迁移仍由06准入，15—17实施后才能声称数量账及consumer具备能力。
