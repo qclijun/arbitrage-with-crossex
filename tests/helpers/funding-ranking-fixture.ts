@@ -54,10 +54,21 @@ export function historyLeg(venue: string, contractId: string, rate: (t: number) 
 /** Constant rate, or `recent` for the last 7 days and `rate` before them. */
 export const flat = (rate: string, recent = rate) => (t: number) => (t > CUTOFF - 7 * D ? recent : rate);
 
-export function publish(legs: FundingHistoryLeg[], id = 'snap-1'): FundingHistoryCache {
+/** A later same-cutoff re-read of only the last `days`, as a round cut short leaves it. */
+export function reread(leg: FundingHistoryLeg, days: number, at: number): FundingHistoryLeg {
+  const rangeStart = CUTOFF - days * D;
+  const events = leg.events.filter((event) => event.settledAt > rangeStart);
+  return { ...leg, observedAt: at, verifiedAt: at, lastAttempt: { at, outcome: 'success' }, events,
+    pages: { ...leg.pages, rangeStart, pages: [{ ...leg.pages.pages[0], firstAt: events[0].settledAt, count: events.length }] } };
+}
+
+type Published = FundingHistoryLeg | { leg: FundingHistoryLeg; wider: FundingHistoryLeg };
+
+export function publish(legs: Published[], id = 'snap-1'): FundingHistoryCache {
   const cache = new FundingHistoryCache();
+  const entry = (p: Published) => ('wider' in p ? { cutoff: CUTOFF, ...p } : { cutoff: CUTOFF, leg: p });
   cache.publish(
-    { id, cutoff: CUTOFF, publishedAt: CUTOFF + M, legs: new Map(legs.map((leg) => [legKey(leg), { cutoff: CUTOFF, leg }])) },
+    { id, cutoff: CUTOFF, publishedAt: CUTOFF + M, legs: new Map(legs.map((p) => [legKey('wider' in p ? p.leg : p), entry(p)])) },
     { startedAt: CUTOFF + M, finishedAt: CUTOFF + M, cutoff: CUTOFF, outcome: 'published', requests: 0, venues: {} },
   );
   return cache;

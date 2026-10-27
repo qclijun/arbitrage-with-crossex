@@ -7,3 +7,9 @@
 验证：新单测11/11（`tests/unit/funding-ranking.test.ts`，夹具`tests/helpers/funding-ranking-fixture.ts`，真实缓存＋合成快照）；tsc、文件预算通过；根目录3316通过、8跳过；web build通过；`yarn verify`默认并发web段两次分别有2项（PairTicket 5秒超时、App设置）与1项（App设置找不到对话框）既有UI失败，本票未改web，单独运行2/2通过，2 workers全量1710/1710通过。日志：`/tmp/ticket10-verify*.log`、`/tmp/ticket10-web-limited2.log`、`/tmp/ticket10-web-build.log`。
 
 已知限制与待办：`fresh`依赖`now`，同一snapshot跨15分钟或UTC整点翻页时行可能由排名转观察；18须在一次浏览中固定snapshotId与评估时间并在snapshot替换时提示重载。LiveFundingContract的标的/费率口径证据须由上游映射提供（别名归一化不算证明），当前报价来源及时效政策由18/03接线。
+
+## 2026-10-28 验收复核
+
+两轴code review（standards/spec）无规格违背。据此修正：`rate-basis-mismatch`只以其他场所**已证**口径为证据，未证口径不再把孤立合约误标为mismatch（先红后绿）；补测显示舍入相同（6位）而按精确分排序；补测09的`wider`路径——同cutoff仅重读7天后，30天窗口由较旧宽读服务、超15分钟转观察（双腿`history-stale`），7天仍排名。单测12/12；tsc、文件预算通过；根目录3319通过、8跳过；web build通过；`yarn verify`默认并发web段仍偶发1项与本票无关的超时/多对话框UI失败（`App.setupFlow`/`App`用户指南，各次不同），2 workers全量1711/1711通过。日志：`/tmp/ticket10-final-verify2.log`、`/tmp/ticket10-web-2workers.log`、`/tmp/ticket10-final-web-build.log`。
+
+未采纳（判断项）：十进制辅助留在`history.ts`、`compareDays`仅回显、真同分连续名次、`inPeriod`按一个周期判当前期——均保持现状，18/03可再定。

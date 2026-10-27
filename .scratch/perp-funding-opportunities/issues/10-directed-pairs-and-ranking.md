@@ -28,3 +28,4 @@ Blocked by: 01, 02, 08, 09
 - 2026-10-27：用户明确要求实施本票并确认接缝：只交付纯模块`ranking.ts`（候选枚举＋读只读缓存的排名），页面/API由18、成本由11承接。已实现已证标的/口径的全有向候选与未成对原因、30天默认/7天对照、未舍入有符号精确排序与稳定真同分、UNKNOWN/stale/冷启动观察及原因、过滤不删候选、全局排序后分页、五窗口固定两腿、当前一期仅对照并提示反转、执行阻止原因分列。06仍claimed，本票保留open；snapshot/评估时间跨页固定由18处理。交接见[10实施交接](../evidence/10-implementation-handoff.md)。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。 已有实现8df73e1，见[10实施交接](../evidence/10-implementation-handoff.md)；实现读取09缓存，已补09依赖。08/09尚open且默认全量验收未通过，本票保持open；正式页面/API仍由18承接。
 - 2026-10-28：09已resolved（刷新改为每10分钟一轮，见[09最终验收](../evidence/09-final-validation.md)），本票依赖01/02/08/09全部满足；仍open未认领，按本票验收另行签收。
+- 2026-10-28：验收复核：code review后修正`rate-basis-mismatch`误判并补舍入同分、09宽读路径测试，见[10实施交接](../evidence/10-implementation-handoff.md)。默认并发`yarn verify`仍有无关web UI偶发超时（2 workers全量通过）；本票仍open，待用户签收。

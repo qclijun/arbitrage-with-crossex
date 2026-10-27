@@ -74,8 +74,9 @@ export function enumerateFundingCandidates(contracts: LiveFundingContract[]): {
     for (const short of group) {
       const peers = group.filter((long) => long.venue !== short.venue);
       if (!peers.length) {
-        const elsewhere = [...unique.values()].some((other) => other && other.venue !== short.venue
-          && other.underlying?.id === short.underlying!.id && other.rateBasis?.id && other.rateBasis.id !== short.rateBasis!.id);
+        // Only a proven basis on another venue can prove a mismatch.
+        const elsewhere = [...groups.values()].some((other) => other[0].rateBasis!.id !== short.rateBasis!.id
+          && other.some((peer) => peer.venue !== short.venue && peer.underlying!.id === short.underlying!.id));
         unpaired.push({ venue: short.venue, contractId: short.contractId, reason: elsewhere ? 'rate-basis-mismatch' : 'no-comparable-peer' });
       }
       for (const long of peers) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { HistoryDays } from '../../src/core/funding/history';
 import { FundingHistoryCache, legKey } from '../../src/core/funding/history-cache';
 import { enumerateFundingCandidates, rankFundingCandidates, type RankingRow } from '../../src/core/funding/ranking';
-import { CUTOFF as C, D, H, M, NOW, flat, historyLeg, live, publish } from '../helpers/funding-ranking-fixture';
+import { CUTOFF as C, D, H, M, NOW, flat, historyLeg, live, publish, reread } from '../helpers/funding-ranking-fixture';
 
 const legs = (c: { short: { venue: string; contractId: string }; long: { venue: string; contractId: string } }) =>
   `${c.short.venue}:${c.short.contractId}>${c.long.venue}:${c.long.contractId}`;
@@ -46,6 +46,8 @@ describe('directed funding candidates', () => {
       live('BYBIT', 'SOLPERP', 'SOL'),
       live('ASTER', 'ETHUSDT', 'ETH'),
       live('ASTER', 'ETHUSDT', 'ETH2'),
+      // An unproven basis elsewhere is no evidence of a mismatch.
+      { ...live('OKX', 'ETH-USDT-SWAP', 'ETH', 'other-basis'), rateBasis: { id: 'other-basis', evidence: '' } },
     ]);
     expect(candidates.map(legs).sort()).toEqual(['BINANCE:BTCUSDT>BYBIT:BTCUSDT', 'BYBIT:BTCUSDT>BINANCE:BTCUSDT']);
     expect(unpaired).toEqual([
@@ -56,6 +58,7 @@ describe('directed funding candidates', () => {
       { venue: 'BYBIT', contractId: 'SOLUSDT', reason: 'no-comparable-peer' },
       { venue: 'HYPERLIQUID', contractId: 'BTC', reason: 'rate-basis-mismatch' },
       { venue: 'OKX', contractId: 'BTC-USDT-SWAP', reason: 'rate-basis-unverified' },
+      { venue: 'OKX', contractId: 'ETH-USDT-SWAP', reason: 'rate-basis-unverified' },
     ]);
   });
 });
@@ -202,6 +205,17 @@ describe('observation rows', () => {
   });
 });
 
+it('ranks a short window on a fresh re-read after the wider older read serving long windows goes stale', () => {
+  const pair = btc.filter((c) => c.short.venue !== 'ASTER' && c.long.venue !== 'ASTER');
+  const leg = (venue: string) => historyLeg(venue, 'BTCUSDT', flat('0.0001'));
+  const history = publish(['BINANCE', 'BYBIT'].map((venue) => ({ leg: reread(leg(venue), 7, C + 10 * M), wider: leg(venue) })));
+  const later = C + 16 * M + 1;
+  const month = rankFundingCandidates({ candidates: pair, history, now: later });
+  expect(month.rankedCount).toBe(0);
+  expect(windowOf(month.rows[0], 30)).toMatchObject({ coverage: 'complete', reasons: ['short:history-stale', 'long:history-stale'] });
+  expect(rankFundingCandidates({ candidates: pair, history, now: later, days: 7 }).rankedCount).toBe(2);
+});
+
 describe('exact order, filters and pages', () => {
   const coins = ['BTC', 'ETH', 'SOL', 'XRP'];
   const candidates = enumerateFundingCandidates(coins.flatMap((coin) =>
@@ -227,7 +241,11 @@ describe('exact order, filters and pages', () => {
   const view = (row: RankingRow) => [legs(row.candidate), windowOf(row, 30).netTotal];
 
   it('orders by the unrounded signed spread, breaking true ties by stable identity', () => {
-    expect(rankFundingCandidates({ candidates, history: cache, now: NOW }).rows.map(view)).toEqual(full);
+    const { rows } = rankFundingCandidates({ candidates, history: cache, now: NOW });
+    expect(rows.map(view)).toEqual(full);
+    // ETH and BTC display alike at six places; ETH still ranks ahead on its exact score.
+    const shown = rows.slice(1, 3).map((row) => Number(windowOf(row, 30).netAnnualized).toFixed(6));
+    expect(shown).toEqual(['0.109500', '0.109500']);
     // Input order does not matter.
     expect(rankFundingCandidates({ candidates: [...candidates].reverse(), history: cache, now: NOW }).rows.map(view)).toEqual(full);
   });
