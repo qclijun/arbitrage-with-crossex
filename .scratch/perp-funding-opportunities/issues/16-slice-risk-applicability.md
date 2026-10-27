@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: none
-Blocked by: 04, 06, 15, 20
+Blocked by: 04, 15, 20
 
 ## Goal
 
@@ -26,3 +26,4 @@ Blocked by: 04, 06, 15, 20
 
 - 2026-10-27：04决定后预拆，等待06及15，当前不可认领实施。
 - 2026-10-27：06-Q4/Q6已确认：按20兼容协议版本化Risk/历史语义，producer到Python consumer的变更另跑相关monitor/screening suite；旧CRITICAL/缺口计时不因新标签或UNKNOWN清零。正式跨票验收由21汇总，不以旧原型测试替代。
+- 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。

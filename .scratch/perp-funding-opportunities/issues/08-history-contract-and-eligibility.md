@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: none
-Blocked by: 01, 07, 06
+Blocked by: 01, 07
 
 ## Goal
 
@@ -24,3 +24,4 @@ Blocked by: 01, 07, 06
 
 - 2026-10-27：01决策后的预拆任务；06未resolved前不可认领实施，整体规格仍为draft。
 - 2026-10-27：用户明确要求实施本票。当前分支已新增离线历史证据计算与官方来源归一化、合成验收测试，并补充 Binance Special 与 Hyperliquid 时间戳证据；06仍为claimed，本票保留open，生产采集与页面接线继续由09/18等票承担。完整验证结果与提交见本轮交接。
+- 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。 已有实现9ab7724，见[08实施交接](../evidence/08-implementation-handoff.md)；默认yarn verify未全绿，本票保持open，须补齐正式完整复验后签收，不能用单跑/降并发替代。

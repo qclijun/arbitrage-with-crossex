@@ -1,12 +1,12 @@
-# 永续两腿机会页规格草案
+# 永续两腿机会页规格
 
-Status: draft — 01—05及06-Q1—Q6已确认，候选定稿待最终共同理解确认
+Status: final — 2026-10-27用户确认最终规格/分票共同理解，06已resolved
 Updated: 2026-10-27 Asia/Taipei
 Canonical map: [工作地图](map.md)
 
 ## 已确认目标
 
-升级现有Funding Spreads为独立“永续两腿机会”页：用历史浮动资金费差发现候选，由用户确认后，仅开两条相互对冲的永续，不调用Boros。四腿/三腿机会页继续保留。本轮交付规划，未实现。
+升级现有Funding Spreads为独立“永续两腿机会”页：用历史浮动资金费差发现候选，由用户确认后，仅开两条相互对冲的永续，不调用Boros。四腿/三腿机会页继续保留。本轮完成规划签收；08—10已有领域模块实现，尚未完成正式产品交付。
 
 ## 用户已确认的产品边界
 
@@ -20,7 +20,7 @@ Canonical map: [工作地图](map.md)
 8. 用户已确认工单03：精确预填、手动规模/杠杆/maker，编辑使旧预览失效；10秒预览、800ms长按、服务端最终只读重验，参数/成本/风险提示变化重确认。零/负情景可人工确认但不豁免UNKNOWN或冲突门槛。保留maker到期转taker（默认300秒，30–3600秒），初次须明确授权并估转换费用；IOC无用户滑点/总成本硬上限，风险须说明。持久意图幂等恢复，详见[预填与执行契约](preflight-and-execution.md)。
 9. 用户已确认工单04：持久策略切片按实际逐腿成交记账，加减指定切片/数量；同向共享仅在全部相关归属可对账时允许。场外差异UNKNOWN并阻止相关新增风险，金额证据不足保留账户汇总与切片UNKNOWN。仅已证明的浮动两腿数量解除Boros覆盖要求，其它风险保留；旧仓可凭完整当前证据显式选量从当前时点认领，不倒填历史。详见[归属契约](ownership-and-risk.md)与[Risk适用契约](risk-applicability.md)。
 10. 用户已确认05选择A排名工作台并验收交互；06-Q1允许先交付只读观察。人工开仓默认关闭，所需任务全部验收后由用户明确启用；不从普通pair提前开放。06-Q2要求预览/提交分别重取必要当前证据，从读取至接受意图最多10秒，源有效性须可证明；不重盖缓存时间，不延长原预览。
-11. 用户已确认06-Q3—Q6：旧入口保留原用途但不降级绕过，相关新增风险缺上下文或归属/冲突证明则拒绝；停用入口不改已接受maker/到期转换，减风险及正常reconcile保留；迁移备份/兼容可验证，新写入后不以旧备份抹账；正式实现须通过默认完整门槛及集成/UI证据。详见[准入契约](acceptance-and-rollout.md)及[实施计划/验收矩阵](implementation-plan.md)，最终共同理解确认前仍不实施。
+11. 用户已确认06-Q3—Q6：旧入口保留原用途但不降级绕过，相关新增风险缺上下文或归属/冲突证明则拒绝；停用入口不改已接受maker/到期转换，减风险及正常reconcile保留；迁移备份/兼容可验证，新写入后不以旧备份抹账；正式实现须通过默认完整门槛及集成/UI证据。详见[准入契约](acceptance-and-rollout.md)及[实施计划/验收矩阵](implementation-plan.md)；最终共同理解已确认，实施仍按真实依赖及各票验收推进。
 
 ## 历史率的计算要求
 
@@ -35,16 +35,16 @@ Canonical map: [工作地图](map.md)
 
 契约至少表达：窗口起止、截止点、方向、两腿各自累计/年化与净差、来源、observedAt、完整/缺失/过期及原因。[历史证据与机会资格](issues/01-history-and-eligibility.md)已resolved，用户确认的规则见[历史契约](history-and-eligibility.md)：最近已结束UTC整点为共同截止点，按实际结算验证`(start, cutoff]`；周期变化分段验证，同一期相同记录去重、冲突或缺口为UNKNOWN；场所失败局部隔离。后台15分钟内刷新一次，页面只读缓存；超过15分钟或cutoff落后为stale，仅观察，不排名/下单。账户费用未知不影响历史排名，但独立阻止下单。离线研究读取器可复用数学和取证思路，不能直接把旧研究数据当成在线完整证明。
 
-## 契约索引与剩余签收
+## 契约索引与实施责任
 
-| 议题 | 已知约束 | 尚待定案 |
+| 议题 | 已知约束 | 实施/验收承接 |
 |---|---|---|
 | [历史证据与资格](issues/01-history-and-eligibility.md)（resolved） | 30天默认、五窗口、所选窗口完整且fresh、共同UTC整点、局部失败隔离、15分钟缓存 | 产品决定已确认；具体历史源与实现由07—09承接 |
 | [组合与成本](issues/02-pairs-costs-and-ranking.md)（resolved） | 全有向逐条排名、零/负/反向保留、成本证据及UNKNOWN、maker＋hedge开仓/双taker平仓情景、净日收入回本 | 10/11承接；当前时效由03及06-Q2严格10秒约束 |
 | [下单预检与重报价](issues/03-preflight-and-execution.md)（resolved） | 精确身份、编辑/变价重确认、严格证据门禁、转换授权/费用、幂等恢复 | 产品决定已确认；12—14预拆，12另依赖15/16数量与Risk证据 |
-| [策略归属与风险](issues/04-ownership-and-risk.md)（resolved） | 实际成交切片、可证明才叠加、显式减仓、当前时点认领、逐数量Risk适用 | 产品决定已确认；15—17预拆，持久化兼容/迁移与交付仍由06准入 |
-| [页面与确认原型](issues/05-page-and-confirmation.md)（resolved） | 用户选择[A排名工作台](page-prototype.md)：左侧有向排名表＋右侧连续详情，独立tab、历史与当前分开 | 用户已验收表格/详情/确认、执行残余和归属反馈交互；B/C仅比较资产，生产交付仍等待06 |
-| [交付准入](issues/06-acceptance-and-rollout.md)（claimed） | Q1—Q6已确认：分阶段/10秒/旧入口/迁移回退/停用在途/完整验收 | [准入契约](acceptance-and-rollout.md)及18—21已补齐，等待最终规格/分票共同理解确认 |
+| [策略归属与风险](issues/04-ownership-and-risk.md)（resolved） | 实际成交切片、可证明才叠加、显式减仓、当前时点认领、逐数量Risk适用 | 产品决定已确认；15—17承接，持久化兼容/迁移与交付按已定稿06契约 |
+| [页面与确认原型](issues/05-page-and-confirmation.md)（resolved） | 用户选择[A排名工作台](page-prototype.md)：左侧有向排名表＋右侧连续详情，独立tab、历史与当前分开 | 用户已验收表格/详情/确认、执行残余和归属反馈交互；B/C仅比较资产，正式交付由13/14/17/18/21验收 |
+| [交付准入](issues/06-acceptance-and-rollout.md)（resolved） | Q1—Q6及最终规格/分票共同理解已确认 | [准入契约](acceptance-and-rollout.md)及[实施计划](implementation-plan.md)定稿；18—21承接交付与整体验收 |
 
 ## 实现不可破坏的约束
 
@@ -69,4 +69,4 @@ Canonical map: [工作地图](map.md)
 
 ## 当前证据与下一步
 
-[本地源码核查](evidence/source-review.md)、[执行复用](evidence/execution-reuse.md)、[03当前核查](evidence/preflight-review.md)、[04数量账](evidence/ownership-review.md)、[Risk链](evidence/risk-applicability-review.md)及[06兼容/验证核查](evidence/delivery-readiness-review.md)是可复用点与缺口，不是生产功能验收。01—05已resolved，06-Q1—Q6已确认并形成候选定稿，等待用户最终共同理解确认；06仍claimed。07可独立研究；08—21由06阻塞，之后仍须逐票满足依赖，从dev展开实施。最终验收21完成只产生人工启用准备度，不自动部署/启用/交易。
+[本地源码核查](evidence/source-review.md)、[执行复用](evidence/execution-reuse.md)、[03当前核查](evidence/preflight-review.md)、[04数量账](evidence/ownership-review.md)、[Risk链](evidence/risk-applicability-review.md)及[06兼容/验证核查](evidence/delivery-readiness-review.md)是可复用点与缺口，不是生产功能验收。01—07已resolved，用户已最终确认规格/分票共同理解；08—21解除06阻塞，仍须逐票满足真实依赖与验收。08—10已有明确授权的实现，但默认verify未全绿，保持open；10补记对09缓存的依赖。后续新实施按计划从dev展开；21承接默认完整验证债，不因规格定稿豁免。最终验收21完成只产生人工启用准备度，不自动部署/启用/交易。

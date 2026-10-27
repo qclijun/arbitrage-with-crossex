@@ -39,3 +39,7 @@
 ## 工单06候选定稿待最终确认
 
 Q3—Q6用户已全部确认，准入契约已收敛；补18正式A页/API、19持久开关与旧入口、20账本版本/迁移、21整体验收，原票及依赖同步，implementation-plan.md给出分阶段顺序和验收矩阵。基准04d572a，当前分支提交候选文档，不实现产品。双轴正文未解决0；39文档本地链接及21票DAG、预算/空白检查通过，18只读不依赖11—17。默认verify root3278通过8跳过、web1708通过2失败，仍是设置抽屉及PairTicket重挂载；单独26通过仅诊断，build通过，不称完整gate全绿。失败与复核日志/tmp/perp06-*、事实和本轮结果见evidence/delivery-readiness-review.md。下一步用户最终确认具体规格/分票共同理解后才能resolve06；届时只有07/20具备启动条件，08—21当前仍阻塞。21正式验收须解决默认门槛失败，不能继承原型或本轮结果；不自动开工、启用、部署或交易。
+
+## 工单06最终确认收尾（2026-10-27）
+
+目标：依据用户“我确认是共同理解”完成最终签收。06已追加Answer并resolved，spec、准入契约及实施计划定稿；map追加结论，08—21移除06阻塞，10补记09缓存依赖。基准8df73e1；08/09/10实现提交分别9ab7724、4fe5f6d、8df73e1，本次仅改规划与状态；提交主题为`docs: finalize funding acceptance and unblock implementation`。验证：44份Markdown本地链接、21票依赖DAG和状态、全仓833文件预算及git diff空白检查通过，未重跑产品测试；日志/tmp/perp06-final-confirmation-{checks,size}.log。默认verify未全绿仍是验证债，08—10保留open，21承接查因及正式全量复验；各票不反向等待21关闭。待办：08补齐完整验收，20按真实依赖推进，09生产适配及18接线边界保留。证据：issues/06的Answer、implementation-plan.md和evidence/08—10实施交接。本次不启用、部署、重启或交易。

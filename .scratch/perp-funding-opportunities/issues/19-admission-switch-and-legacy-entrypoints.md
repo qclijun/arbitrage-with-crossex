@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: none
-Blocked by: 03, 04, 06, 20
+Blocked by: 03, 04, 20
 
 ## Goal
 
@@ -25,3 +25,4 @@ Blocked by: 03, 04, 06, 20
 ## Comments
 
 - 2026-10-27：06-Q1/Q3/Q5用户已确认，现有逐deal控制不能替代本票。仍由06阻塞；20先提供可验证的持久兼容基础。
+- 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。

@@ -1,7 +1,7 @@
 # 实施顺序与验收矩阵
 
-Status: proposed — 06-Q1—Q6已确认，等待最终共同理解确认
-来源：[06准入契约](acceptance-and-rollout.md)、[规格](spec.md)及01—05的Answer。此页是后续实施依据候选，不是产品实现或启用证明；06未resolved前，08—21仍不可认领实施。
+Status: final — 2026-10-27最终共同理解已确认，06已resolved
+来源：[06准入契约](acceptance-and-rollout.md)、[规格](spec.md)及01—05的Answer。此页是已定稿的后续实施依据，不是产品实现或启用证明；08—21已解除06阻塞，仍按真实依赖与验收推进。08—10此前获明确授权先实施，当前均因默认完整验收未通过保持open。
 
 ## 责任与依赖
 
@@ -10,7 +10,7 @@ Status: proposed — 06-Q1—Q6已确认，等待最终共同理解确认
 | [07](issues/07-history-source-research.md) | 官方历史能力、规则、分页与预算证据 | 01 |
 | [08](issues/08-history-contract-and-eligibility.md) | 历史证据模型和纯资格计算 | 07及01 |
 | [09](issues/09-history-collection-and-cache.md) | 后台采集/缓存/完整快照发布 | 07/08 |
-| [10](issues/10-directed-pairs-and-ranking.md) | 纯有向候选、排名/过滤/分页 | 08及02 |
+| [10](issues/10-directed-pairs-and-ranking.md) | 纯有向候选、排名/过滤/分页 | 08/09及02 |
 | [11](issues/11-costs-and-payback-scenarios.md) | 真实当前成本证据及金额情景 | 08及02/03、Q2期限 |
 | [12](issues/12-preview-evidence-and-admission.md) | 服务端预览、原子接受及幂等/查询协议 | 09/11/15/16/19/20 |
 | [13](issues/13-exact-prefill-and-confirmation.md) | A页精确参数、金额/费用、人工确认接线 | 11/12/18 |
@@ -23,7 +23,7 @@ Status: proposed — 06-Q1—Q6已确认，等待最终共同理解确认
 | [20](issues/20-ledger-schema-and-upgrade-compatibility.md) | 版本/迁移/备份/程序回退兼容基础 | 04及06 |
 | [21](issues/21-integrated-readiness-and-enablement.md) | 跨票最终验证和人工启用准备证据 | 07—20全部正式交付 |
 
-所有task另依赖06；完整边以各票Blocked by为准。20定义通用版本/迁移协议，12/15等拥有领域schema；19定义开关/兼容，12消费它并拥有原子接受/幂等。18不重做10的领域排序，13不重做12的服务端校验，14不创建第二恢复执行器。单writer、十进制字符串及既有安全边界贯穿全部责任。
+06已resolved，所有task移除06阻塞；其余完整边以各票Blocked by为准。10实现消费09缓存，已补齐09依赖。20定义通用版本/迁移协议，12/15等拥有领域schema；19定义开关/兼容，12消费它并拥有原子接受/幂等。18不重做10的领域排序，13不重做12的服务端校验，14不创建第二恢复执行器。单writer、十进制字符串及既有安全边界贯穿全部责任。
 
 ## 交付顺序
 
@@ -68,6 +68,6 @@ root/web依赖分别按frozen-lockfile安装，Node≥22.13、Yarn1.22.22。受�
 
 默认全量失败时保存失败日志，单跑/降低并发仅诊断；若需改测试或配置，先查因、正式记录后重跑完整标准门槛。不能把原型阶段4988通过的组合结果冒充新的正式实现全绿。迁移、停用、UI和source支持矩阵是独立证据项，不因verify或build通过而自动合格。
 
-06候选文档阶段的默认verify仍有两项既有前端失败；单独诊断通过未替代全量结果，详见[本轮核查](evidence/delivery-readiness-review.md)。此项验证债由正式实现验收查因、解决，未因本规划可签收而获得豁免。
+06候选文档阶段的默认verify仍有两项前端失败；08—10实施交接也记录默认全量PairTicket/App设置等UI失败，单独诊断/降低并发通过未替代全量结果，详见[06核查](evidence/delivery-readiness-review.md)及[08](evidence/08-implementation-handoff.md)/[09](evidence/09-implementation-handoff.md)/[10交接](evidence/10-implementation-handoff.md)。三票已有实现但继续open；21承接查因、修复与正式完整复验验证债，不因规划签收豁免。08—10满足各自依赖及完整验收后先行签收，不反向等待21 resolved；21仍在全部依赖满足后最终签收。
 
 06最终确认仅使此规格/任务可交接，不把未来矩阵结果填PASS，也不自动认领或实施下一票。

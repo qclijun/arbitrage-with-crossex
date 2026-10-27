@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: none
-Blocked by: 04, 06
+Blocked by: 04
 
 ## Goal
 
@@ -25,3 +25,4 @@ Blocked by: 04, 06
 ## Comments
 
 - 2026-10-27：06-Q4用户已确认；当前源码缺口见[事实核查](../evidence/delivery-readiness-review.md)。新票仍等待06最终确认；各领域实现须消费本协议，不能自行扩大回退承诺。
+- 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
