@@ -11,6 +11,8 @@ import { useLoginInFlight } from '../lib/loginInFlight';
 
 interface TrackedAddressApi {
   address: string | null;
+  /** Initial browser-wallet discovery and any legacy agent-root adoption are still pending. */
+  isInitializing: boolean;
   followBrowserWallet: (address: string) => void;
   /** Open the settings drawer — the one place the address is edited. */
   openSettings: () => void;
@@ -56,6 +58,8 @@ export function TrackedAddressProvider({
   const [walletRead, setWalletRead] = useState<'pending' | 'account' | 'none'>('pending');
   const agent = useBorosAgent();
   const root = agent.data?.configured ? (agent.data.root ?? null) : null;
+  const isInitializing = walletRead === 'pending'
+    || (walletRead === 'none' && !stored.walletUpgraded && root !== null);
 
   const update = useCallback((next: Partial<Stored>) => setStored((prev) => persist(prev, next)), []);
 
@@ -86,6 +90,7 @@ export function TrackedAddressProvider({
   const api = useMemo<TrackedAddressApi>(
     () => ({
       address: stored.address,
+      isInitializing,
       followBrowserWallet: (address) =>
         update({ address, walletUpgradeNote: undefined, followWallet: true }),
       openSettings: () => onOpenSettings?.(),
@@ -93,7 +98,7 @@ export function TrackedAddressProvider({
       upgradeNote: stored.walletUpgradeNote ?? null,
       dismissUpgradeNote: () => update({ walletUpgradeNote: undefined }),
     }),
-    [stored, update, onOpenSettings, onOpenLogin],
+    [stored, isInitializing, update, onOpenSettings, onOpenLogin],
   );
 
   return <TrackedAddressCtx.Provider value={api}>{children}</TrackedAddressCtx.Provider>;

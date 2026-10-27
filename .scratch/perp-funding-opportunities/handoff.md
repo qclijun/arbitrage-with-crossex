@@ -43,3 +43,7 @@ Q3—Q6用户已全部确认，准入契约已收敛；补18正式A页/API、19�
 ## 工单06最终确认收尾（2026-10-27）
 
 目标：依据用户“我确认是共同理解”完成最终签收。06已追加Answer并resolved，spec、准入契约及实施计划定稿；map追加结论，08—21移除06阻塞，10补记09缓存依赖。基准8df73e1；08/09/10实现提交分别9ab7724、4fe5f6d、8df73e1，本次仅改规划与状态；提交主题为`docs: finalize funding acceptance and unblock implementation`。验证：44份Markdown本地链接、21票依赖DAG和状态、全仓833文件预算及git diff空白检查通过，未重跑产品测试；日志/tmp/perp06-final-confirmation-{checks,size}.log。默认verify未全绿仍是验证债，08—10保留open，21承接查因及正式全量复验；各票不反向等待21关闭。待办：08补齐完整验收，20按真实依赖推进，09生产适配及18接线边界保留。证据：issues/06的Answer、implementation-plan.md和evidence/08—10实施交接。本次不启用、部署、重启或交易。
+
+## 工单08完成交接（2026-10-27）
+
+目标：完成08既有实现的正式验收。历史模块提交9ab7724，基线6f18ca7；本轮修复钱包初始化/旧root恢复尚未结束却报告配置ready的竞态，新增确定性回归；提交主题`fix: wait for wallet initialization before setup readiness`。验证：08单测11/11，配置/钱包/App聚焦25/25；默认完整verify root3316通过/8跳过、web1711通过，生产build通过，无降并发或放宽超时。08已追加Answer并resolved，map/spec/计划同步；09/10保持open，09及11解除08阻塞。PairTicket本轮约4.6秒未超时，21仍须在最终版本完整复验。生产适配器、分页/周期/HL时间证据和18接线待后续；未运行live或改实盘。证据evidence/08-final-validation.md包含精确基线、补丁/文件哈希及/tmp/ticket08-*日志，45文档链接/21票DAG及833文件预算通过，日志/tmp/ticket08-final-doc-checks.log和/tmp/ticket08-final-size.log。

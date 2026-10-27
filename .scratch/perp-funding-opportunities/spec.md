@@ -69,4 +69,4 @@ Canonical map: [工作地图](map.md)
 
 ## 当前证据与下一步
 
-[本地源码核查](evidence/source-review.md)、[执行复用](evidence/execution-reuse.md)、[03当前核查](evidence/preflight-review.md)、[04数量账](evidence/ownership-review.md)、[Risk链](evidence/risk-applicability-review.md)及[06兼容/验证核查](evidence/delivery-readiness-review.md)是可复用点与缺口，不是生产功能验收。01—07已resolved，用户已最终确认规格/分票共同理解；08—21解除06阻塞，仍须逐票满足真实依赖与验收。08—10已有明确授权的实现，但默认verify未全绿，保持open；10补记对09缓存的依赖。后续新实施按计划从dev展开；21承接默认完整验证债，不因规格定稿豁免。最终验收21完成只产生人工启用准备度，不自动部署/启用/交易。
+[本地源码核查](evidence/source-review.md)、[执行复用](evidence/execution-reuse.md)、[03当前核查](evidence/preflight-review.md)、[04数量账](evidence/ownership-review.md)、[Risk链](evidence/risk-applicability-review.md)及[06兼容/验证核查](evidence/delivery-readiness-review.md)是可复用点与缺口，不是生产功能验收。01—07已resolved，用户已最终确认规格/分票共同理解；08—21解除06阻塞，仍须逐票满足真实依赖与验收。08已补齐默认完整verify/build并resolved，见[最终验收](evidence/08-final-validation.md)；09/10已有明确授权的实现，仍待逐票签收，10依赖09缓存。后续新实施按计划从dev展开；21在最终实现版本重新完成全部默认门槛与集成证据，不继承本次为产品准入PASS。最终验收21完成只产生人工启用准备度，不自动部署/启用/交易。

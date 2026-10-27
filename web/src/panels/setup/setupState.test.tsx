@@ -1,15 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
-import { agentStatus, mockWorld, telegramInfo } from '../../test/fixtures';
+import { afterEach, describe, expect, it } from 'vitest';
+import { qk } from '../../api/queries';
+import { installFakeWallet, removeFakeWallet } from '../../test/fakeWallet';
+import { agentStatus, credentialsBodies, mockWorld, telegramInfo } from '../../test/fixtures';
 import { TrackedAddressProvider } from '../trackedAddress';
 import { useSetupState } from './setupState';
 
 const WALLET = `0xab18${'0'.repeat(32)}ed9d`;
 
-function hookWrapper() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+function hookWrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
       <TrackedAddressProvider>{children}</TrackedAddressProvider>
@@ -18,7 +19,26 @@ function hookWrapper() {
   return wrapper;
 }
 
+afterEach(removeFakeWallet);
+
 describe('useSetupState', () => {
+  it('waits for wallet discovery and the agent-root fallback even when all queries are ready', async () => {
+    let finishReading!: (accounts: string[]) => void;
+    const accounts = new Promise<string[]>((resolve) => { finishReading = resolve; });
+    installFakeWallet({ ethAccounts: () => accounts });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(qk.credentials, credentialsBodies.set);
+    client.setQueryData(qk.borosAgent, agentStatus({ configured: true, root: WALLET, expired: false }));
+    client.setQueryData(qk.telegram, telegramInfo());
+    const { result } = renderHook(() => useSetupState(), { wrapper: hookWrapper(client) });
+
+    expect(result.current.isLoading).toBe(true);
+    await act(async () => { finishReading([]); });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.steps.borosWallet).toBe('done');
+    expect(result.current.doneCount).toBe(2);
+  });
+
   it('an expired approval is not done', async () => {
     mockWorld({ keyConfigured: true, agent: agentStatus({ configured: true, root: WALLET, expired: true }) });
     const { result } = renderHook(() => useSetupState(), { wrapper: hookWrapper() });

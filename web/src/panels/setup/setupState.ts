@@ -27,7 +27,7 @@ export function useSetupState(): {
   const credentials = useCredentials();
   const agent = useBorosAgent();
   const telegram = useTelegram();
-  const { address } = useTrackedAddress();
+  const { address, isInitializing } = useTrackedAddress();
   const steps: Record<SetupStep, StepState> = {
     gateKey: credentials.data?.configured ? 'done' : 'missing',
     borosWallet:
@@ -48,6 +48,6 @@ export function useSetupState(): {
     steps,
     doneCount: SETUP_STEPS.length - missing.length,
     firstMissing: missing[0] ?? null,
-    isLoading: credentials.isPending || agent.isPending || telegram.isPending,
+    isLoading: credentials.isPending || agent.isPending || telegram.isPending || isInitializing,
   };
 }
