@@ -1,8 +1,8 @@
 # 规模相关成本、持有期与回本情景
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 01, 02, 03, 08
 
 ## Goal
