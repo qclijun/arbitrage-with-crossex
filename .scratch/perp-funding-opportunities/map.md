@@ -29,6 +29,8 @@ Updated: 2026-10-27 Asia/Taipei
 - 后续分票：[07生产历史源研究](issues/07-history-source-research.md)核查真实能力；[08证据契约与资格](issues/08-history-contract-and-eligibility.md)、[09后台采集与缓存](issues/09-history-collection-and-cache.md)为预拆实现票，均由06阻塞，当前不可实施。整体规格继续draft，下一张决策票为02。
 - 2026-10-27：[02组合、成本与历史排名](issues/02-pairs-costs-and-ranking.md)已resolved，用户确认两轮共七项决定；所有有向组合逐条排名，保留零/负/反向结果；费用/换汇证据与历史排名分离，开仓maker＋hedge、平仓双taker作情景，回本按扣持续成本后的净日收入计算。详见[组合与成本契约](pairs-costs-and-ranking.md)，03解除依赖，当前下一张决策票为03。
 - 02预拆[10全组合与历史排名](issues/10-directed-pairs-and-ranking.md)、[11成本与回本情景](issues/11-costs-and-payback-scenarios.md)，均由06阻塞，11另等待03；未授权当前实施产品。整体规格仍draft。
+- 2026-10-27：[03预填、重报价与执行](issues/03-preflight-and-execution.md)已resolved，用户两轮确认Q1—Q7；精确候选/参数绑定，编辑与证据变化重新确认，10秒预览/800ms长按及服务端严格重验；零负情景保留人工决策，不放宽UNKNOWN/仓位冲突。用户选择保留到期转taker，初次明确授权并估转换费用，不能改成到期停止。详见[执行契约](preflight-and-execution.md)及[当前事实](evidence/preflight-review.md)，下一决策票为04。
+- 03预拆[12服务端证据准入](issues/12-preview-evidence-and-admission.md)、[13精确预填与确认](issues/13-exact-prefill-and-confirmation.md)、[14持久提交与恢复](issues/14-durable-submission-and-resume.md)，均等待06；11已补转换成本分支、解除03依赖，仍等06。单writer/幂等/未知证据等既有缺口须实施后才能宣称具备，整体规格继续draft。
 
 ## Not yet specified
 

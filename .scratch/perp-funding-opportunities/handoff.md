@@ -11,3 +11,7 @@
 ## 工单02完成交接
 
 用户两轮确认Q1—Q7，工单02已resolved，契约在pairs-costs-and-ranking.md，规格/地图已同步。全有向组合保留零/负/反向；真实成本UNKNOWN不影响历史分数但阻止下单。maker＋hedge开仓、双taker平仓仅作情景，回本按逐腿名义金额与净日收入计算，未来基差/汇率风险未覆盖。分支docs/perp-funding-opportunities，基准90839e2；本轮仅7份文档。10/11受06阻塞，11另等待03；下一决策票03，整体规格仍draft。按冻结锁文件安装依赖；18份文档/50个本地链接、11票无环、预算/差异空白检查通过。yarn verify通过4988项、跳过8项，web build通过；双轴审查无未解决发现。证据均在/tmp：perp02-verify.log、perp02-web-build.log、perp02-doc-validation.txt、perp02-standards-review.md、perp02-spec-review.md。按要求提交当前分支，不推送；无产品代码、服务或交易操作。
+
+## 工单03完成交接
+
+用户两轮确认Q1—Q7，03已resolved；契约preflight-and-execution.md及规格/地图、02成本契约、11任务同步。Q7保留到期转taker：默认300秒、30–3600秒，初次授权并展示正常/转换费用，不采用到期停止。精确预填、10秒/800ms确认、服务端重验和持久幂等均为待实现要求，IOC无用户硬价格上限。分支docs/perp-funding-opportunities，基准9dbab22；仅11份文档，12—14受06阻塞，下一决策04，整体draft。事实证据evidence/preflight-review.md：图Tier2、26路径best-effort覆盖；不能把现有fail-open、杠杆route直写当保障。23份文档/73链接、14票无环、预算/差异空白通过；yarn verify通过4988项/跳过8项，web build通过，双轴审查0项发现。日志及审查均在/tmp/perp03-*。按要求提交本分支、不推送；无产品代码、服务或交易操作。
