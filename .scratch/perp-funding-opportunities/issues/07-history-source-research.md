@@ -1,9 +1,9 @@
 # 生产历史源、结算规则与采集预算研究
 
 Type: research
-Status: open
-Assignee: none
-Blocked by: 01
+Status: resolved
+Assignee: Codex
+Blocked by: none
 
 ## Question
 
@@ -23,3 +23,7 @@ Blocked by: 01
 ## Comments
 
 - 2026-10-27：由01已确认决定拆出；01已resolved，本票可研究，不代表08/09已获实施准入。
+
+## Answer
+
+2026-10-27 完成八场所官方公开来源核查，逐场所的 verified/unknown/unsupported 能力、接口边界、分页与限流、15 分钟预算初值及失败证明方案见[研究证据](../evidence/history-source-research.md)。已证实可取历史记录不代表可证明某 live 合约的完整窗口；历史周期生效时间、上市起点和若干接口的终止/修订语义仍为 unknown。OKX 普通历史端点仅覆盖近三个月，180/365 天由该端点不支持；Kraken 的 CSV 不能直接证明 15 分钟增量刷新。08/09 继续依赖 06 的实施准入，并按证据保留 UNKNOWN，不承诺八场所全量历史。

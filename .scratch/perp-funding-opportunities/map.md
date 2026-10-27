@@ -23,6 +23,8 @@ Updated: 2026-10-27 Asia/Taipei
 
 ## Decisions so far
 
+- 2026-10-27：[07生产历史源研究](issues/07-history-source-research.md)已resolved；[八场所证据](evidence/history-source-research.md)确认有历史来源但逐合约周期/上市/完整性仍多为UNKNOWN，OKX普通端点仅近三个月。09须实测分页、延迟和预算；08/09仍受06准入阻塞。
+
 <!-- 本轮只建图，已确认用户约束放Notes；后续关闭决策票时这里只追加标题链接与一句结论。 -->
 
 - 2026-10-27：[01历史证据与资格](issues/01-history-and-eligibility.md)已resolved，用户全部确认Q1—Q4；共同UTC整点、严格逐腿逐窗口覆盖、局部失败隔离、后台15分钟刷新及stale禁止排名/下单，详见[契约](history-and-eligibility.md)。账户费率未知不影响历史排名但独立阻止下单。02解除01依赖。
