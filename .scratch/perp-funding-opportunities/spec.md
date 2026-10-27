@@ -41,7 +41,7 @@ Canonical map: [工作地图](map.md)
 | [组合与成本](issues/02-pairs-costs-and-ranking.md)（resolved） | 全有向逐条排名、零/负/反向保留、成本证据及UNKNOWN、maker＋hedge开仓/双taker平仓情景、净日收入回本 | 产品决定已确认；10/11预拆，报价时效与最终下单由03决定 |
 | [下单预检与重报价](issues/03-preflight-and-execution.md)（resolved） | 精确身份、编辑/变价重确认、严格证据门禁、转换授权/费用、幂等恢复 | 产品决定已确认；12—14预拆，12另依赖15/16数量与Risk证据 |
 | [策略归属与风险](issues/04-ownership-and-risk.md)（resolved） | 实际成交切片、可证明才叠加、显式减仓、当前时点认领、逐数量Risk适用 | 产品决定已确认；15—17预拆，持久化兼容/迁移与交付仍由06准入 |
-| [页面与确认原型](issues/05-page-and-confirmation.md) | 独立tab、历史与当前分开 | 表格/详情/确认中必要信息与反馈 |
+| [页面与确认原型](issues/05-page-and-confirmation.md)（claimed） | 独立tab、历史与当前分开；[A/B/C讨论原型](page-prototype.md)已制作 | 等待用户比较布局及验收表格/详情/确认交互，不视作产品定案 |
 | [交付准入](issues/06-acceptance-and-rollout.md) | 离线验证、保留四腿、无实盘部署 | 完成边界、兼容/迁移、停用/回退与实施分票 |
 
 ## 实现不可破坏的约束
@@ -66,4 +66,4 @@ Canonical map: [工作地图](map.md)
 
 ## 当前证据与下一步
 
-[本地源码核查](evidence/source-review.md)、[执行复用](evidence/execution-reuse.md)、[03当前核查](evidence/preflight-review.md)、[04数量账](evidence/ownership-review.md)与[Risk实际链](evidence/risk-applicability-review.md)。以上是可复用点与缺口，不是已通过产品验收。01—04已解决，下一张未阻塞决策票为05。07研究票可独立查证；08—17仅预拆并由06阻塞，全部关键决策关闭且通过06交付准入后才可实施，整体规格仍为draft。
+[本地源码核查](evidence/source-review.md)、[执行复用](evidence/execution-reuse.md)、[03当前核查](evidence/preflight-review.md)、[04数量账](evidence/ownership-review.md)与[Risk实际链](evidence/risk-applicability-review.md)。以上是可复用点与缺口，不是已通过产品验收。01—04已解决，05已claimed，等待用户看[原型](page-prototype.md)选版与验收，06仍阻塞。07研究票可独立查证；08—17仅预拆并由06阻塞，全部关键决策关闭且通过06交付准入后才可实施，整体规格仍为draft。

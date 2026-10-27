@@ -8,6 +8,7 @@
   "repository": "github:pendle-finance/arbitrage-with-crossex",
   "scripts": {
     "dev": "vite",
+    "prototype:funding": "vite --config prototype-funding.config.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

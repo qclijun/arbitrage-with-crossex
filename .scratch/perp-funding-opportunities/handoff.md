@@ -19,3 +19,7 @@
 ## 工单04决策闭合
 
 用户两轮确认七项决定，04已resolved。ownership-and-risk.md及risk-applicability.md规定实际成交切片、指定量加减、可证明才同向共享、差异UNKNOWN、逐数量Risk及当前认领，不倒填历史。分支docs/perp-funding-opportunities，基准1c7cb74；本轮14份文档。15—17等待06，12依赖15/16；下一决策票05，整体仍draft。事实见evidence/ownership-review.md和risk-applicability-review.md，含HYPE、旧basis/rollover及监控限制。30文档104链接、17票无环、预算及差异检查通过；双轴审查各0项。首次verify有1项弹窗等待失败，单文件2项通过，完整verify复跑4988项通过/8跳过，web build通过；证据均在/tmp/perp04-*（含verify.log、web-focused-retry.log、verify-retry.log及双轴报告）。提交当前分支、不推送；无产品代码、迁移、报警或交易改动。
+
+## 工单05原型交付待验收
+
+目标为页面、详情与确认原型；基准f0a10ef，当前分支提交可丢弃讨论资产。05已claimed，A排名工作台/B研究画布/C分步确认可交互；入口page-prototype.md，运行yarn --cwd web prototype:funding，仅127.0.0.1:8795，固定fixture、不接账户/API、不持久化。Chrome已检验长按、部分成交/UNKNOWN查询、stale、缺失证据、重报价、编辑失效及maker限价绑定，截图/记录见evidence/prototype-*。Standards无发现，Spec两项P2修复后未解决0。类型/build通过；root3278通过8跳过，web降低并发全量1710通过。默认verify仍有两项前端超时，单独复跑26通过；原失败与复核日志保留/tmp/perp05-*，不称默认门禁全绿。32文档116链接及17票无环验证通过。待用户选择/组合布局并验收；05保持claimed，06/17阻塞，spec仍draft，不升级真实页面。

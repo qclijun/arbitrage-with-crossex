@@ -1,8 +1,8 @@
 # 页面、详情与确认交互原型
 
 Type: prototype
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Codex
 Blocked by: 02, 03, 04
 
 ## Question
@@ -22,3 +22,6 @@ Blocked by: 02, 03, 04
 ## Comments
 
 - 2026-10-27：wayfinder初始建图，未认领、未解决；讨论建议不是用户已确认决策。
+- 2026-10-27：01—04已resolved，本票认领。制作隔离的离线交互原型，比较三种信息布局；模拟数据与执行，不接真实API。须用户看过并明确验收后才能resolved，06仍阻塞产品实施。
+- 2026-10-27：[三布局交互原型与运行说明](../page-prototype.md)已制作；A排名工作台、B研究画布、C分步确认，包含[浏览器核查](../evidence/prototype-review.md)与截图。尚待用户看原型选择/组合布局并验收，保持claimed，不能把代理自检当用户定案。
+- 2026-10-27：双轴审查发现已修复；类型/build通过，root3278通过8跳过，web降低并发全量1710通过。默认verify两项前端超时及复核结果均保留在核查记录；未修改既有测试。交付待用户验收，不解除后续依赖。
