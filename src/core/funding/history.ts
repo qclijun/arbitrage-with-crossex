@@ -94,16 +94,16 @@ export function snapshotCutoff(now: number): number {
   return Math.floor(now / HOUR) * HOUR;
 }
 
-interface Decimal { coefficient: bigint; places: number }
+export interface Decimal { coefficient: bigint; places: number }
 
-function parseDecimal(value: string): Decimal | null {
+export function parseDecimal(value: string): Decimal | null {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
   if (!match) return null;
   const places = match[3]?.length ?? 0;
   return { coefficient: BigInt(`${match[1]}${match[2]}${match[3] ?? ''}`), places };
 }
 
-function scale(value: Decimal, places: number): bigint {
+export function scale(value: Decimal, places: number): bigint {
   return value.coefficient * 10n ** BigInt(places - value.places);
 }
 
@@ -115,16 +115,19 @@ function format(coefficient: bigint, places: number): string {
   return `${sign}${whole}${fraction ? `.${fraction}` : ''}`;
 }
 
-function annualized(value: Decimal, days: number): string {
-  const places = Math.max(value.places, 18);
-  const numerator = scale(value, places) * 365n;
-  const divisor = BigInt(days);
+/** `numerator / divisor` (a positive divisor) at `places` decimals, rounded half away from zero. */
+export function divideRounded(numerator: bigint, divisor: bigint, places: number): string {
   const quotient = numerator / divisor;
   const remainder = numerator % divisor;
-  // Round half away from zero; preserve exact totals separately for future ranking.
   const rounded = quotient + (2n * (remainder < 0n ? -remainder : remainder) >= divisor
     ? numerator < 0n ? -1n : 1n : 0n);
   return format(rounded, places);
+}
+
+function annualized(value: Decimal, days: number): string {
+  // Exact totals are kept separately; ranking orders by them, not by this rounded rate.
+  const places = Math.max(value.places, 18);
+  return divideRounded(scale(value, places) * 365n, BigInt(days), places);
 }
 
 function schedule(rules: FundingRuleSegment[], start: number, cutoff: number): number[] | null {
