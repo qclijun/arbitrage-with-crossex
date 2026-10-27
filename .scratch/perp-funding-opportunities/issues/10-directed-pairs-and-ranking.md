@@ -1,8 +1,8 @@
 # 全有向组合枚举与历史排名
 
 Type: task
-Status: open
-Assignee: none
+Status: resolved
+Assignee: Claude
 Blocked by: 01, 02, 08, 09
 
 ## Goal
@@ -20,6 +20,10 @@ Blocked by: 01, 02, 08, 09
 ## Acceptance
 
 离线TDD覆盖三场所六方向、同venue多合约身份、7/30天最优不同、反向正负、两腿负率、当前反转、零值、显示舍入/真同分、分页稳定和资格不足观察。候选数与方向不得依赖当前max/min。经常运行类型检查与针对单文件测试，最终yarn verify及web production build；server仅app.inject并阻止真实HTTP。
+
+## Answer
+
+2026-10-28用户签收。实现8df73e1＋c54f044交付纯模块`src/core/funding/ranking.ts`：已证标的/费率口径的全跨场所有向候选（同场所多合约分身份、不自配、未成对原因），枚举不读当前费率；默认30天、7天对照，按未舍入有符号精确分降序、真同分按稳定标识；仅complete且fresh排名，UNKNOWN/stale/冷启动/缺腿作观察并附原因；过滤不删候选、全局排序后分页；五窗口固定两腿；当前一期仅对照并提示反转；执行阻止原因分列。双轴审查后修正`rate-basis-mismatch`只以已证口径为证（先红后绿），补显示舍入同分及09宽读路径测试。单测12/12，root 3319/8跳过，web生产构建通过；默认并发`yarn verify`的web段有与本票无关的偶发UI超时（2 workers全量1711通过），由21承接完整复验。详见[10实施交接](../evidence/10-implementation-handoff.md)。页面/只读API（18）、成本（11）、快照与评估时间跨页固定及当前报价来源不在本票；不扩大白名单、不启用交易。
 
 ## Comments
 

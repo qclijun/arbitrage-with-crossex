@@ -70,3 +70,7 @@ Updated: 2026-10-27 Asia/Taipei
 ## 09完成验收
 
 - 2026-10-28：[09](issues/09-history-collection-and-cache.md)已追加Answer并resolved。审查修复：刷新每10分钟一轮/截止4分钟（用户确认），每轮重读的腿在两次发布间保持fresh；同cutoff较窄新读按窗口保留；ASTER默认1秒间隔。默认完整verify root3318/8跳过、web1711，生产build通过；见[最终验收证据](evidence/09-final-validation.md)。10不再等待09；真实适配器、预算实测与18接线待后续，21仍须最终复验。
+
+## 10完成验收
+
+- 2026-10-28：[10](issues/10-directed-pairs-and-ranking.md)用户签收，追加Answer并resolved。纯候选/排名模块（8df73e1）经双轴审查修正`rate-basis-mismatch`误判（c54f044），补舍入同分与09宽读路径测试；root 3319/8跳过、web build通过，默认并发web偶发UI超时仍归21复验。18不再受10阻塞（其余依赖保留）；页面/API、跨页固定snapshot与评估时间由18承接，不启用交易。
