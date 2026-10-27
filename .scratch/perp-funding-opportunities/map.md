@@ -40,9 +40,13 @@ Updated: 2026-10-27 Asia/Taipei
 
 ## Not yet specified
 
+- 2026-10-27：用户要求继续06，本票已claimed；[准入草案](acceptance-and-rollout.md)核对07—17的责任，并提出首轮分阶段交付及当前证据时效问题，尚待答复。兼容/停用/最终集成的事实和实施承接须继续收敛，整体规格仍draft，不解除实现依赖。
+- 2026-10-27：06首轮Q1/Q2已确认：先只读交付、人工开仓默认关闭且验收后明确启用；必要当前证据严格10秒，不能重盖缓存时间或延长原预览。第二轮旧入口兼容、迁移回退、停用在途和完整验收已提出，待用户回答；06仍claimed，后续实现依赖不解除。
+- 2026-10-27：06-Q3—Q6已全部确认。已补[18正式A页/API](issues/18-funding-page-and-read-api.md)、[19持久准入/旧入口](issues/19-admission-switch-and-legacy-entrypoints.md)、[20版本迁移/回退](issues/20-ledger-schema-and-upgrade-compatibility.md)、[21集成验收/启用准备](issues/21-integrated-readiness-and-enablement.md)，并更新原票依赖；见[实施顺序与验收矩阵](implementation-plan.md)。候选定稿等待最终共同理解确认；06仍claimed，08—21仍阻塞，不自动实施、部署或启用。
+
 - 01已确定历史产品门槛、缓存时效和冷启动UNKNOWN；具体每场所生产历史源、可证明的结算规则与限流预算由07研究，不承诺当前八场所都有全年历史。
 - 04已确定持久切片、当前认领和逐数量Risk政策；具体持久化兼容/迁移仍由06准入，15—17实施后才能声称数量账及consumer具备能力。
-- 原六张关键决策票全部解决并通过06后，将本草案收敛成最终规格，开放预拆实现任务；01resolved不代表完整下单准备度。
+- 01—05已resolved，06产品决策Q1—Q6已确认；候选规格/分票/矩阵等待用户最终共同理解确认后才关闭06。之后只按真实依赖开放后续任务，21验收完成才可申请人工启用；任何规划resolved不等于实际下单准备度。
 
 ## Out of scope
 
