@@ -75,10 +75,12 @@ export interface CostLine {
   phase: 'open' | 'close' | 'hold';
   role: 'maker' | 'taker' | null;
   nature: 'one-time' | 'daily';
-  /** Signed cost in the common currency; negative is a rebate or a fill better than the reference mid. */
+  /** Signed cost in the common currency; negative is a rebate or a taker fill better than the reference mid. */
   amount: Amount;
-  /** Fee rate, or average fill price in the leg's quote. */
+  /** Fee or daily borrow rate. */
   rate: string | null;
+  /** Book lines: the walked average, or the maker's resting price, in the leg's quote. */
+  price: string | null;
   source: string | null;
   at: number | null;
   basis: CostSource['basis'] | null;
@@ -209,7 +211,10 @@ function walk(levels: Array<[Exact, Exact]>, qty: Exact): Exact | null {
 function fxRate(rates: FxRate[], from: string, to: string, label: string): LegResult['fx'] {
   if (from === to) return { status: 'known', from, to, rate: '1', source: 'same currency', at: null, basis: 'real' };
   const matches = rates.filter((r) => r.from === from && r.to === to);
-  const values = new Set(matches.map((r) => (positive(r.rate) ? decimal(positive(r.rate)!) : 'invalid')));
+  const values = new Set(matches.map((r) => {
+    const rate = positive(r.rate);
+    return rate ? decimal(rate) : 'invalid';
+  }));
   if (!matches.length) return { status: 'unknown', reasons: [`${label}:fx-missing:${from}/${to}`] };
   if (values.size !== 1 || values.has('invalid')) return { status: 'unknown', reasons: [`${label}:fx-unverified:${from}/${to}`] };
   return { status: 'known', ...matches[0] };
@@ -217,53 +222,65 @@ function fxRate(rates: FxRate[], from: string, to: string, label: string): LegRe
 
 const fxValue = (fx: LegResult['fx']): Value => (fx.status === 'known' ? exact(fx.rate)! : fx.reasons);
 
-function line(base: Omit<CostLine, 'amount' | 'rate' | 'source' | 'at' | 'basis' | 'notApplicable'>, value: Value,
-  src: Partial<CostSource> | null, rate: string | null = null, notApplicable: string | null = null): CostLine & { value: Value } {
-  return { ...base, amount: amount(value), rate, source: src?.source ?? null, at: src?.at ?? null,
-    basis: src?.basis ?? null, notApplicable, value };
+type LineBase = Pick<CostLine, 'item' | 'leg' | 'phase' | 'role' | 'nature'>;
+type ValuedLine = CostLine & { value: Value };
+
+function line(base: LineBase, value: Value, extra: { src?: CostSource; rate?: string; price?: string; notApplicable?: string } = {}): ValuedLine {
+  return { ...base, amount: amount(value), rate: extra.rate ?? null, price: extra.price ?? null,
+    source: extra.src?.source ?? null, at: extra.src?.at ?? null, basis: extra.src?.basis ?? null,
+    notApplicable: extra.notApplicable ?? null, value };
 }
 
 interface Context {
   input: ScenarioInput;
   qty: Exact;
+  hold: Exact;
   makerPrice: Exact | null;
   books: Record<Side, Book | string[]>;
   fx: Record<Side, Value>;
 }
 
+/** Where leg A rests: the chosen price or its own-side touch; a price that would cross is no maker evidence. */
+function restingPrice(ctx: Context, side: Side, book: Book, buys: boolean): Value {
+  const price = ctx.makerPrice ?? (buys ? book.bids[0][0] : book.asks[0][0]);
+  const crosses = buys ? cmp(price, book.asks[0][0]) >= 0 : cmp(price, book.bids[0][0]) <= 0;
+  return crosses ? [`${side}:open:maker-price-crosses-book`] : price;
+}
+
 /** One fill: its fee line and its price-impact line against the leg's mid, both in the common currency. */
-function fill(ctx: Context, side: Side, phase: 'open' | 'close', role: 'maker' | 'taker', fees: FeeEvidence): Array<CostLine & { value: Value }> {
+function fill(ctx: Context, side: Side, phase: 'open' | 'close', role: 'maker' | 'taker', fees: FeeEvidence): ValuedLine[] {
   const buys = phase === 'open' ? OPEN_BUYS[side] : !OPEN_BUYS[side];
   const book = ctx.books[side];
   const fx = ctx.fx[side];
   const price: Value = Array.isArray(book) ? book
-    : role === 'maker' ? ctx.makerPrice ?? (buys ? book.bids[0][0] : book.asks[0][0])
+    : role === 'maker' ? restingPrice(ctx, side, book, buys)
       : walk(buys ? book.asks : book.bids, ctx.qty) ?? [`${side}:${phase}:depth-insufficient`];
-  const rateText = fees.status === 'known' ? fees[role] : null;
   const rate: Value = fees.status !== 'known' ? [`${side}:fee-${fees.reason}`] : exact(fees[role]) ?? [`${side}:fee-invalid`];
   const base = { leg: side, phase, role, nature: 'one-time' as const };
   const fee = product([rate, ctx.qty, price, fx]);
   // Signed against the taker: buying above the mid, or selling below it, costs.
-  const paid = Array.isArray(book) ? book : buys ? minus(price, book.mid) : minus(book.mid, price);
-  const impact = product([paid, ctx.qty, fx]);
+  let paid = Array.isArray(book) ? book : buys ? minus(price, book.mid) : minus(book.mid, price);
+  // A maker resting inside the mid has not filled yet: no credit is taken for it.
+  if (role === 'maker' && known(paid) && sign(paid) < 0) paid = ZERO;
   return [
-    line({ ...base, item: 'fee' }, fee, fees.status === 'known' ? fees : null, rateText),
-    line({ ...base, item: 'book' }, impact, Array.isArray(book) ? null : book.src, known(price) ? decimal(price) : null),
+    line({ ...base, item: 'fee' }, fee, fees.status === 'known' ? { src: fees, rate: fees[role] } : {}),
+    line({ ...base, item: 'book' }, product([paid, ctx.qty, fx]),
+      { src: Array.isArray(book) ? undefined : book.src, price: known(price) ? decimal(price) : undefined }),
   ];
 }
 
-function path(ctx: Context, fees: Record<Side, FeeEvidence>, aRole: 'maker' | 'taker', daily: Value, conversion: CostLine & { value: Value }): PathResult {
+function path(ctx: Context, fees: Record<Side, FeeEvidence>, legA: 'maker' | 'taker', daily: Value, conversion: ValuedLine): PathResult {
   const a = ctx.input.makerLeg;
   const b = OTHER[a];
   const lines = [
-    ...fill(ctx, a, 'open', aRole, fees[a]),
+    ...fill(ctx, a, 'open', legA, fees[a]),
     ...fill(ctx, b, 'open', 'taker', fees[b]),
     ...fill(ctx, 'short', 'close', 'taker', fees.short),
     ...fill(ctx, 'long', 'close', 'taker', fees.long),
     conversion,
   ];
   const c = total(lines.map((l) => l.value));
-  const hold: Value = known(c) && known(daily) ? sub(mul(exact(ctx.input.holdDays)!, daily), c) : reasonsOf([daily, c]);
+  const hold = minus(product([ctx.hold, daily]), c);
   let payback: Payback;
   if (!known(c) || !known(daily)) payback = { kind: 'unknown', reasons: reasonsOf([daily, c]) };
   else if (sign(daily) <= 0) payback = { kind: 'none' };
@@ -272,35 +289,28 @@ function path(ctx: Context, fees: Record<Side, FeeEvidence>, aRole: 'maker' | 't
   return { lines: lines.map(({ value: _v, ...rest }) => rest), oneTime: amount(c), holdResult: amount(hold), payback };
 }
 
-function evidenceLine(ev: BorrowEvidence | ConversionEvidence, item: 'borrow' | 'conversion', rates: FxRate[], currency: string): CostLine & { value: Value } {
-  const base = { item, leg: null, phase: item === 'borrow' ? 'hold' as const : 'open' as const, role: null,
-    nature: item === 'borrow' ? 'daily' as const : 'one-time' as const };
-  if (ev.status === 'unknown') return line(base, [`${item}-${ev.reason}`], null);
+function costLine(ev: BorrowEvidence | ConversionEvidence, base: LineBase, rates: FxRate[], currency: string): ValuedLine {
+  const item = base.item;
+  if (ev.status === 'unknown') return line(base, [`${item}-${ev.reason}`]);
   if (ev.status === 'not-applicable') {
-    return ev.evidence ? line(base, ZERO, ev, null, ev.evidence) : line(base, [`${item}-not-applicable-unproven`], null);
+    return ev.evidence ? line(base, ZERO, { src: ev, notApplicable: ev.evidence }) : line(base, [`${item}-not-applicable-unproven`]);
   }
-  const raw = ev.status === 'known' && 'principal' in ev
-    ? (() => {
-      const p = exact(ev.principal);
-      const r = exact(ev.dailyRate);
-      return p && r ? mul(p, r) : null;
-    })()
-    : exact((ev as { amount: string }).amount);
-  const fx = fxValue(fxRate(rates, ev.currency, currency, item));
-  const value: Value = raw ? (known(fx) ? mul(raw, fx) : fx) : [`${item}-invalid`];
-  return line(base, value, ev, 'dailyRate' in ev ? ev.dailyRate : null);
+  const borrow = 'principal' in ev ? ev : null;
+  const raw = borrow ? product([exact(borrow.principal) ?? [`${item}-invalid`], exact(borrow.dailyRate) ?? [`${item}-invalid`]])
+    : exact((ev as Extract<ConversionEvidence, { status: 'known' }>).amount) ?? [`${item}-invalid`];
+  return line(base, product([raw, fxValue(fxRate(rates, ev.currency, currency, item))]), { src: ev, rate: borrow?.dailyRate });
 }
 
 export function estimateFundingScenario(input: ScenarioInput): FundingScenario {
   const qty = positive(input.quantity);
   const hold = positive(input.holdDays);
+  const makerPrice = positive(input.makerPrice);
   if (!qty || !hold || !input.currency || !HISTORY_DAYS.includes(input.windowDays)
     || (input.makerLeg !== 'short' && input.makerLeg !== 'long')
-    || (input.makerPrice !== undefined && !positive(input.makerPrice))) throw new Error('Invalid scenario input');
+    || (input.makerPrice !== undefined && !makerPrice)) throw new Error('Invalid scenario input');
   const sides: Side[] = ['short', 'long'];
   const fxBySide = {} as Record<Side, LegResult['fx']>;
-  const makerPrice = input.makerPrice === undefined ? null : positive(input.makerPrice);
-  const ctx: Context = { input, qty, makerPrice, books: {} as Context['books'], fx: {} as Context['fx'] };
+  const ctx: Context = { input, qty, hold, makerPrice, books: {} as Context['books'], fx: {} as Context['fx'] };
   const legs = {} as Record<Side, LegResult & { daily: Value }>;
   for (const side of sides) {
     const leg = input[side];
@@ -318,9 +328,9 @@ export function estimateFundingScenario(input: ScenarioInput): FundingScenario {
     legs[side] = { symbol: leg.symbol, quote, mid: amount(mid), fx: fxBySide[side], notional: amount(notional), fundingDaily: amount(daily), daily };
   }
   const gross = total([legs.short.daily, legs.long.daily]);
-  const carry = evidenceLine(input.borrow, 'borrow', input.fx, input.currency);
+  const carry = costLine(input.borrow, { item: 'borrow', leg: null, phase: 'hold', role: null, nature: 'daily' }, input.fx, input.currency);
   const daily = minus(gross, carry.value);
-  const conversion = evidenceLine(input.conversion, 'conversion', input.fx, input.currency);
+  const conversion = costLine(input.conversion, { item: 'conversion', leg: null, phase: 'open', role: null, nature: 'one-time' }, input.fx, input.currency);
   const real = { short: input.short.fees, long: input.long.fees };
   const normal = path(ctx, real, 'maker', daily, conversion);
   const converted = path(ctx, real, 'taker', daily, conversion);

@@ -36,7 +36,11 @@ export function feeEvidence(rows: VenueFeeRow[] | null, symbol: string, read: { 
     source: special ? `${read.source} special_fee_list` : read.source };
 }
 
-/** Shortest round-trip decimal of a finite positive number, without exponent notation. */
+/**
+ * Shortest round-trip decimal of a finite positive number, without exponent notation.
+ * Venue books arrive already parsed to numbers (estimate/books.ts, shared with trading);
+ * this recovers the decimal each level printed as, and exact maths starts from it.
+ */
 function decimalOf(value: number): string | null {
   if (!Number.isFinite(value) || value <= 0) return null;
   const text = String(value);
@@ -82,7 +86,10 @@ export async function readCostEvidence(deps: CostEvidenceDeps, symbols: Record<S
   const readAt = deps.now();
   const read = async (symbol: string) => {
     const { exchange, base, quote } = parseSymbol(symbol.toUpperCase());
-    return bookEvidence(await deps.fetchBook(exchange, base, quote), exchange, readAt);
+    return deps.fetchBook(exchange, base, quote).then(
+      (result) => bookEvidence(result, exchange, readAt),
+      (): BookEvidence => ({ status: 'unknown', reason: 'unexpected' }),
+    );
   };
   const [rows, shortBook, longBook] = await Promise.all([
     deps.listFees().catch(() => null),

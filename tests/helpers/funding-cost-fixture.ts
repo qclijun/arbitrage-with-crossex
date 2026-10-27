@@ -12,8 +12,9 @@ export function fees(maker: string, taker: string): FeeEvidence {
   return { status: 'known', maker, taker, source: 'synthetic /crossex/fee', at: AT, basis: 'real' };
 }
 
+/** Mid `price` with a one-unit spread: a maker can rest at the touch, and each taker unit pays 0.5 over the mid. */
 export function leg(symbol: string, fundingTotal: string | null, price: string, over: Partial<ScenarioLeg> = {}): ScenarioLeg {
-  return { symbol, fundingTotal, fees: fees('0', '0'), book: book(price), ...over };
+  return { symbol, fundingTotal, fees: fees('0', '0'), book: book(String(Number(price) - 0.5), String(Number(price) + 0.5)), ...over };
 }
 
 /** Short and long both quote USDT; no borrow or conversion applies, with the reason stated. */

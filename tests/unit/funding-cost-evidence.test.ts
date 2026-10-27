@@ -69,6 +69,18 @@ describe('cost evidence adapters', () => {
     }, { short: 'BINANCE_FUTURE_BTC_USDT', long: 'BYBIT_FUTURE_BTC_USDT' });
     expect(failing.short.fees).toMatchObject({ status: 'unknown', reason: 'read-failed' });
 
+    // A book reader that throws costs that leg its book, not the other evidence.
+    const throwing = await readCostEvidence({
+      now: () => AT,
+      listFees: async () => ROWS,
+      fetchBook: async (exchange) => {
+        if (exchange === 'BYBIT') throw new Error('boom');
+        return { book: { bids: [[100, 5]], asks: [[100.5, 5]], ts: AT }, failure: null };
+      },
+    }, { short: 'BINANCE_FUTURE_BTC_USDT', long: 'BYBIT_FUTURE_BTC_USDT' });
+    expect(throwing.long.book).toEqual({ status: 'unknown', reason: 'unexpected' });
+    expect(throwing.short).toMatchObject({ fees: { status: 'known' }, book: { status: 'known' } });
+
     // Wired into a scenario, the failed book blocks it instead of reading as free.
     const s = estimateFundingScenario(scenario({
       short: leg('BINANCE_FUTURE_BTC_USDT', '0.03', '110', { fees: evidence.short.fees, book: evidence.short.book }),
