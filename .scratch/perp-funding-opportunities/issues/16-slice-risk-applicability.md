@@ -1,7 +1,7 @@
 # 按切片数量限定Risk适用范围
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Claude
 Blocked by: 04, 15, 20
 
@@ -22,8 +22,14 @@ Blocked by: 04, 15, 20
 
 离线producer→report/UI/monitor契约测试覆盖：已证明两腿仍有价格缺口；4.03中0.36持有Boros、3.67分别未归属或已证明两腿；Spread双来源与物理单计；错方向/超覆盖抵销；来源过期/不完整、HYPE不支持、场外差异；原CRITICAL遇UNKNOWN；监控版本及持续缺口计时。确认只豁免相应数量的Boros要求，其它风险无回归；仅fake数据与app.inject，相关Python标准库测试另运行。最终yarn verify和web production build。
 
+## Answer
+
+2026-10-29用户签收。实现5bb7d06＋788e03b：资金费覆盖仍按`base:venue:side`来源，应覆盖量＝实际永续量−已证明浮动量；已证明浮动只来自funding-two-leg切片的min(多腿,空腿)，两腿合约须在本报告同一持仓读数上对账、证据≤12秒，否则不豁免、旧告警保持；boros-hedge不豁免；价格/保证金/清算/执行风险及阈值不变；明细标出有意浮动及“按来源、非逐策略”。Risk报告版本2携带授予清单（无法当下证明时为null即UNKNOWN，切片读取失败不令报告不完整）；页面同算。Python连续缺口链拆至`risk_monitor_funding_gap.py`，使用报告豁免、精确十进制、与终端逐字节一致的指纹，豁免UNKNOWN时历史不延长不重置，新增豁免不重置剩余缺口计时。限制：同来源内多组四腿逐策略覆盖无法区分。默认verify仅`App.setupOnce`既有偶发失败（归21），build通过。详见[16实施交接](../evidence/16-implementation-handoff.md)。不启用交易。
+
 ## Comments
 
 - 2026-10-27：04决定后预拆，等待06及15，当前不可认领实施。
 - 2026-10-27：06-Q4/Q6已确认：按20兼容协议版本化Risk/历史语义，producer到Python consumer的变更另跑相关monitor/screening suite；旧CRITICAL/缺口计时不因新标签或UNKNOWN清零。正式跨票验收由21汇总，不以旧原型测试替代。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
+- 2026-10-28：用户确认接缝（min两腿且同读数对账≤12秒才豁免、报告版本2携带清单供Python链、四腿按来源并标注限制），claimed并实施；双轴审查后修正Python浮点、切片读取失败/证据失效时的计时处理及读数绑定。
+- 2026-10-29：用户签收，追加Answer并resolved。

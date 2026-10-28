@@ -1,8 +1,8 @@
 # 服务端预览证据、最终准入与幂等协议
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 03, 04, 09, 11, 15, 16, 19, 20
 
 ## Goal
