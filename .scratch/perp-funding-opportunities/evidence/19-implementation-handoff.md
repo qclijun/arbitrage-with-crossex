@@ -21,6 +21,8 @@
 
 新测试：`tests/unit/admission-switch.test.ts`（7）、`tests/unit/deal-purpose.test.ts`（15）、`tests/server/deals-purpose.test.ts`（12）、`tests/server/admission.test.ts`（6）、`web/src/trade/purpose.test.ts`（2）；`ledger-version`增加v1带活动deal升级v2不拒绝。既有deal测试负载改为`boros-strategy`（保持原行为），PairTicket/ExecuteControl断言purpose。tsc（root/web）通过；root unit/server 150文件3406通过/8跳过；web trade/assets等43文件656通过；文件预算通过。
 
+审查前默认`yarn verify`退出0（root 3406、web全过）、web build 0（`/tmp/ticket19-verify.log`）。审查修复后：root 150文件3408通过/8跳过；默认`yarn verify`退出1，web 2/1715失败——`App.setupOnce`（Settings对话框）与`PairTicket`远程重挂载5000ms超时，均为06起记录的同名偶发项，主机负载约17（`/tmp/ticket19-verify2-fail.log`）。诊断：两文件单跑两次27/27通过；该重挂载测试在基线d50199f独立worktree单跑3.72s、本票后3.78–3.80s，未变慢。build退出0。未改测试或配置，归21查因。
+
 ## 限制
 
 - 机会入口及其预览/接受协议由12实现；本票之后`funding-two-leg`在/deals恒拒绝，开关开启本身不开放任何入口。
