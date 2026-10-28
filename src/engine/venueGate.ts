@@ -8,7 +8,7 @@
  */
 import { performance } from 'node:perf_hooks';
 import { type ObservationContext, observeCall, recordObservation } from './observation';
-import { CrossexOrderRequest } from 'gate-api';
+import { CrossexLeverageRequest, CrossexOrderRequest } from 'gate-api';
 import type { Clients } from '../core/clients';
 import type { CrossExApi } from 'gate-api';
 import type { WithEngineClient } from '../core/engine-transport';
@@ -18,6 +18,7 @@ import { bestQuotePrice, isQuotableBook, topOf } from './bookQuality';
 import type {
   CancelOutcome,
   CreateOutcome,
+  LeverageOutcome,
   OrderSnapshot,
   ReadOutcome,
   Side,
@@ -45,6 +46,9 @@ const CANCEL_GONE = /ORDER_NOT_FOUND|ORDER_CLOSED|ORDER_FINISHED|CLIENT_ID_NOT_F
  * (quarantining healthy pairs). They classify as read errors instead, so the
  * loop keeps probing and the resolution ladder's history sweep finds the truth. */
 const READ_GONE = /ORDER_NOT_FOUND|CLIENT_ID_NOT_FOUND/i;
+/** Labels that make a leverage change a DEFINITE refusal; anything else is
+ * unknown and left to the engine's read-back. */
+const LEVERAGE_REJECT = /LEVERAGE|RISK_LIMIT|POSITION|MARGIN|INVALID_PARAM|BAD_REQUEST|CONTRACT_NOT_FOUND|SYMBOL/i;
 
 interface GateErr {
   response?: { status?: number; data?: { label?: string; message?: string } };
@@ -190,6 +194,33 @@ export function gateVenue(getClients: () => Clients,
       // way; no listing scans in the hot path.
       return withClient(client => getByVenueId(client, ref.venueOrderId ?? ref.clientText, evidence))
         .catch(err => ({ kind: 'error' as const, message: (err as Error).message }));
+    },
+
+    async setLeverage(contract, leverage, evidence): Promise<LeverageOutcome> {
+      return withClient<LeverageOutcome>(async client => {
+        const request = new CrossexLeverageRequest();
+        request.symbol = contract;
+        request.leverage = leverage;
+        try {
+          await observeCall(evidence, 'sdk-leverage', { contract }, () => client.updateCrossexPositionsLeverage({ crossexLeverageRequest: request }));
+          return { kind: 'ok' };
+        } catch (err) {
+          const label = labelOf(err);
+          if (label && LEVERAGE_REJECT.test(label)) {
+            return { kind: 'reject', label, message: (err as GateErr).response?.data?.message ?? label };
+          }
+          return { kind: 'unknown', message: (err as Error).message ?? String(err) };
+        }
+      }).catch(err => ({ kind: 'unknown' as const, message: (err as Error).message }));
+    },
+
+    async readLeverage(contract, evidence): Promise<string | null> {
+      return withClient(async client => {
+        const { body } = await observeCall(evidence, 'sdk-leverage-read', { contract }, () => client.getCrossexPositionsLeverage({ symbols: contract }));
+        const raw: unknown = body?.[contract];
+        const value = typeof raw === 'number' ? String(raw) : raw;
+        return typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) ? value : null;
+      }).catch(() => null);
     },
 
     async sweepForOrder(contract, clientText, fromMs, evidence): Promise<SweepResult> {

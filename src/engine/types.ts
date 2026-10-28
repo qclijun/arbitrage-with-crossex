@@ -111,6 +111,20 @@ export interface PairRow {
   /** JSON context the purpose was declared with (e.g. the Boros legs a
    * strategy deal hedges), verbatim. */
   purposeContext?: string | null;
+  /** Per-leg leverage the engine must set before placing anything (ticket
+   * 12); null/absent = the deal does not own leverage. */
+  leverage?: LegLeverage[] | null;
+}
+
+/** One leg's engine-owned leverage. `previous` is read before the first call
+ * and kept, so a set leg can be named — never silently restored — if a later
+ * leg fails. `detail` says why a leg failed. */
+export interface LegLeverage {
+  leg: Leg;
+  target: string;
+  state: 'pending' | 'set' | 'failed';
+  previous: string | null;
+  detail: string | null;
 }
 
 /** Why a deal was opened. 'boros-strategy': perps of a four-/three-leg Boros
@@ -188,6 +202,13 @@ export type CreateOutcome =
   | { kind: 'reject'; label: string; message: string }
   | { kind: 'unknown'; message: string };
 
+/** A leverage change: like a create, 'unknown' may have been applied — only
+ * a read-back can tell. */
+export type LeverageOutcome =
+  | { kind: 'ok' }
+  | { kind: 'reject'; label: string; message: string }
+  | { kind: 'unknown'; message: string };
+
 export type CancelOutcome =
   | { kind: 'ok' } // canceled, or already terminal/not found ("no further fills" holds)
   | { kind: 'unknown'; message: string };
@@ -234,6 +255,10 @@ export interface VenuePort {
   /** Reference price for min-notional checks; null when unavailable. Four-leg
    * deals require a valid positive, uncrossed two-sided book. */
   refPrice(contract: string, requireQuotableBook?: boolean, evidence?: ObservationContext): Promise<string | null>;
+  /** Set one contract's position leverage — a wire mutation. */
+  setLeverage(contract: string, leverage: string, evidence?: ObservationContext): Promise<LeverageOutcome>;
+  /** The contract's current leverage; null when it cannot be read. */
+  readLeverage(contract: string, evidence?: ObservationContext): Promise<string | null>;
 }
 
 export interface Clock {
@@ -281,6 +306,7 @@ export type Action =
   | { type: 'setMode'; mode: PairMode; reason: string; haltReason?: string }
   | { type: 'place'; leg: Leg; kind: 'maker' | 'taker'; tif: 'poc' | 'ioc'; qty: string; price?: string }
   | { type: 'cancel'; order: OrderRow; reprice?: boolean }
+  | { type: 'setLeverage'; leg: Leg; leverage: string }
   | { type: 'finish'; report: Report };
 
 export interface Tuning {

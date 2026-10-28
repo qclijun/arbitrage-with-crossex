@@ -13,7 +13,7 @@ import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
 import { claimExclusive, inSavepoint } from './ledger/sqlite';
 import { prepareLedger } from './ledger/version';
 import { SliceLedger } from './slices';
-import type { AlertRow, LegSpec, OrderRow, PairMode, PairRow } from './types';
+import type { AlertRow, LegLeverage, LegSpec, OrderRow, PairMode, PairRow } from './types';
 
 /** FNV-1a → base36 hash: compresses a whole client uuid into 7 chars so order
  * texts fit Gate's 28-byte cap. */
@@ -54,6 +54,7 @@ interface PairDbRow {
   created_at: number;
   purpose: string | null;
   purpose_context: string | null;
+  leverage_json: string | null;
 }
 
 interface OrderDbRow {
@@ -118,6 +119,7 @@ function toPair(r: PairDbRow): PairRow {
     createdAt: r.created_at,
     purpose: r.purpose as PairRow['purpose'],
     purposeContext: r.purpose_context,
+    leverage: r.leverage_json ? (JSON.parse(r.leverage_json) as LegLeverage[]) : null,
   };
 }
 
@@ -278,8 +280,8 @@ export class Store {
            target_qty, limit_price, price_policy, auto_price_policy, deadline_at,
            maker_not_before, hedge_not_before, poc_rejects, hedge_reject_streak,
            reprice_count, last_maker_placement_at, post_only_rejects, book_outage_started_at,
-           max_clip, clip_band_bp, halt_reason, report_json, created_at, purpose, purpose_context)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           max_clip, clip_band_bp, halt_reason, report_json, created_at, purpose, purpose_context, leverage_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         p.id, p.mode,
@@ -290,7 +292,7 @@ export class Store {
         p.makerNotBefore, p.hedgeNotBefore, p.pocRejects, p.hedgeRejectStreak,
         p.repriceCount, p.lastMakerPlacementAt, p.postOnlyRejects, p.bookOutageStartedAt,
         p.maxClip, p.clipBandBp, p.haltReason, p.reportJson, p.createdAt,
-        p.purpose ?? null, p.purposeContext ?? null,
+        p.purpose ?? null, p.purposeContext ?? null, p.leverage?.length ? JSON.stringify(p.leverage) : null,
       );
   }
 
@@ -313,6 +315,14 @@ export class Store {
     if (!keys.length) return;
     const sets = keys.map((k) => `${PAIR_COLS[k]} = ?`).join(', ');
     this.db.prepare(`UPDATE pair SET ${sets} WHERE id = ?`).run(...keys.map((k) => patch[k] as never), id);
+  }
+
+  /** Patch one leg of a deal's engine-owned leverage (engine/leverage.ts). */
+  updateLeverage(id: string, leg: LegLeverage['leg'], patch: Partial<LegLeverage>): void {
+    const legs = this.getPair(id)?.leverage;
+    if (!legs) throw new Error(`deal ${id} owns no leverage`);
+    const next = legs.map((l) => (l.leg === leg ? { ...l, ...patch } : l));
+    this.db.prepare('UPDATE pair SET leverage_json = ? WHERE id = ?').run(JSON.stringify(next), id);
   }
 
   /** One initiated reprice cycle: cancel provenance and quota must survive

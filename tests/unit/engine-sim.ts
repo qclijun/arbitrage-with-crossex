@@ -12,7 +12,9 @@ import {
   TUNING,
   type CancelOutcome,
   type CreateOutcome,
+  type LegLeverage,
   type LegSpec,
+  type LeverageOutcome,
   type PairRow,
   type ReadOutcome,
   type Side,
@@ -211,6 +213,27 @@ export class FakeVenue implements VenuePort {
     return this.readsFail ? null : (this.refPrices.get(contract) ?? null);
   }
 
+  /** Current leverage per contract (venue truth). */
+  leverage = new Map<string, string>();
+  leverageCalls: Array<{ contract: string; leverage: string }> = [];
+  /** Consumed per setLeverage; default 'ok'. 'crash' applies, then throws. */
+  nextLeverage: Array<'ok' | `reject:${string}` | 'unknown-applied' | 'unknown-lost' | 'crash'> = [];
+  leverageReadsFail = false;
+
+  async setLeverage(contract: string, leverage: string): Promise<LeverageOutcome> {
+    this.leverageCalls.push({ contract, leverage });
+    const directive = this.nextLeverage.shift() ?? 'ok';
+    if (directive.startsWith('reject:')) return { kind: 'reject', label: directive.slice(7), message: directive };
+    if (directive === 'unknown-lost') return { kind: 'unknown', message: 'sim: connection reset' };
+    this.leverage.set(contract, leverage);
+    if (directive === 'crash') throw new Error('sim crash after leverage call');
+    return directive === 'unknown-applied' ? { kind: 'unknown', message: 'sim: response lost' } : { kind: 'ok' };
+  }
+
+  async readLeverage(contract: string): Promise<string | null> {
+    return this.leverageReadsFail ? null : (this.leverage.get(contract) ?? null);
+  }
+
   // ---- test hooks (venue-side reality) ----
 
   /** Advance the resting maker's fill (venue truth). */
@@ -293,6 +316,8 @@ export function mkWorld(opts?: {
    * same on-disk deal. */
   reopen?: boolean;
   pairId?: string;
+  /** Engine-owned leverage targets (ticket 12). */
+  leverage?: Array<{ leg: LegLeverage['leg']; target: string }>;
 }): World {
   const store = new Store(opts?.storePath ?? ':memory:');
   const venue = new FakeVenue();
@@ -347,6 +372,7 @@ export function mkWorld(opts?: {
     haltReason: null,
     reportJson: null,
     createdAt: clock.now(),
+    leverage: opts?.leverage?.map((l) => ({ ...l, state: 'pending' as const, previous: null, detail: null })) ?? null,
   };
   store.createPair(pair);
   const deps: LoopDeps = {

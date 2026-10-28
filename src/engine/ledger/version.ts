@@ -87,6 +87,14 @@ export const LEDGER_STEPS: readonly LedgerStep[] = [
     quiescent: false,
     apply: (db) => db.exec(SLICE_SCHEMA),
   },
+  {
+    // Version 4 (ticket 12): leverage a deal owns and the engine sets before
+    // placing (engine/leverage.ts). Additive: existing deals read NULL — they
+    // own no leverage, exactly as before.
+    to: 4,
+    quiescent: false,
+    apply: (db) => db.exec('ALTER TABLE pair ADD COLUMN leverage_json TEXT'),
+  },
 ];
 
 export const LEDGER_VERSION = LEDGER_STEPS.at(-1)!.to;

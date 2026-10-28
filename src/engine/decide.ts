@@ -5,6 +5,7 @@
  * submission protocol in loop.ts is the whole correctness review surface.
  */
 import { roundToStep, sigFigsDirectional, stripZeros } from '../core/numbers';
+import { leverageAction } from './leverage';
 import { fx, fxCeilToStep, fxFloorToStep, fxMax, fxMin, fxMul, fxStr, FX_ZERO, type Fx } from './fx';
 import {
   TUNING,
@@ -223,6 +224,8 @@ export function decideBeforeMakerPrices(pair: PairRow, p: Projection, now: numbe
 
 function decideCore(pair: PairRow, p: Projection, now: number, ctx: DecideCtx, deferMaker: boolean): Action | null {
   if (pair.mode === 'DONE') return { type: 'idle', reason: 'done' };
+  const leverage = leverageAction(pair, p);
+  if (leverage) return leverage;
 
   const m = p.makerOrder;
 

@@ -8,6 +8,7 @@
  * recovery module, no adopt-window, no repeg protocol.
  */
 import { forgetHedgeWait, reportHedgeWait } from './hedge-wait';
+import { leverageAction, performSetLeverage } from './leverage';
 import { fx, fxStr } from './fx';
 import { type EngineObservation, type ObservationContext, observeCall, recordObservation } from './observation';
 import { POC_REASON, decide, decideBeforeMakerPrices, project, sizeFor, type DecideCtx } from './decide';
@@ -547,6 +548,8 @@ async function perform(deps: LoopDeps, pair: PairRow, action: Action): Promise<v
       return performCancel(deps, pair, action.order, action.reprice);
     case 'place':
       return performPlace(deps, pair, action);
+    case 'setLeverage':
+      return performSetLeverage(deps, pair, action.leg, action.leverage);
     case 'finish': {
       // decide.report() is pure (no store access); enrich it here with the
       // quantity-weighted average fill price per leg from the recorded fills so
@@ -629,6 +632,13 @@ async function tickPairCore(deps: LoopDeps, pairId: string): Promise<Action> {
   let pair = deps.store.getPair(pairId)!;
   let orders = deps.store.listOrders(pairId);
   let proj = project(pair, orders);
+  // Engine-owned leverage comes before any price read or order (leverage.ts).
+  const leverage = leverageAction(pair, proj);
+  if (leverage) {
+    recordObservation(deps.evidence, 'decision', { action: leverage.type, reason: 'leverage', operation: 'decide' });
+    await perform(deps, pair, leverage);
+    return leverage;
+  }
   const optimized = deps.skipUnrelatedMakerWait === true;
   const readRefB = () => observeCall(deps.evidence, 'refPrice', { leg: 'B', contract: pair.b!.contract },
     () => deps.venue.refPrice(pair.b!.contract, pair.autoPricePolicy === 'best', deps.evidence));
