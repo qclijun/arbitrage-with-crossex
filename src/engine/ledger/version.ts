@@ -60,6 +60,25 @@ export const LEDGER_STEPS: readonly LedgerStep[] = [
       db.exec('CREATE INDEX alerts ON alert_log(ack, id)');
     },
   },
+  {
+    // Version 2 (ticket 19): each deal's declared purpose and its context, and
+    // the admission switch (engine/admission.ts). Additive: existing deals keep
+    // running and read purpose NULL — "created before purposes existed".
+    to: 2,
+    quiescent: false,
+    apply: (db) => {
+      db.exec('ALTER TABLE pair ADD COLUMN purpose TEXT');
+      db.exec('ALTER TABLE pair ADD COLUMN purpose_context TEXT');
+      db.exec(`CREATE TABLE admission_switch (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        open INTEGER NOT NULL CHECK (open IN (0, 1)),
+        generation INTEGER NOT NULL,
+        enabled_version TEXT,
+        ledger_version INTEGER,
+        changed_at INTEGER NOT NULL
+      )`);
+    },
+  },
 ];
 
 export const LEDGER_VERSION = LEDGER_STEPS.at(-1)!.to;

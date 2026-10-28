@@ -25,7 +25,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 import { ApiError, postJson } from '../api/client';
 import { useAccount, usePositions } from '../api/queries';
-import type { ActionInput, DealResponse, PreviewResult } from '../api/types';
+import type { ActionInput, DealPurposeSpec, DealRequest, DealResponse, PreviewResult } from '../api/types';
 import { HoldToConfirmButton } from '../components/HoldToConfirmButton';
 import { Spinner } from '../components/Spinner';
 import { SymbolCell } from '../components/VenueChip';
@@ -52,6 +52,8 @@ interface Props {
   label: ReactNode;
   /** Only fetch the preview while hovered (for closes / server-built actions). */
   lazyPreview?: boolean;
+  /** What the deal opens for, sent with every deal this control posts. */
+  purpose: DealPurposeSpec;
   /** Inject execute-only fields into the finalized payload (e.g. maker pegToTouch). */
   decorate?: (actions: ActionInput[]) => ActionInput[];
   /** Extra display line in the hover card (e.g. leverage / peg note). */
@@ -91,6 +93,7 @@ export function ExecuteControl({
   tone = 'cyan',
   label,
   lazyPreview = false,
+  purpose,
   decorate,
   detail,
   onExecuted,
@@ -298,14 +301,20 @@ export function ExecuteControl({
     // (pegToTouch), then map the confirmed intent onto the deal contract.
     const base = finalizeActions(previews);
     const decorated = decorate ? decorate(base) : base;
-    const deal = dealFromActions(basketIdRef.current, decorated, previews);
+    // An all-reduce-only deal is a close, whatever opened the ticket.
+    const declare = (d: DealRequest | null): DealRequest | null => {
+      if (!d) return null;
+      const closes = Boolean(d.a.reduceOnly) && (!d.b || Boolean(d.b.reduceOnly));
+      return { ...d, ...(closes ? { purpose: 'reduce' as const } : purpose) };
+    };
+    const deal = declare(dealFromActions(basketIdRef.current, decorated, previews));
     if (!deal && splitClose) {
       // Two single-leg deals under ONE basket: ids derived from the basket id
       // so a retry after a lost response re-sends the same two ids and the
       // server dedupes each leg. The pending record clears only once both
       // have landed (see executeSplit.onSuccess).
-      const a = dealFromActions(`${basketIdRef.current}-a`, [decorated[0]], [previews[0]]);
-      const b = dealFromActions(`${basketIdRef.current}-b`, [decorated[1]], [previews[1]]);
+      const a = declare(dealFromActions(`${basketIdRef.current}-a`, [decorated[0]], [previews[0]]));
+      const b = declare(dealFromActions(`${basketIdRef.current}-b`, [decorated[1]], [previews[1]]));
       if (!a || !b) return;
       restingOnlyRef.current = false;
       placedSummaryRef.current = null;

@@ -8,6 +8,7 @@
  * BEGIN IMMEDIATE (write lock up front).
  */
 import { DatabaseSync } from 'node:sqlite';
+import { AdmissionSwitch } from './admission';
 import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
 import { claimExclusive } from './ledger/sqlite';
 import { prepareLedger } from './ledger/version';
@@ -50,6 +51,8 @@ interface PairDbRow {
   halt_reason: string | null;
   report_json: string | null;
   created_at: number;
+  purpose: string | null;
+  purpose_context: string | null;
 }
 
 interface OrderDbRow {
@@ -112,6 +115,8 @@ function toPair(r: PairDbRow): PairRow {
     haltReason: r.halt_reason,
     reportJson: r.report_json,
     createdAt: r.created_at,
+    purpose: r.purpose as PairRow['purpose'],
+    purposeContext: r.purpose_context,
   };
 }
 
@@ -222,11 +227,14 @@ const ORDER_COLS: Record<keyof OrderPatch, string> = {
 
 export class Store {
   private db: DatabaseSync;
+  /** New funding-opportunity admission (engine/admission.ts). */
+  readonly admission: AdmissionSwitch;
 
   /** Opens the ledger and runs the version gate and any pending migration
    * (ledger/version.ts) before anything else can read or write it. `now`
-   * stamps a migration's backup and journal row. */
-  constructor(path: string, opts?: { now?: number }) {
+   * stamps a migration's backup and journal row; `programVersion` is this
+   * release's version, which admission is bound to. */
+  constructor(path: string, opts?: { now?: number; programVersion?: string | null }) {
     this.db = new DatabaseSync(path);
     try {
       this.db.exec('PRAGMA journal_mode = WAL');
@@ -245,6 +253,7 @@ export class Store {
       this.db.close(); // a refused ledger must not stay locked by this process
       throw err;
     }
+    this.admission = new AdmissionSwitch(this.db, opts?.programVersion ?? null);
   }
 
   close(): void {
@@ -260,8 +269,8 @@ export class Store {
            target_qty, limit_price, price_policy, auto_price_policy, deadline_at,
            maker_not_before, hedge_not_before, poc_rejects, hedge_reject_streak,
            reprice_count, last_maker_placement_at, post_only_rejects, book_outage_started_at,
-           max_clip, clip_band_bp, halt_reason, report_json, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           max_clip, clip_band_bp, halt_reason, report_json, created_at, purpose, purpose_context)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         p.id, p.mode,
@@ -272,6 +281,7 @@ export class Store {
         p.makerNotBefore, p.hedgeNotBefore, p.pocRejects, p.hedgeRejectStreak,
         p.repriceCount, p.lastMakerPlacementAt, p.postOnlyRejects, p.bookOutageStartedAt,
         p.maxClip, p.clipBandBp, p.haltReason, p.reportJson, p.createdAt,
+        p.purpose ?? null, p.purposeContext ?? null,
       );
   }
 

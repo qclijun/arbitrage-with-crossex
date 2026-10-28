@@ -1,8 +1,8 @@
 # 持久准入开关、旧入口兼容与在途隔离
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 03, 04, 20
 
 ## Goal

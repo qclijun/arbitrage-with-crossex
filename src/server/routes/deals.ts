@@ -17,7 +17,9 @@ import { TUNING, type PairRow } from '../../engine/types';
 import type { AppDeps } from '../app';
 import { TTL } from '../cache';
 import { DISCLAIMER_NOT_ACCEPTED, isDisclaimerAccepted } from '../disclaimer';
+import { classifyDealPurpose } from '../dealPurpose';
 import { refuse } from '../errorReply';
+import { activeDealsOn, manualGate, type ManualGate } from '../manualConflicts';
 import { leverageMaxFor } from './leverage';
 import { conflict } from './rebalance';
 
@@ -101,6 +103,15 @@ export function dealsRoutes(deps: AppDeps) {
       return transfer.acceptedAt === null || deps.engine!.clock.now() - transfer.acceptedAt < TRANSFER_SETTLE_MS;
     };
 
+    const refuseManual = (reply: FastifyReply, gate: Exclude<ManualGate, { ok: true }>): FastifyReply =>
+      refuse(reply, {
+        code: gate.label === 'manual-unverifiable' ? 503 : 409,
+        category: 'validation',
+        label: gate.label,
+        message: gate.message,
+        retryable: gate.label === 'manual-unverifiable',
+      });
+
     app.post('/deals', async (req, reply) => {
       // First-run gate: no real order until the disclaimer is accepted. Tied to
       // the config-backed credentials service (always present in a real install;
@@ -108,7 +119,7 @@ export function dealsRoutes(deps: AppDeps) {
       // proactively; this 403 is the backstop against a direct API call.
       const envPath = deps.credentials?.envPath;
       if (envPath && !isDisclaimerAccepted(envPath)) return reply.code(403).send(DISCLAIMER_NOT_ACCEPTED);
-      const body = req.body as DealRequest & { leverage?: { a?: number; b?: number } };
+      const body = req.body as DealRequest & { leverage?: { a?: number; b?: number }; purpose?: unknown; boros?: unknown };
       if (!body?.id) throw new CoreError('deal id is required');
       // Idempotency: the client id is the dedup key — a lost-response retry
       // must never create a second deal.
@@ -123,6 +134,11 @@ export function dealsRoutes(deps: AppDeps) {
           message: COIN_NOT_SUPPORTED_TEXT,
           retryable: false,
         });
+      }
+      // What the deal is FOR picks its gate (ticket 19); nothing is read yet.
+      const declared = classifyDealPurpose(body, deps.engine!.clock.now());
+      if (!declared.ok) {
+        return refuse(reply, { code: declared.status, category: 'validation', label: declared.label, message: declared.message, retryable: false });
       }
       if (rebalanceRunning()) return refuseForRebalance(reply, 'starting a deal');
       if (transferSettling()) return conflict(reply, TRANSFER_SETTLING_TEXT);
@@ -145,6 +161,21 @@ export function dealsRoutes(deps: AppDeps) {
         preflight: { getAccount, getPositions },
         refPriceA,
       });
+
+      // A stand-alone open adds only where nothing is held or working — checked
+      // on fresh reads BEFORE leverage is touched, and again (synchronously)
+      // right before the write.
+      const gated = declared.purpose === 'manual'
+        ? [row.a, row.b].filter((leg): leg is NonNullable<typeof leg> => leg !== null && !leg.reduceOnly).map((leg) => leg.contract)
+        : [];
+      if (gated.length) {
+        const gate = await manualGate(gated, {
+          store: deps.engine!.store,
+          readPositions: async () => (await clients.crossEx.listCrossexPositions()).body ?? [],
+          readOpenOrders: async () => (await clients.crossEx.listCrossexOpenOrders({})).body ?? [],
+        });
+        if (!gate.ok) return refuseManual(reply, gate);
+      }
 
       // Leverage phase: applied BEFORE the intent exists — a failure aborts with
       // nothing created and nothing sent (mirrors the abort-pre-send semantics).
@@ -227,7 +258,20 @@ export function dealsRoutes(deps: AppDeps) {
         await restoreLeverage();
         return conflict(reply, TRANSFER_SETTLING_TEXT);
       }
-      deps.engine!.store.createPair(row);
+      const startedMeanwhile = activeDealsOn(deps.engine!.store, gated);
+      if (startedMeanwhile.length) {
+        await restoreLeverage();
+        return refuseManual(reply, {
+          ok: false,
+          label: 'manual-conflict',
+          message: `an unfinished deal started on ${gated.join(', ')} meanwhile (${startedMeanwhile.join(', ')}); nothing was created.`,
+        });
+      }
+      deps.engine!.store.createPair({
+        ...row,
+        purpose: declared.purpose,
+        purposeContext: declared.context ? JSON.stringify(declared.context) : null,
+      });
       deps.cache.bust('account');
       deps.engine!.wake?.(); // first placement happens now, not after the tick sleep
       return reply.code(202).ok({ id: row.id });

@@ -85,6 +85,8 @@ describe('null rule limits', () => {
         a: { symbol: SYMBOL, side: 'BUY' },
         qty: '999999999',
         execution: 'taker',
+        purpose: 'boros-strategy',
+        boros: { base: 'HYPE', venues: ['GATE'] },
       },
     });
     expect(res.statusCode, res.body).toBe(202); // NOT a 400 validation rejection

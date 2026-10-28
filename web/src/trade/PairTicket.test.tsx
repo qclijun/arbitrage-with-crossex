@@ -278,6 +278,7 @@ describe('PairTicket execution modes', () => {
       timeoutSec: 300,
       a: { side: 'BUY' },
       b: { side: 'SELL' },
+      purpose: 'manual', // a stand-alone ticket — the server's conflict gate decides
     });
   });
 
@@ -791,6 +792,8 @@ describe('PairTicket — the size unit follows the coin', () => {
 // The four-leg wait window
 // ---------------------------------------------------------------------------
 
+const BOROS = { base: 'ETH', venues: ['GATE', 'OKX'], maturity: 1_900_000_000 };
+
 describe('PairTicket maker wait window', () => {
   it.each(['pin', 'ordinary'] as const)('preserves the displayed intent when a four-leg ticket changes to %s', async (change) => {
     const dealCalls: DealRequest[] = [];
@@ -802,7 +805,7 @@ describe('PairTicket maker wait window', () => {
       }),
     );
     renderWithClient(<PrefillHarness prefills={[
-      { base: 'ETH', longVenue: 'GATE', shortVenue: 'OKX', notionalUsd: 1000, mode: 'maker', strategy: 'four-leg' },
+      { base: 'ETH', longVenue: 'GATE', shortVenue: 'OKX', notionalUsd: 1000, mode: 'maker', strategy: 'four-leg', boros: BOROS },
       { base: 'ETH', longVenue: 'GATE', shortVenue: 'OKX', notionalUsd: 1000, mode: 'maker' },
     ]} />);
     await userEvent.click(screen.getByRole('button', { name: 'fire-0' }));
@@ -823,9 +826,12 @@ describe('PairTicket maker wait window', () => {
     await waitFor(() => expect(btn).toBeEnabled(), { timeout: 4000 });
     fireEvent.pointerDown(btn);
     await waitFor(() => expect(dealCalls).toHaveLength(1), { timeout: 2000 });
+    // The strategy prefill declares its Boros legs; a later ordinary prefill
+    // re-arms the ticket as a stand-alone pair.
     expect(dealCalls[0]).toMatchObject(change === 'pin'
-      ? { price: '2480', pricePolicy: 'fixed', autoPricePolicy: 'best', timeoutSec: 1800 }
-      : { pricePolicy: 'touch', timeoutSec: 300 });
+      ? { price: '2480', pricePolicy: 'fixed', autoPricePolicy: 'best', timeoutSec: 1800, purpose: 'boros-strategy', boros: BOROS }
+      : { pricePolicy: 'touch', timeoutSec: 300, purpose: 'manual' });
+    if (change === 'ordinary') expect(dealCalls[0].boros).toBeUndefined();
   });
 
   it('a four-leg prefill defaults the wait to 30m and sends it WITH the strategy marker', async () => {

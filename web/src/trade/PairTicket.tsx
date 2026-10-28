@@ -12,13 +12,14 @@
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, usePositions, useSymbolDetail, useSymbolsByBase, useVenueBook } from '../api/queries';
-import type { ActionInput, PreviewResult, RestEstimate } from '../api/types';
+import type { ActionInput, BorosContext, PreviewResult, RestEstimate } from '../api/types';
 import { SegmentedToggle } from '../components/SegmentedToggle';
 import { amountError } from '../lib/amount';
 import { sizeUnitForBase } from '../lib/boros';
 import { fieldValue, fmtUsd } from '../lib/fmt';
 import { uuid } from '../lib/uuid';
 import { ExecuteControl } from './ExecuteControl';
+import { purposeFor } from './purpose';
 import { estimateMargin } from './previewBits';
 import {
   AffixedInput,
@@ -86,6 +87,9 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
    * option set, so it is pinned with the rest of the prefill, not derived from
    * a mutable field the user can later change. */
   const [fourLeg, setFourLeg] = useState(false);
+  /** The Boros legs a strategy prefill armed this ticket to hedge; null = a
+   * stand-alone pair. Dropped (by the purpose below) once the coin changes. */
+  const [borosContext, setBorosContext] = useState<BorosContext | null>(null);
 
   /**
    * Follow the coin until the user says otherwise.
@@ -155,6 +159,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
     // Four-leg arm: default the maker window to the 30m this ticket also
     // displays. Set unconditionally (both directions) so a later ordinary
     // prefill on the same mount resets it.
+    setBorosContext(prefill.boros ?? null);
     const isFourLeg = prefill.strategy === 'four-leg';
     setFourLeg(isFourLeg);
     setTimeoutSec(isFourLeg ? '1800' : '300');
@@ -540,6 +545,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
       <ExecuteControl
         scope="ticket-pair"
         actions={actions}
+        purpose={purposeFor(borosContext, base)}
         // A maker price that tracks the book moves every preview; within 5 bps
         // it is the same order (it goes out pegged to the live touch), so
         // Execute stays armed. A typed price re-previews as before.

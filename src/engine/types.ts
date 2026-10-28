@@ -104,7 +104,19 @@ export interface PairRow {
   haltReason: string | null;
   reportJson: string | null;
   createdAt: number;
+  /** What the deal was opened for, as declared at creation (ticket 19); null
+   * for a deal created before purposes existed. A record, not a privilege: it
+   * grants no Risk exemption and proves no ownership. */
+  purpose?: DealPurpose | null;
+  /** JSON context the purpose was declared with (e.g. the Boros legs a
+   * strategy deal hedges), verbatim. */
+  purposeContext?: string | null;
 }
+
+/** Why a deal was opened. 'boros-strategy': perps of a four-/three-leg Boros
+ * strategy. 'manual': a stand-alone ticket, admitted only where nothing it
+ * touches is already held or working. 'reduce': every leg reduce-only. */
+export type DealPurpose = 'boros-strategy' | 'manual' | 'reduce';
 
 /** Write-ahead order registry row: exists (committed) BEFORE the wire call. */
 export interface OrderRow {

@@ -17,6 +17,9 @@ import { FieldLabel } from '../trade/SymbolCombobox';
 import { usePreviewDebounced } from '../trade/usePreview';
 import { useTradeFlowOptional } from '../trade/TradeFlow';
 
+/** Closes declare it: every leg is reduce-only, proven against the live position. */
+const REDUCE = { purpose: 'reduce' } as const;
+
 /**
  * ⚠ Accurate for a PAIR, which is not what the single-leg note says.
  *
@@ -303,6 +306,7 @@ export function ClosePairForm({
 
       <div className="flex flex-col gap-1.5">
         <ExecuteControl
+          purpose={REDUCE}
           scope={`close-both-${base}`}
           actions={actions}
           tone="red"

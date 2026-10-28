@@ -51,8 +51,10 @@ interface Refusal {
   category: ErrorCategory;
   message: string;
   retryable: boolean;
+  /** Machine-readable reason within the category. */
+  label?: string;
 }
 
-export function refuse(reply: FastifyReply, { code, category, message, retryable }: Refusal): FastifyReply {
-  return reply.code(code).send({ ok: false, error: { category, message, retryable } });
+export function refuse(reply: FastifyReply, { code, category, message, retryable, label }: Refusal): FastifyReply {
+  return reply.code(code).send({ ok: false, error: { category, ...(label ? { label } : {}), message, retryable } });
 }

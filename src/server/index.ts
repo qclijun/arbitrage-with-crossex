@@ -105,7 +105,7 @@ let loopDeps: LoopDeps | undefined;
   // can touch the venue.
   let store: Store;
   try {
-    store = new Store(path.join(dataDir, 'deals.sqlite'));
+    store = new Store(path.join(dataDir, 'deals.sqlite'), { programVersion: readLocalVersion(repoRoot) });
   } catch (err) {
     if (err instanceof LedgerRefusal) {
       // Refused before any write (ledger/version.ts): the ledger is exactly as

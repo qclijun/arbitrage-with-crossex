@@ -11,6 +11,7 @@
  */
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DealModal } from './DealModal';
+import type { BorosContext } from '../api/types';
 import type { ExecMode } from './PairTicketBits';
 
 export interface PairPrefill {
@@ -45,6 +46,9 @@ export interface PairPrefill {
    * defaults.
    */
   strategy?: 'four-leg';
+  /** The Boros legs these perps hedge. Present = the ticket opens as part of
+   * that strategy; absent = a stand-alone pair (see DealPurposeSpec). */
+  boros?: BorosContext;
   /** Monotonic — a new prefill with identical content still re-applies. */
   nonce: number;
 }
@@ -121,6 +125,8 @@ export interface SinglePerpPrefill {
   sizeBase?: number;
   /** Which unit the size box should land in. */
   sizeUnit?: 'base' | 'usd';
+  /** The Boros legs this perp hedges; absent = a stand-alone open. */
+  boros?: BorosContext;
   nonce: number;
 }
 

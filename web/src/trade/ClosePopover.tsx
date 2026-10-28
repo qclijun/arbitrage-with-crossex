@@ -27,6 +27,9 @@ import { feeAmount, feeKind, PreviewFallback, ViolationList } from './previewBit
 import { FieldLabel } from './SymbolCombobox';
 import { usePreviewDebounced } from './usePreview';
 
+/** Closes declare it: every leg is reduce-only, proven against the live position. */
+const REDUCE = { purpose: 'reduce' } as const;
+
 interface Props {
   position: CrossexPosition;
   /** Size THIS strategy owns, when the venue position is shared with another
@@ -456,6 +459,7 @@ export function ClosePopover({
 
         <div className="flex flex-col gap-1.5">
           <ExecuteControl
+            purpose={REDUCE}
             scope={`close-${position.symbol}`}
             actions={action ? [action] : null}
             tone="red"

@@ -88,6 +88,8 @@ describe('unconfigured server', () => {
         a: { symbol: 'GATE_FUTURE_ETH_USDT', side: 'BUY' },
         qty: '0.05',
         execution: 'taker',
+        purpose: 'boros-strategy',
+        boros: { base: 'ETH', venues: ['GATE'] },
       },
     });
     expect(res.statusCode).toBe(503);

@@ -9,6 +9,8 @@ import { env, server } from '../test/server';
 import { renderWithClient } from '../test/utils';
 import { ExecuteControl } from './ExecuteControl';
 
+const MANUAL = { purpose: 'manual' } as const;
+
 /** A ticket-like host whose qty-carrying action can be edited via a button. */
 function EditableHost({ debounceMs = 20 }: { debounceMs?: number }) {
   const [qty, setQty] = useState('1');
@@ -18,7 +20,7 @@ function EditableHost({ debounceMs = 20 }: { debounceMs?: number }) {
       <button type="button" onClick={() => setQty('2')}>
         bump
       </button>
-      <ExecuteControl scope="host" actions={[action]} label="Go" holdMs={50} previewOpts={{ debounceMs }} />
+      <ExecuteControl purpose={MANUAL} scope="host" actions={[action]} label="Go" holdMs={50} previewOpts={{ debounceMs }} />
     </>
   );
 }
@@ -58,7 +60,7 @@ describe('ExecuteControl', () => {
     const calls: DealRequest[] = [];
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls));
     renderWithClient(
-      <ExecuteControl scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />,
+      <ExecuteControl purpose={MANUAL} scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />,
     );
 
     await hold();
@@ -67,6 +69,7 @@ describe('ExecuteControl', () => {
       a: { symbol: 'GATE_FUTURE_ETH_USDT', side: 'BUY' },
       qty: '0.4', // the preview's resolved qty, never the raw notional
       execution: 'taker',
+      purpose: 'manual',
     });
     expect(calls[0].b ?? null).toBeNull();
   });
@@ -84,6 +87,7 @@ describe('ExecuteControl', () => {
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls));
     renderWithClient(
       <ExecuteControl
+        purpose={MANUAL}
         scope="t"
         actions={[makerAction]}
         label="Execute"
@@ -112,7 +116,7 @@ describe('ExecuteControl', () => {
     };
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls));
     renderWithClient(
-      <ExecuteControl scope="t" actions={[makerAction]} label="Execute" holdMs={50} />,
+      <ExecuteControl purpose={MANUAL} scope="t" actions={[makerAction]} label="Execute" holdMs={50} />,
     );
     await hold();
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -122,7 +126,7 @@ describe('ExecuteControl', () => {
   it('reuses the SAME deal id across an error-retry (idempotent resend)', async () => {
     const calls: DealRequest[] = [];
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls, true));
-    renderWithClient(<ExecuteControl scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />);
+    renderWithClient(<ExecuteControl purpose={MANUAL} scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />);
 
     await hold();
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -136,7 +140,7 @@ describe('ExecuteControl', () => {
   it('a fresh (non-error) confirm mints a NEW deal id', async () => {
     const calls: DealRequest[] = [];
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls));
-    renderWithClient(<ExecuteControl scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />);
+    renderWithClient(<ExecuteControl purpose={MANUAL} scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />);
 
     await hold();
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -153,7 +157,7 @@ describe('ExecuteControl', () => {
       echoPreviewHandler({ overrides: { qty: '', violations: [{ code: 'below-min-notional', message: 'too small' }] } }),
       dealHandler(calls),
     );
-    renderWithClient(<ExecuteControl scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />);
+    renderWithClient(<ExecuteControl purpose={MANUAL} scope="t" actions={[notionalAction]} label="Execute" holdMs={50} />);
 
     const btn = await screen.findByRole('button', { name: 'Execute' });
     await waitFor(() => expect(btn).toBeDisabled());
@@ -164,7 +168,7 @@ describe('ExecuteControl', () => {
 
   it('a null-actions control renders disabled with no preview', () => {
     server.use(...baseHandlers());
-    renderWithClient(<ExecuteControl scope="t" actions={null} label="Execute" holdMs={50} />);
+    renderWithClient(<ExecuteControl purpose={MANUAL} scope="t" actions={null} label="Execute" holdMs={50} />);
     expect(screen.getByRole('button', { name: 'Execute' })).toBeDisabled();
   });
 
@@ -214,6 +218,7 @@ describe('ExecuteControl', () => {
             big move
           </button>
           <ExecuteControl
+        purpose={MANUAL}
             scope="track"
             actions={actions}
             label="Go"
@@ -284,7 +289,7 @@ describe('ExecuteControl', () => {
           <button type="button" onClick={() => setPx('101')}>
             tick
           </button>
-          <ExecuteControl scope="tr" actions={[action]} label="Go" holdMs={50} intentKey="pair|GATE|OKX|track" />
+          <ExecuteControl purpose={MANUAL} scope="tr" actions={[action]} label="Go" holdMs={50} intentKey="pair|GATE|OKX|track" />
         </>
       );
     }
@@ -318,7 +323,7 @@ describe('ExecuteControl', () => {
             toggle
           </button>
           {shown && (
-            <ExecuteControl scope="rm" actions={[notionalAction]} label="Go" holdMs={50} intentKey="pair|stable" />
+            <ExecuteControl purpose={MANUAL} scope="rm" actions={[notionalAction]} label="Go" holdMs={50} intentKey="pair|stable" />
           )}
         </>
       );
@@ -345,7 +350,7 @@ describe('ExecuteControl', () => {
     const calls: DealRequest[] = [];
     server.use(...baseHandlers(), echoPreviewHandler({ overrides: { qty: '0.4' } }), dealHandler(calls));
     const { unmount } = renderWithClient(
-      <ExecuteControl scope="ok1" actions={[notionalAction]} label="Go" holdMs={50} intentKey="pair|stable" />,
+      <ExecuteControl purpose={MANUAL} scope="ok1" actions={[notionalAction]} label="Go" holdMs={50} intentKey="pair|stable" />,
     );
     const go = () => screen.getByRole('button', { name: 'Go' });
     await waitFor(() => expect(go()).toBeEnabled());
@@ -354,7 +359,7 @@ describe('ExecuteControl', () => {
     unmount();
 
     renderWithClient(
-      <ExecuteControl scope="ok2" actions={[notionalAction]} label="Go" holdMs={50} intentKey="pair|stable" />,
+      <ExecuteControl purpose={MANUAL} scope="ok2" actions={[notionalAction]} label="Go" holdMs={50} intentKey="pair|stable" />,
     );
     await waitFor(() => expect(go()).toBeEnabled(), { timeout: 2_000 });
     fireEvent.pointerDown(go());
@@ -402,9 +407,9 @@ describe('ExecuteControl', () => {
             toggleA
           </button>
           {shownA && (
-            <ExecuteControl scope="ta" actions={[notionalAction]} label="GoA" holdMs={50} intentKey="intent|A" />
+            <ExecuteControl purpose={MANUAL} scope="ta" actions={[notionalAction]} label="GoA" holdMs={50} intentKey="intent|A" />
           )}
-          <ExecuteControl scope="tb" actions={[btcAction]} label="GoB" holdMs={50} intentKey="intent|B" />
+          <ExecuteControl purpose={MANUAL} scope="tb" actions={[btcAction]} label="GoB" holdMs={50} intentKey="intent|B" />
         </>
       );
     }
@@ -460,7 +465,7 @@ describe('ExecuteControl', () => {
         echoPreviewHandler({ overrides: { estNotional: 100_000, leverage: { requested: 10, max: 50 } } }),
         dealHandler(calls),
       );
-      renderWithClient(<ExecuteControl scope="mb" actions={[notionalAction]} label="Execute" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mb" actions={[notionalAction]} label="Execute" holdMs={50} />);
 
       const btn = await screen.findByRole('button', { name: 'Execute' });
       await waitFor(() => expect(btn).toBeDisabled());
@@ -480,7 +485,7 @@ describe('ExecuteControl', () => {
         echoPreviewHandler({ overrides: { estNotional: 40_000, leverage: { requested: 10, max: 50 } } }),
         dealHandler(calls),
       );
-      renderWithClient(<ExecuteControl scope="mband" actions={[notionalAction]} label="Execute" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mband" actions={[notionalAction]} label="Execute" holdMs={50} />);
 
       const btn = await screen.findByRole('button', { name: 'Execute' });
       await waitFor(() => expect(btn).toBeDisabled());
@@ -498,7 +503,7 @@ describe('ExecuteControl', () => {
         echoPreviewHandler({ overrides: { estNotional: 100_000 } }), // previewFor marks a close reduceOnly
         dealHandler(calls),
       );
-      renderWithClient(<ExecuteControl scope="mc" actions={[closeAction]} label="Close" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mc" actions={[closeAction]} label="Close" holdMs={50} />);
 
       const btn = await screen.findByRole('button', { name: 'Close' });
       await waitFor(() => expect(btn).toBeEnabled());
@@ -508,6 +513,7 @@ describe('ExecuteControl', () => {
         a: { reduceOnly: true, side: 'SELL' },
         execution: 'taker',
         clipBandPct: 0.5,
+        purpose: 'reduce', // all legs reduce-only: a close, whatever the caller opens
       });
     });
 
@@ -526,7 +532,7 @@ describe('ExecuteControl', () => {
         echoPreviewHandler({ overrides: { estNotional: 36_080 } }),
         dealHandler(calls),
       );
-      renderWithClient(<ExecuteControl scope="mn" actions={[closeAction]} label="Close now" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mn" actions={[closeAction]} label="Close now" holdMs={50} />);
 
       const btn = await screen.findByRole('button', { name: 'Close now' });
       await waitFor(() => expect(btn).toBeEnabled());
@@ -560,7 +566,7 @@ describe('ExecuteControl', () => {
 
     it('nets an OPEN leg against the live opposite position (pair-ticket unwind)', async () => {
       server.use(...underwater(BOOK));
-      renderWithClient(<ExecuteControl scope="mo" actions={UNWIND} label="Execute pair" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mo" actions={UNWIND} label="Execute pair" holdMs={50} />);
       await waitFor(() => expect(screen.getByRole('button', { name: 'Execute pair' })).toBeEnabled());
       expect(screen.queryByText(/exceeds available/)).toBeNull();
     });
@@ -569,7 +575,7 @@ describe('ExecuteControl', () => {
       // The legs carry a requested leverage, so without the guard the estimate is
       // "confident" and full-priced — a false block until the 4s poll lands.
       server.use(...underwater(null));
-      renderWithClient(<ExecuteControl scope="ml" actions={UNWIND} label="Execute pair" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="ml" actions={UNWIND} label="Execute pair" holdMs={50} />);
       await waitFor(() => expect(screen.getByRole('button', { name: 'Execute pair' })).toBeEnabled());
       expect(screen.queryByText(/exceeds available/)).toBeNull();
     });
@@ -577,7 +583,7 @@ describe('ExecuteControl', () => {
     it('does NOT net in dual-side (hedge) mode — the same unwind stays blocked', async () => {
       // There a BUY against a short opens a SEPARATE long at full IM.
       server.use(...underwater(BOOK, 'DUAL_SIDE'));
-      renderWithClient(<ExecuteControl scope="mh" actions={UNWIND} label="Execute pair" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mh" actions={UNWIND} label="Execute pair" holdMs={50} />);
       await waitFor(() => expect(screen.getByRole('button', { name: 'Execute pair' })).toBeDisabled());
       expect(await screen.findByRole('alert')).toHaveTextContent(/exceeds available/);
     });
@@ -585,7 +591,7 @@ describe('ExecuteControl', () => {
     it('still blocks an ALIGNED open that adds to an existing position', async () => {
       const add: ActionInput[] = [{ kind: 'open-market', symbol: 'BINANCE_FUTURE_ETH_USDT', side: 'BUY', qty: '1', leverage: 25 }];
       server.use(...underwater(BOOK));
-      renderWithClient(<ExecuteControl scope="mp" actions={add} label="Add" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="mp" actions={add} label="Add" holdMs={50} />);
       await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled());
       expect(await screen.findByRole('alert')).toHaveTextContent(/exceeds available/);
     });
@@ -597,7 +603,7 @@ describe('ExecuteControl', () => {
         echoPreviewHandler({ overrides: { estNotional: 100_000, leverage: undefined } }),
         dealHandler(calls),
       );
-      renderWithClient(<ExecuteControl scope="ml" actions={[notionalAction]} label="Execute" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="ml" actions={[notionalAction]} label="Execute" holdMs={50} />);
 
       const btn = await screen.findByRole('button', { name: 'Execute' });
       await waitFor(() => expect(btn).toBeEnabled());
@@ -626,7 +632,7 @@ describe('a single resting limit order is a plain order', () => {
       dealHandler(calls),
     );
     renderWithClient(
-      <ExecuteControl scope="limit" actions={[limitAction]} label="Go" holdMs={50} intentKey="limit|1" />,
+      <ExecuteControl purpose={MANUAL} scope="limit" actions={[limitAction]} label="Go" holdMs={50} intentKey="limit|1" />,
     );
 
     const go = () => screen.getByRole('button', { name: 'Go' });
@@ -667,6 +673,7 @@ describe('a single resting limit order is a plain order', () => {
       };
       return (
         <ExecuteControl
+        purpose={MANUAL}
           scope="clearing"
           actions={qty ? [action] : null}
           label="Go"
@@ -700,7 +707,7 @@ describe('a single resting limit order is a plain order', () => {
       { kind: 'open-market', symbol: 'BINANCE_FUTURE_ETH_USDT', side: 'SELL', qty: '1' },
     ];
     renderWithClient(
-      <ExecuteControl scope="pair2" actions={pair} label="Go" holdMs={50} intentKey="pair|1" />,
+      <ExecuteControl purpose={MANUAL} scope="pair2" actions={pair} label="Go" holdMs={50} intentKey="pair|1" />,
     );
     const go = () => screen.getByRole('button', { name: 'Go' });
     await waitFor(() => expect(go()).toBeEnabled());
@@ -725,7 +732,7 @@ describe('ExecuteControl for a view-only wallet', () => {
       dealHandler(calls),
     );
     try {
-      renderWithClient(<ExecuteControl scope="vo" actions={[notionalAction]} label="Execute" holdMs={50} />);
+      renderWithClient(<ExecuteControl purpose={MANUAL} scope="vo" actions={[notionalAction]} label="Execute" holdMs={50} />);
       expect(await screen.findByText('View-only: switch to your logged-in wallet to trade.')).toBeInTheDocument();
       const btn = screen.getByRole('button', { name: 'Execute' });
       expect(btn).toBeDisabled();

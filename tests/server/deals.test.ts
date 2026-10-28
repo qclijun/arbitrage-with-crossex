@@ -63,7 +63,12 @@ function mkApp(): { app: FastifyInstance; store: Store; venue: FakeVenue; clock:
   return { app: a, store, venue, clock, loop: { store, venue, clock } };
 }
 
+/** These tests drive the engine's original behavior, which a Boros-strategy
+ * open keeps (ticket 19); the purpose gates have their own tests. */
+const STRATEGY = { purpose: 'boros-strategy', boros: { base: 'ETH', venues: ['BINANCE', 'OKX'] } };
+
 const makerPayload = (over?: Record<string, unknown>) => ({
+  ...STRATEGY,
   id: 'deal-000001',
   a: { symbol: A_CONTRACT, side: 'BUY' },
   b: { symbol: B_CONTRACT, side: 'SELL' },

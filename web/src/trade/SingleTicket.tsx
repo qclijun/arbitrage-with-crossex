@@ -9,13 +9,14 @@ import { ChevronRight, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, usePositions, useSymbolDetail, useSymbolsByBase, useVenueBook } from '../api/queries';
 import { useTradeFlowOptional } from './TradeFlow';
-import type { ActionInput, Side } from '../api/types';
+import type { ActionInput, BorosContext, Side } from '../api/types';
 import { SegmentedToggle } from '../components/SegmentedToggle';
 import { fieldValue, fmtUsd, sig } from '../lib/fmt';
 import { amountError } from '../lib/amount';
 import { sizeUnitForBase } from '../lib/boros';
 import { formatRestPrice } from '../lib/ticks';
 import { ExecuteControl } from './ExecuteControl';
+import { purposeFor } from './purpose';
 import { AffixedInput, EstimateCard, EstimateRow, LeverageValue } from './PairTicketBits';
 import {
   estimateMargin,
@@ -64,10 +65,13 @@ export function SingleTicket() {
   const perpPrefill = useTradeFlowOptional()?.singlePerpPrefill ?? null;
   const [prefillBase, setPrefillBase] = useState<string | null>(null);
   const [prefillDone, setPrefillDone] = useState(0);
+  /** The Boros legs a strategy prefill armed this leg to hedge; null = stand-alone. */
+  const [borosContext, setBorosContext] = useState<BorosContext | null>(null);
   const prefillNonce = perpPrefill?.nonce ?? 0;
   useEffect(() => {
     if (!perpPrefill || prefillNonce <= prefillDone) return;
     setPrefillBase(perpPrefill.base);
+    setBorosContext(perpPrefill.boros ?? null);
     setBase(perpPrefill.base);
     setSymbol(null);
     setSide(perpPrefill.side);
@@ -476,6 +480,7 @@ export function SingleTicket() {
         <ExecuteControl
           scope="ticket-single"
           actions={action ? [action] : null}
+          purpose={purposeFor(borosContext, base)}
           // No Review card: the ticket already shows the fill estimate, fees,
           // margin and violations right above this button, so hovering popped
           // a floating copy of what was already on screen. (Execute errors

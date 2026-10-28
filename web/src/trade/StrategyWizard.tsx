@@ -198,6 +198,12 @@ function WizardBody({
       // This IS the four-leg hedge ticket: the wizard exists to open the full
       // strategy, so its perp step carries the four-leg marker.
       strategy: 'four-leg',
+      boros: {
+        base: w.base,
+        venues: [...new Set([w.borosLongVenue, w.borosShortVenue])],
+        ...(w.maturity !== undefined ? { maturity: w.maturity } : {}),
+        ...(w.borosRoute ? { route: w.borosRoute } : {}),
+      },
       ...(sizeBase !== undefined && sizeBase > 0 ? { sizeUnit: 'base' as const, sizeBase } : {}),
       ...(w.perpMode ? { mode: w.perpMode } : {}),
     });

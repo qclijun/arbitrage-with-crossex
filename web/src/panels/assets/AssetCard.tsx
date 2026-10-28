@@ -17,6 +17,7 @@ import type {
   BorosLegFill,
   BorosPairBlocker,
   BorosPairContext,
+  BorosContext,
   BorosPairExecuteResponse,
   BorosPairLegBody,
   BorosPairMarketRow,
@@ -5118,6 +5119,13 @@ export function AssetCard({
    * ticket opens both at once and hedges them against each other. The
    * partner is the opposite-direction missing gap on the same side.
    */
+  /** The Boros legs perps opened from this card hedge: the card's coin, the
+   * rate-leg venues, and their soonest maturity there (else the asset's). */
+  const borosHedged = (venues: string[]): BorosContext => {
+    const atVenues = group.borosOpen.filter((b) => venues.includes(b.venue)).map((b) => b.maturity);
+    const pool = atVenues.length > 0 ? atVenues : group.borosOpen.map((b) => b.maturity);
+    return { base: group.base, venues: [...new Set(venues)], ...(pool.length > 0 ? { maturity: Math.min(...pool) } : {}) };
+  };
   const pairPartner = (g: HedgeGapRow): HedgeGapRow | undefined =>
     missing(g.leg).find((o) => o.venue !== g.venue && o.action.startsWith('long') !== g.action.startsWith('long'));
   const armGap = (g: HedgeGapRow): (() => void) | undefined => {
@@ -5147,7 +5155,7 @@ export function AssetCard({
             sizeBase,
           });
         } else {
-          flow.prefillPair({ base: group.base, longVenue, shortVenue, notionalUsd, sizeBase, sizeUnit: g.unit });
+          flow.prefillPair({ base: group.base, longVenue, shortVenue, notionalUsd, sizeBase, sizeUnit: g.unit, boros: borosHedged([longVenue, shortVenue]) });
         }
         flow.openRail();
         return;
@@ -5172,6 +5180,7 @@ export function AssetCard({
           notionalUsd,
           sizeBase,
           sizeUnit: g.unit,
+          boros: borosHedged([g.venue]),
         });
       }
       flow.openRail();
@@ -5532,7 +5541,10 @@ export function AssetCard({
     const notionalUsd = p.unit === 'usd' ? size : p.size > 0 ? (p.notionalUsd / p.borosLegs.length) * (size / p.size) : 0;
     const sizeBase = p.unit === 'base' ? size : undefined;
     if (sides.long && sides.short) {
-      flow.prefillPair({ base: group.base, longVenue: p.longVenue, shortVenue: p.shortVenue, notionalUsd, sizeBase, sizeUnit: p.unit });
+      flow.prefillPair({
+        base: group.base, longVenue: p.longVenue, shortVenue: p.shortVenue, notionalUsd, sizeBase, sizeUnit: p.unit,
+        boros: { base: group.base, venues: [...new Set([p.longVenue, p.shortVenue])], maturity: p.maturity },
+      });
     } else {
       flow.prefillSinglePerp({
         base: group.base,
@@ -5541,6 +5553,7 @@ export function AssetCard({
         notionalUsd,
         sizeBase,
         sizeUnit: p.unit,
+        boros: { base: group.base, venues: [...new Set([p.longVenue, p.shortVenue])], maturity: p.maturity },
       });
     }
     flow.openRail();

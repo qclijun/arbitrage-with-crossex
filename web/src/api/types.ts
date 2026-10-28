@@ -1047,6 +1047,27 @@ export interface DealAlert {
 }
 
 /** POST /api/deals request (mirrors src/engine/create.ts DealRequest). */
+/** The Boros side a strategy's perps hedge (server: src/server/dealPurpose.ts). */
+export interface BorosContext {
+  base: string;
+  /** Boros venue keys of the rate legs. */
+  venues: string[];
+  /** Maturity of the rate legs, unix seconds. */
+  maturity?: number;
+  marketIds?: number[];
+  route?: 'spread' | 'singles';
+}
+
+/**
+ * Why a deal opens — every POST /deals declares it (ticket 19). The server
+ * refuses an open without one; a stand-alone 'manual' open only where nothing
+ * it adds to is already held or working.
+ */
+export type DealPurposeSpec =
+  | { purpose: 'reduce' }
+  | { purpose: 'manual' }
+  | { purpose: 'boros-strategy'; boros: BorosContext };
+
 export interface DealRequest {
   id: string;
   a: { symbol: string; side: Side; reduceOnly?: boolean };
@@ -1060,6 +1081,8 @@ export interface DealRequest {
   maxClip?: string;
   clipBandPct?: number;
   leverage?: { a?: number; b?: number };
+  purpose?: DealPurposeSpec['purpose'];
+  boros?: BorosContext;
 }
 
 /** GET /api/books/:symbol — the venue's live touch (re-peg decision data). */

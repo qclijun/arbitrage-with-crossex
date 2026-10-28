@@ -13,7 +13,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../../src/engine/db';
-import { LEDGER_VERSION, LedgerRefusal, prepareLedger } from '../../src/engine/ledger/version';
+import { LEDGER_STEPS, LEDGER_VERSION, LedgerRefusal, prepareLedger } from '../../src/engine/ledger/version';
 import { LEGACY_BOOT_SCHEMA, seedLegacyLedger } from '../helpers/legacy-ledger';
 
 const dirs: string[] = [];
@@ -87,15 +87,15 @@ describe('upgrading a version-0 ledger', () => {
     }
 
     raw(file, (db) => {
-      expect(userVersion(db)).toBe(1);
+      expect(userVersion(db)).toBe(LEDGER_VERSION);
       expect(db.prepare("SELECT name FROM sqlite_master WHERE name IN ('pair_created','pair_note') ORDER BY name").all())
         .toEqual([{ name: 'pair_created' }, { name: 'pair_note' }]);
       expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
       const row = db.prepare('SELECT * FROM ledger_migration').get() as Record<string, unknown>;
-      expect(row).toMatchObject({ from_version: 0, to_version: 1, applied_at: NOW });
+      expect(row).toMatchObject({ from_version: 0, to_version: LEDGER_VERSION, applied_at: NOW });
       expect(row.backup_file).toBe(backups(dir).find((f) => f.endsWith('.sqlite')));
     });
-    expect(marker(dir)).toEqual({ version: 1 });
+    expect(marker(dir)).toEqual({ version: LEDGER_VERSION });
   });
 
   it('writes a verified, owner-only backup of the version-0 ledger, WAL included', () => {
@@ -105,12 +105,12 @@ describe('upgrading a version-0 ledger', () => {
     new Store(file, { now: NOW }).close();
 
     const [backup, manifestFile] = backups(dir);
-    expect(backup).toBe('deals-v0-to-v1-20261028T010203Z.sqlite');
+    expect(backup).toBe(`deals-v0-to-v${LEDGER_VERSION}-20261028T010203Z.sqlite`);
     expect(manifestFile).toBe(`${backup}.json`);
     const backupPath = path.join(dir, 'ledger-backups', backup);
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'ledger-backups', manifestFile), 'utf8'));
     expect(manifest).toMatchObject({
-      ledger: 'deals.sqlite', fromVersion: 0, toVersion: 1, createdAt: NOW,
+      ledger: 'deals.sqlite', fromVersion: 0, toVersion: LEDGER_VERSION, createdAt: NOW,
       integrity: 'ok', rows: { alerts: 2, orders: 2, pair: 1 }, sha256: sha(backupPath),
     });
     if (process.platform !== 'win32') {
@@ -136,7 +136,7 @@ describe('upgrading a version-0 ledger', () => {
       // Exactly what `new Store()` of releases since 6f0f051 runs first.
       expect(() => db.exec(LEGACY_BOOT_SCHEMA)).toThrow(/already an index named alerts/);
       expect(db.prepare('SELECT count(*) AS n FROM alert_log').get()).toEqual(before);
-      expect(userVersion(db)).toBe(1);
+      expect(userVersion(db)).toBe(LEDGER_VERSION);
     });
   });
 
@@ -229,7 +229,7 @@ describe('a failed migration leaves no half-upgraded ledger', () => {
     const store = new Store(file, { now: NOW + 1000 });
     expect(store.getPair('old-deal')!.bookOutageStartedAt).toBe(0);
     store.close();
-    expect(marker(dir)).toEqual({ version: 1 });
+    expect(marker(dir)).toEqual({ version: LEDGER_VERSION });
   });
 });
 
@@ -264,7 +264,7 @@ describe('a killed migration leaves no half-upgraded ledger', () => {
     const store = new Store(file, { now: NOW + 1000 });
     expect(store.listOrders('old-deal')).toHaveLength(2);
     store.close();
-    raw(file, (db) => expect(userVersion(db)).toBe(1));
+    raw(file, (db) => expect(userVersion(db)).toBe(LEDGER_VERSION));
   });
 });
 
@@ -283,5 +283,30 @@ describe('the open ledger is held exclusively', () => {
     } finally {
       store.close();
     }
+  });
+});
+
+describe('additive steps', () => {
+  it('upgrade a version-1 ledger whose deal is still executing, without refusing or touching the deal', () => {
+    const dir = tempDir();
+    const file = path.join(dir, 'deals.sqlite');
+    seedLegacyLedger(file, { mode: 'OPENING', bState: 'OPEN' });
+    raw(file, (db) => {
+      // Reach version 1 the way a version-1 program did (it ran with no deals).
+      db.prepare("UPDATE pair SET mode = 'DONE'").run();
+      db.prepare("UPDATE orders SET state = 'CLOSED'").run();
+      prepareLedger(db, { file, now: NOW, steps: LEDGER_STEPS.filter((s) => s.to === 1) });
+      db.prepare("UPDATE pair SET mode = 'OPENING'").run();
+      db.prepare("UPDATE orders SET state = 'OPEN' WHERE leg = 'B'").run();
+    });
+    const store = new Store(file, { now: NOW + 1 });
+    try {
+      expect(store.getPair('old-deal')).toMatchObject({ mode: 'OPENING', purpose: null, purposeContext: null });
+      expect(store.listOrders('old-deal').map((o) => o.state)).toEqual(['CLOSED', 'OPEN']);
+    } finally {
+      store.close();
+    }
+    raw(file, (db) => expect(userVersion(db)).toBe(LEDGER_VERSION));
+    expect(backups(dir).filter((f) => f.endsWith('.sqlite'))).toHaveLength(2);
   });
 });
