@@ -14,11 +14,14 @@ import { SliceRefusal } from '../../engine/slices';
 import type { AppDeps } from '../app';
 import { recordUnreconciled } from '../dealGates';
 import { refuse } from '../errorReply';
-import { readSignedPositions } from '../livePositions';
+import { readSignedPositions, signedPositions } from '../livePositions';
+import { TTL } from '../cache';
 
-async function readPositions(deps: AppDeps): Promise<Map<string, string> | null> {
+async function readPositions(deps: AppDeps, cached = false): Promise<Map<string, string> | null> {
   try {
-    return await readSignedPositions(deps.getClients());
+    if (!cached) return await readSignedPositions(deps.getClients());
+    const { value } = await deps.cache.get('positions', TTL.live, async () => (await deps.getClients().crossEx.listCrossexPositions()).body);
+    return signedPositions(value);
   } catch {
     return null;
   }
@@ -33,7 +36,9 @@ export function slicesRoutes(deps: AppDeps) {
 
     app.get('/slices', async (_req, reply) => {
       const s = store();
-      const positions = await readPositions(deps);
+      // At most TTL.live old: the Risk page polls this, and the reading it
+      // reconciles against is carried in each contract's `actual`.
+      const positions = await readPositions(deps, true);
       const actualOf = (contract: string): string | null => (positions ? (positions.get(contract) ?? '0') : null);
       const now = deps.engine!.clock.now();
       const contracts = s.slices.trackedContracts().map((contract) => {

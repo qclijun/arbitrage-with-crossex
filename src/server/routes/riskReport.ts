@@ -59,7 +59,9 @@ export function riskReportRoutes(_deps: AppDeps) {
         read('deals', '/deals?active=1'), read('orders', `/orders/open?${fresh}`),
         read('alerts', '/alerts?unacked=1'), read('health', '/health'),
         // Strategy slices prove intentional floating quantity (ticket 16).
-        read('slices', '/slices'),
+        // Optional: without them no exemption applies, which the report states
+        // as an UNKNOWN exemption rather than an incomplete report.
+        read('slices', '/slices').then((r) => { delete errors.slices; return r; }),
       ]);
       const supplement = await read('supplement', `/risk/evidence${address ? `?address=${address}` : ''}`);
       const inputs = { account, positions, interest, collateral, asset, supplement, deals, orders, alerts, health, slices } as RiskInputs;
@@ -93,8 +95,9 @@ export function riskReportRoutes(_deps: AppDeps) {
       const report = evaluateRisk(scope, adapted.metrics, now, prior, adapted.pauseRollover, settings);
       const checks = visibleRiskChecks(report.checks);
       const complete = adapted.metrics['data.coverage_complete']?.value === true && Object.keys(errors).length === 0;
-      // Version 2 carries the floating exemption the funding checks applied, so
-      // the monitor's continuous-gap history uses the same quantities.
+      // Version 2 carries the floating exemption the funding checks applied —
+      // null when it is UNKNOWN — so the monitor's continuous-gap history uses
+      // the same quantities and never restarts on an unknown.
       return reply.ok({ version: 2, scope, observedAt: now, checks, state: report.state, errors, complete,
         configuration: inputs.supplement.data?.configuration,
         counts: Object.fromEntries(['CRITICAL', 'WARNING', 'UNKNOWN', 'OK', 'PAUSED'].map(s => [s, checks.filter(c => c.status === s).length])),

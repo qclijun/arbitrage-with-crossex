@@ -24,13 +24,13 @@ async function snapshot<T>(data: T, observedAt = now) {
 afterEach(() => vi.unstubAllGlobals());
 
 /** A pure two-leg ETH pair (long OKX, short Hyperliquid), optionally with Boros legs. */
-async function inputs(opts: { qty?: string; boros?: Array<{ venue: string; side: 'LONG' | 'SHORT'; size: string }> } = {}): Promise<RiskInputs> {
-  const qty = opts.qty ?? '3';
+async function inputs(opts: { qty?: string; shortQty?: string; boros?: Array<{ venue: string; side: 'LONG' | 'SHORT'; size: string }> } = {}): Promise<RiskInputs> {
+  const qty = opts.qty ?? '3', shortQty = opts.shortQty ?? qty;
   const legs = [
     { symbol: LONG, exchange: 'OKX', base: 'ETH', quote: 'USDT', side: 'LONG', qty: Number(qty), value: 9000 },
-    { symbol: SHORT, exchange: 'HYPERLIQUID', base: 'ETH', quote: 'USDC', side: 'SHORT', qty: Number(qty), value: 9000 },
+    { symbol: SHORT, exchange: 'HYPERLIQUID', base: 'ETH', quote: 'USDC', side: 'SHORT', qty: Number(shortQty), value: 9000 },
   ];
-  const rows = legs.map((p) => ({ symbol: p.symbol, positionQty: p.side === 'SHORT' ? `-${qty}` : qty, markPrice: '3000', upnl: '0', updateTime: String(now * 1000) }));
+  const rows = legs.map((p) => ({ symbol: p.symbol, positionQty: p.side === 'SHORT' ? `-${shortQty}` : qty, markPrice: '3000', upnl: '0', updateTime: String(now * 1000) }));
   const pool = address + '000002ffffff';
   const boros = (opts.boros ?? []).map((b, i) => ({ marketAcc: pool, marketId: 200 + i, venue: b.venue, maturity: now + 30 * 86400, side: b.side,
     sizeToken: Number(b.size), sizeBase: b.size, entryApr: .05, markApr: .05, mtmUsd: 0, mtmUsdExact: '0', notionalUsd: 1000, settleFeeApr: .001, base: 'ETH', tokenId: 2 }));
@@ -56,10 +56,14 @@ const twoLeg = (id: string, long: string, short: string, kind = 'funding-two-leg
     { leg: 'short', account: 'crossex', contract: SHORT, side: 'short', unit: 'base', qty: short },
   ],
 });
-const reconciled = (contract: string, status = 'reconciled') => ({ contract, status, unknown: status !== 'reconciled', actual: null, explained: null, attributed: '0', unattributed: null });
+type ContractRow = SlicesResponse['contracts'][number];
+const reconciled = (contract: string, actual: string, status: ContractRow['status'] = 'reconciled'): ContractRow =>
+  ({ contract, status, unknown: status !== 'reconciled', actual, explained: actual, attributed: '0', unattributed: actual });
 
-async function withSlices(input: RiskInputs, slices: Slice[], opts: { status?: string; age?: number } = {}) {
-  input.slices = await snapshot<SlicesResponse>({ slices, contracts: [reconciled(LONG, opts.status), reconciled(SHORT)] }, now - (opts.age ?? 0));
+/** Slice evidence reconciled on exactly the reading this report holds, unless `actual` says otherwise. */
+async function withSlices(input: RiskInputs, slices: Slice[], opts: { status?: ContractRow['status']; age?: number; actual?: string } = {}) {
+  const held = (symbol: string) => input.positions.data!.positions.find((p) => p.symbol === symbol)!.positionQty;
+  input.slices = await snapshot<SlicesResponse>({ slices, contracts: [reconciled(LONG, opts.actual ?? held(LONG), opts.status), reconciled(SHORT, held(SHORT))] }, now - (opts.age ?? 0));
   return input;
 }
 
@@ -91,8 +95,9 @@ describe('funding coverage applicability', () => {
   });
 
   it.each([
-    ['a contract that is not reconciled', { status: 'external-change' }],
+    ['a contract that is not reconciled', { status: 'external-change' as const }],
     ['slice evidence older than 12 seconds', { age: 13 }],
+    ['a reconciliation on a different reading than this report', { actual: '2.5' }],
   ])('grants nothing for %s', async (_name, opts) => {
     const input = await withSlices(await inputs(), [twoLeg('F', '3', '3')], opts);
     expect(measure(input)['hedge.funding_unmatched'].value).toBe(true);
@@ -126,6 +131,38 @@ describe('funding coverage applicability', () => {
     const metrics = measure(input);
     expect(metrics['hedge.funding_unmatched'].value).toBe(true); // Boros on OKX with nothing left to cover
     expect(JSON.stringify(metrics['hedge.funding_gap_ratio'].details)).toMatch(/per source, not per strategy/);
+  });
+
+  it('keeps the price gap of an unequal pair while exempting its matched floating part', async () => {
+    const input = await withSlices(await inputs({ qty: '3', shortQty: '2.5' }), [twoLeg('F', '3', '2.5')]);
+    const metrics = measure(input);
+    expect(metrics['hedge.residual_usd'].value).toBe(1500); // 0.5 ETH net long at 3000
+    expect(status(input, 'hedge.perp_net_eth')).not.toBe('OK');
+    expect(metrics['rollover.uncovered_funding_eth'].value).toBe(0.5); // the unpaired long still needs Boros
+  });
+
+  it('still flags Boros held the wrong way on an exempt source', async () => {
+    const input = await withSlices(await inputs({ qty: '4', shortQty: '3', boros: [{ venue: 'OKX', side: 'SHORT', size: '1' }] }), [twoLeg('F', '3', '3')]);
+    expect(measure(input)['hedge.direction_match'].value).toBe(false);
+  });
+
+  it('cannot prove anything on an account the producer does not fully read, and keeps a prior CRITICAL', async () => {
+    const input = await withSlices(await inputs(), [twoLeg('F', '3', '3')]);
+    input.positions.data!.positions.push({ symbol: 'GATE_FUTURE_HYPE_USDT', positionQty: '10', markPrice: '30', upnl: '0', updateTime: String(now * 1000) } as never);
+    input.positions.data!.exposure.push({ base: 'HYPE', legs: [{ symbol: 'GATE_FUTURE_HYPE_USDT', exchange: 'GATE', base: 'HYPE', quote: 'USDT', side: 'LONG', qty: 10, value: 300 }] } as never);
+    const metrics = measure(input);
+    expect(metrics['hedge.funding_unmatched'].value).toBeNull();
+    const prior = { 'hedge.hl_size_gap_eth': { status: 'CRITICAL' as const, criticalMetrics: ['hedge.funding_unmatched'] } };
+    expect(evaluateRisk(scope, metrics, now, prior).checks.find((c) => c.id === 'hedge.hl_size_gap_eth')!.status).toBe('CRITICAL');
+  });
+
+  it('reports the exemption as UNKNOWN, not empty, when a floating slice cannot be proven now', async () => {
+    const known = riskMeasurements(scope, await withSlices(await inputs(), [twoLeg('F', '3', '3')]), now);
+    expect(known.fundingApplicability).toHaveLength(2);
+    const unproven = riskMeasurements(scope, await withSlices(await inputs(), [twoLeg('F', '3', '3')], { status: 'external-change' }), now);
+    expect(unproven.fundingApplicability).toBeNull();
+    expect(riskMeasurements(scope, await inputs(), now).fundingApplicability).toBeNull(); // slices unread
+    expect(riskMeasurements(scope, await withSlices(await inputs(), []), now).fundingApplicability).toEqual([]);
   });
 
   it('versions the continuous-gap identity with the exemption, unchanged when there is none', async () => {

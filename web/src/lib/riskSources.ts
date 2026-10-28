@@ -12,7 +12,7 @@ export interface RiskInputs {
   collateral: RiskRead<BorosCollateralResponse>; asset: RiskRead<AssetViewResponse>; supplement: RiskRead<RiskSupplement>;
   deals: RiskRead<DealView[]>; orders: RiskRead<OpenOrder[]>; alerts: RiskRead<DealAlert[]>;
   health: RiskRead<{ status: string }>; opportunities?: RiskRead<OpportunitiesResult>;
-  /** Strategy slices and their reconciliation (ticket 16); absent = no floating exemption. */
+  /** Strategy slices and their reconciliation (ticket 16); unread = no floating exemption, and an UNKNOWN one. */
   slices?: RiskRead<SlicesResponse>;
 }
 const numeric = (v: unknown): number | null => (typeof v === 'string' || typeof v === 'number') ? gateNumber(v) : null;
@@ -303,8 +303,11 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   const health = read(input.health, ['service.http_ok'], '/health: terminal HTTP only');
   if (health) put('service.http_ok', health.data.status === 'ok', 'Terminal HTTP availability; independent collector status shown separately', health.observedAt);
   else if (input.health.isError) put('service.http_ok', false, 'Terminal HTTP read failed', now);
-  const sourcesFailed = Object.values(input).some(q => q && q.isError);
-  const markedStale = Object.values(input).some(q => q && evidenceFor(q.data)?.stale)
+  // Slice evidence only ever removes a Boros requirement; without it the old
+  // checks apply, so its absence is not a stale or failed snapshot.
+  const { slices: _slices, ...required } = input;
+  const sourcesFailed = Object.values(required).some(q => q && q.isError);
+  const markedStale = Object.values(required).some(q => q && evidenceFor(q.data)?.stale)
     || Boolean(rows?.some(p => p.markHeldSinceMs || p.markStaleSinceMs)) || Boolean(risk?.stale || collateralData?.stale);
   put('data.stale', sourcesFailed || markedStale, 'Existing query failures and upstream stale/held marks', now, true);
   const complete = Boolean(account && perpsComplete && borosComplete && settlement?.complete && asset?.data.coverage.borosTxnsComplete && !asset.data.coverage.backfilling && asset.data.warnings.length === 0);
@@ -370,5 +373,5 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
   }
   return { metrics, pauseRollover: accountAdapted?.pauseRollover ?? (borosComplete && days !== null && days >= 14),
     boros: accountAdapted?.boros ?? boros, days: accountAdapted?.days ?? days,
-    fundingApplicability: accountAdapted?.fundingApplicability ?? [] };
+    fundingApplicability: accountAdapted ? accountAdapted.fundingApplicability : [] };
 }

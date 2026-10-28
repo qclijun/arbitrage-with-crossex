@@ -62,6 +62,23 @@ class FundingApplicabilityTest(unittest.TestCase):
         record_funding_gap(collection(), CONFIG, state, NOW + 10)
         self.assertEqual(state['funding_gap']['started_at'], NOW + 10)
 
+    def test_decimal_quantities_match_the_terminal_exactly(self):
+        state = {}
+        data = collection([(LONG, 'LONG', '3.67'), (SHORT, 'SHORT', '3.67')])
+        for leg in data['positions']['exposure'][0]['legs']:
+            leg['qty'] = 4.03
+        record_funding_gap(data, CONFIG, state, NOW)
+        self.assertEqual(state['funding_gap']['uncovered_eth'], 0.72)  # 0.36 on each source, exactly
+
+    def test_an_unknown_exemption_neither_extends_nor_restarts_the_history(self):
+        state = {}
+        record_funding_gap(collection([(LONG, 'LONG', '1'), (SHORT, 'SHORT', '1')]), CONFIG, state, NOW - 500)
+        before = copy.deepcopy(state)
+        data = collection()
+        data['fundingApplicability'] = None
+        record_funding_gap(data, CONFIG, state, NOW)
+        self.assertEqual(state, before)
+
     def test_malformed_or_oversized_evidence_records_no_history(self):
         for floating in ([(LONG, 'LONG', '4')], [(LONG, 'UP', '1')], [(LONG, 'LONG', '1e-3')], [(SHORT, 'LONG', '1')]):
             with self.subTest(floating=floating):
@@ -71,10 +88,14 @@ class FundingApplicabilityTest(unittest.TestCase):
 
     def test_collector_accepts_version_two_only_with_its_exemption_list(self):
         with tempfile.TemporaryDirectory() as folder:
-            token = Path(folder) / 'api-token'; token.write_text('local-only-token')
+            token = Path(folder) / 'api-token'
+            token.write_text('local-only-token')
             config = {'root': ADDRESS, 'token_file': str(token), 'state_dir': folder}
-            ok = copy.deepcopy(response(config)); ok['data']['version'] = 2; ok['data']['collection']['fundingApplicability'] = []
-            bad = copy.deepcopy(ok); bad['data']['collection'].pop('fundingApplicability')
+            ok = copy.deepcopy(response(config))
+            ok['data']['version'] = 2
+            ok['data']['collection']['fundingApplicability'] = None  # UNKNOWN is a valid answer
+            bad = copy.deepcopy(ok)
+            bad['data']['collection'].pop('fundingApplicability')
             with patch('risk_monitor.request_json', return_value=ok), patch('risk_monitor.time.time', return_value=NOW):
                 self.assertEqual(Collector(config).collect_report({})['version'], 2)
             with patch('risk_monitor.request_json', return_value=bad), patch('risk_monitor.time.time', return_value=NOW):

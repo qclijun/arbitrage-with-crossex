@@ -384,5 +384,5 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   const complete = Boolean(account && perpsComplete && borosComplete && poolComplete && settlementComplete
     && settlementUsdComplete && borosPnl !== null && borosEquity !== null && gatePnl !== null && residual !== null);
   put('data.coverage_complete', complete, seenAt, true, 'Incomplete ETH/BTC account / collateral pool evidence');
-  return { metrics, boros, days, pauseRollover: borosComplete && days !== null && days >= 14, fundingApplicability: floating.granted };
+  return { metrics, boros, days, pauseRollover: borosComplete && days !== null && days >= 14, fundingApplicability: floating.known ? floating.granted : null };
 }

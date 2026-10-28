@@ -40,12 +40,21 @@ describe('floating applicability in the shared Risk report', () => {
     s.slices = { slices: [{ id: 'F', kind: 'funding-two-leg', source: {}, createdAt: 1, reducible: {}, legs: [
       { leg: 'long', account: 'crossex', contract: legs[1].symbol, side: 'long', unit: 'base', qty: '3' },
       { leg: 'short', account: 'crossex', contract: legs[0].symbol, side: 'short', unit: 'base', qty: '3' },
-    ] }], contracts: [legs[0].symbol, legs[1].symbol].map((contract) => ({ contract, status: 'reconciled', unknown: false })) };
+    ] }], contracts: s.positions.positions.map((p: any) => ({ contract: p.symbol, status: 'reconciled', unknown: false, actual: p.positionQty })) };
     r = await readReport(f);
     expect(metric(r, 'hedge.funding_unmatched').value).toBe(false);
     expect(r.checks.find((c: any) => c.id === 'hedge.hl_size_gap_eth').status).toBe('OK');
     expect(r.collection.fundingApplicability.map((g: any) => [g.symbol, g.side, g.qty])).toEqual([
       [legs[1].symbol, 'LONG', '3'], [legs[0].symbol, 'SHORT', '3'],
     ]);
+  });
+  it('keeps a report complete without slice evidence, stating the exemption as UNKNOWN', async () => {
+    const f = await fixture();
+    f.failed.add('slices');
+    const r = await readReport(f);
+    expect(r.complete).toBe(true);
+    expect(r.errors).toEqual({});
+    expect(r.collection.fundingApplicability).toBeNull();
+    expect(r.checks.find((c: any) => c.id === 'data.stale')?.status ?? 'OK').not.toBe('WARNING');
   });
 });

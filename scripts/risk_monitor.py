@@ -295,7 +295,8 @@ class Collector:
         scope = report.get('scope') or {}
         collection = report.get('collection')
         if (report.get('version') not in (1, 2) or not scope.get('credentialId')
-                or report.get('version') == 2 and not (isinstance(collection, dict) and isinstance(collection.get('fundingApplicability'), list))
+                or report.get('version') == 2 and not (isinstance(collection, dict) and 'fundingApplicability' in collection
+                                                       and (collection['fundingApplicability'] is None or isinstance(collection['fundingApplicability'], list)))
                 or obj.get('meta', {}).get('credentialId') != scope.get('credentialId')
                 or not isinstance(scope.get('address'), str) or not re.fullmatch(r'0x[0-9a-f]{40}', scope['address'])
                 or scope.get('address') != (root or scope.get('address'))

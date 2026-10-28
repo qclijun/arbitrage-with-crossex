@@ -2,6 +2,7 @@
 only, read-only). The gap identity is the terminal's fundingGapFingerprint
 (src/core/risk.ts); proven floating two-leg quantity from a version-2 Risk
 report (ticket 16) is used as given, never recomputed or widened."""
+from decimal import Decimal
 import json
 import math
 import re
@@ -62,6 +63,8 @@ def record_funding_gap(data, config, state, now):
                    or not math.isfinite(b['maturity']) or b['maturity'] <= 0 for b in boros)):
         state.pop('funding_gap', None)
         return
+    if 'fundingApplicability' in data and data['fundingApplicability'] is None:
+        return  # exemption UNKNOWN: neither extend nor restart the history on it
     floating = floating_exemptions(data.get('fundingApplicability'), perps)
     if floating is None:
         state.pop('funding_gap', None)
@@ -71,9 +74,13 @@ def record_funding_gap(data, config, state, now):
     base_fingerprint = canonical_identity(identity)
     # Same identity as the terminal's fundingGapFingerprint: proven floating
     # quantity (ticket 16) joins it only when there is some.
-    fingerprint = canonical_identity({**identity, 'floating': sorted([[s, side, q] for (s, side), q in floating.items()])}) if floating else base_fingerprint
-    quantity = sum(max(0, p['qty'] - floating.get((p['symbol'], p['side']), 0)
-                       - sum(b['sizeToken'] for b in boros if b['venue'] == p['exchange'] and b['side'] == p['side'] and b['maturity'] > now)) for p in perps)
+    fingerprint = canonical_identity({**identity, 'floating': sorted([[s, side, float(q)] for (s, side), q in floating.items()])}) if floating else base_fingerprint
+    # Exact decimals, as the terminal sums 18-dp strings: float subtraction
+    # (4.03 - 3.67) would never equal its gap and the clock would stay UNKNOWN.
+    quantity = float(sum((max(Decimal(0), exact(p['qty']) - floating.get((p['symbol'], p['side']), Decimal(0))
+                              - sum((exact(b['sizeToken']) for b in boros
+                                     if b['venue'] == p['exchange'] and b['side'] == p['side'] and b['maturity'] > now), Decimal(0)))
+                          for p in perps), Decimal(0)))
     old = state.get('funding_gap') or {}
     recent = (isinstance(old.get('observed_at'), (int, float)) and 0 <= now - old['observed_at'] <= 3600
               and isinstance(old.get('started_at'), (int, float)) and 0 < old['started_at'] <= old['observed_at']
@@ -86,6 +93,11 @@ def record_funding_gap(data, config, state, now):
     state['funding_gap'] = {'fingerprint': fingerprint, 'base_fingerprint': base_fingerprint,
                             'started_at': old['started_at'] if same or narrowed else now,
                             'observed_at': now, 'uncovered_eth': quantity}
+
+
+def exact(value):
+    """The decimal a JSON number was written as (its shortest repr)."""
+    return Decimal(repr(float(value)))
 
 
 def floating_exemptions(raw, perps):
@@ -102,12 +114,12 @@ def floating_exemptions(raw, perps):
                 or not isinstance(entry.get('qty'), str) or not re.fullmatch(r'\d+(\.\d+)?', entry['qty'])
                 or not isinstance(entry.get('sliceIds'), list) or not all(isinstance(i, str) for i in entry['sliceIds'])):
             return None
-        qty = float(entry['qty'])
+        qty = Decimal(entry['qty'])
         if '_FUTURE_ETH_' not in entry['symbol']:
             continue  # other bases have their own report coverage
         held = next((p for p in perps if p['symbol'] == entry['symbol'] and p['side'] == entry['side']), None)
         key = (entry['symbol'], entry['side'])
-        if held is None or qty <= 0 or result.get(key, 0) + qty > held['qty']:
+        if held is None or qty <= 0 or result.get(key, Decimal(0)) + qty > exact(held['qty']):
             return None
-        result[key] = result.get(key, 0) + qty
+        result[key] = result.get(key, Decimal(0)) + qty
     return result
