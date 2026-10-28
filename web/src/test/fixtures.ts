@@ -294,6 +294,7 @@ export function baseHandlers() {
     rebalanceHandler(),
     transferHandler(),
     http.get('/api/alerts', () => HttpResponse.json(env([]))),
+    http.get('/api/slices', () => HttpResponse.json(env({ slices: [], contracts: [] }))),
     http.get('/api/telegram', () => HttpResponse.json(env(telegramInfo()))),
     http.get('/api/boros/agent', () => HttpResponse.json(env(agentStatus()))),
     // Default: disclaimer already accepted, so the gate stays out of the way.

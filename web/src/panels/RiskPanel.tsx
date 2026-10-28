@@ -4,6 +4,7 @@ import { useTabActive } from '../components/TabBar';
 import { contracts, evaluateRisk, formatRiskTime, formatRiskValue, scopeKey, validateEvidence, visibleRiskChecks, type MetricEvidence, type RiskScope, type RiskState, type RiskStatus } from '../lib/risk';
 import { riskMeasurements } from '../lib/riskSources';
 import { useTrackedAddress } from './trackedAddress';
+import { useStrategySlices } from '../api/sliceQueries';
 
 const tones: Record<RiskStatus, string> = { CRITICAL: 'text-negative', WARNING: 'text-warning', UNKNOWN: 'text-ink-400', OK: 'text-positive', PAUSED: 'text-ink-500' };
 const featured = ['gate.equity_usd', 'gate.upnl_usd', 'gate.loss_equity_ratio', 'boros.equity_usd', 'boros.rate_mtm_usd',
@@ -29,9 +30,10 @@ export function RiskPanel() {
   const orders = useOpenOrders();
   const alerts = useAlerts();
   const health = useTerminalHealth();
+  const slices = useStrategySlices();
   const shown = useTabActive();
   const now = Date.now() / 1000;
-  const inputs = { account, positions, interest, collateral, asset, supplement, deals, orders, alerts, health };
+  const inputs = { account, positions, interest, collateral, asset, supplement, deals, orders, alerts, health, slices };
   const preliminary = riskMeasurements(scope, inputs, now);
   const token = collateral.data?.tokens.find(t => t.tokenId === 2);
   const actualSize = preliminary.boros.length === 2 && preliminary.boros[0].sizeToken === preliminary.boros[1].sizeToken && token?.priceUsd

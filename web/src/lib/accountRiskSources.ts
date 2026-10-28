@@ -2,6 +2,7 @@ import { readEvidence, type ReadEvidence } from '../api/client';
 import { contracts, FUNDING_GAP_MIN_USD, fundingGapFingerprint, fundingQuantityVerified, materialBorosLeg, MIN_ORDER_VALUE_USD, scopeKey, type MetricEvidence, type RiskScope } from './risk';
 import { gateNumber } from './liquidation';
 import type { RiskInputs } from './riskSources';
+import { floatingApplicability, SLICE_EVIDENCE_MAX_AGE_SECONDS } from './fundingApplicability';
 import { fx, fxStr, type Fx } from '../../../src/engine/fx';
 import { formatDecimal18, parseDecimal18 } from '../../../src/core/boros/decimal18';
 
@@ -260,6 +261,9 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
       side: b.side === 'SHORT' ? 'LONG' as const : 'SHORT' as const }]
     : [b]);
   const matchComplete = borosComplete && perpsComplete && fundingSourcesComplete;
+  // Proven floating two-leg quantity needs no Boros (fundingApplicability.ts).
+  const sliceRead = read(input.slices ?? {});
+  const floating = floatingApplicability(sliceRead && now - sliceRead.time <= SLICE_EVIDENCE_MAX_AGE_SECONDS ? sliceRead.data : null, exactLegs);
   const keys = new Set([...legs.map(p => `${p.base}:${p.exchange}:${p.side}`), ...fundingSources.map(b => `${b.base}:${b.venue}:${b.side}`)]);
   const gaps: Detail[] = [], ratios: Detail[] = [], dollars: Detail[] = [], exactGaps = new Map<string, bigint | null>();
   let maxRatio = 0, maxMaterialRatio = 0, maxGapUsd = 0n, pricesComplete = true, unmatched = false;
@@ -272,14 +276,15 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
       const size = exact18(b.sizeBase);
       return n === null || size === null ? null : n + size;
     }, 0n);
-    const gap = funding === null ? null : actual - funding;
+    const required = actual - (floating.byKey.get(key) ?? 0n);
+    const gap = funding === null ? null : required - funding;
     exactGaps.set(key, gap);
     gaps.push({ label: key, value: gap === null ? null : metricNumber18(gap), unit: base });
     if (gap === null) continue;
-    const ratio = actual > 0n ? Number(abs18(gap)) / Number(actual) : funding! > 0n ? 1 : 0;
+    const ratio = required > 0n ? Number(abs18(gap)) / Number(required) : funding! > 0n ? 1 : 0;
     if (ratio > maxRatio) maxRatio = ratio;
     // A missing side is an independent danger, including tiny orphan positions.
-    unmatched ||= actual === 0n && funding! > 0n || actual > 0n && funding === 0n;
+    unmatched ||= required === 0n && funding! > 0n || required > 0n && funding === 0n;
     const price = fundingPrices.get(base);
     const gapUsd = gap === 0n ? 0n : price === null || price === undefined ? null : abs18(gap) * price;
     if (gapUsd === null) pricesComplete = false;
@@ -296,7 +301,7 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
       && (step === null || abs18(gap) > step);
     if (material && ratio > maxMaterialRatio) maxMaterialRatio = ratio;
     ratios.push({ label: key, value: finite(ratio) ? ratio : null, unit: 'ratio',
-      reason: `Perpetual ${formatDecimal18(actual)} ${base}; Boros ${formatDecimal18(funding!)} ${base}; signed gap ${formatDecimal18(gap)} ${base}; ${(ratio * 100).toFixed(6)}%; verified executable lot ${step === null ? 'unavailable (no lot exemption)' : formatDecimal18(step) + ' ' + base}; minimum gap $${FUNDING_GAP_MIN_USD}; material ${material}` });
+      reason: `Perpetual ${formatDecimal18(actual)} ${base}${floating.notes.has(key) ? `; ${floating.notes.get(key)}` : ''}; Boros ${formatDecimal18(funding!)} ${base}; signed gap ${formatDecimal18(gap)} ${base}; ${(ratio * 100).toFixed(6)}%; verified executable lot ${step === null ? 'unavailable (no lot exemption)' : formatDecimal18(step) + ' ' + base}; minimum gap $${FUNDING_GAP_MIN_USD}; material ${material}; coverage judged per source, not per strategy` });
     dollars.push({ label: key, value: gapUsd === null ? null : metricNumber30(gapUsd), unit: 'USD' });
   }
   const mismatchedDirection = keys.size > 0 && [...keys].some(key => {
@@ -326,8 +331,9 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   const supplement = read(input.supplement)?.data;
   const ethPerps = legs.filter(p => p.base === 'ETH');
   const ethBoros = fundingSources.filter(b => b.base === 'ETH');
+  const ethFloating = floating.granted.filter(g => ethPerps.some(p => p.symbol.toUpperCase() === g.symbol));
   const trustedStart = supplement && scopeKey(supplement.scope) === scopeKey(scope)
-    && supplement.fundingGapFingerprint === fundingGapFingerprint(ethPerps, ethBoros, scope)
+    && supplement.fundingGapFingerprint === fundingGapFingerprint(ethPerps, ethBoros, scope, ethFloating)
     && supplement.fundingGapEth === uncovered && finite(supplement.fundingGapObservedAt)
     && supplement.fundingGapObservedAt <= now && now - supplement.fundingGapObservedAt <= 3600
     && finite(supplement.fundingGapStartedAt) && supplement.fundingGapStartedAt > 0
@@ -378,5 +384,5 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
   const complete = Boolean(account && perpsComplete && borosComplete && poolComplete && settlementComplete
     && settlementUsdComplete && borosPnl !== null && borosEquity !== null && gatePnl !== null && residual !== null);
   put('data.coverage_complete', complete, seenAt, true, 'Incomplete ETH/BTC account / collateral pool evidence');
-  return { metrics, boros, days, pauseRollover: borosComplete && days !== null && days >= 14 };
+  return { metrics, boros, days, pauseRollover: borosComplete && days !== null && days >= 14, fundingApplicability: floating.granted };
 }

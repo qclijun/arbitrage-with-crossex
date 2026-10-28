@@ -49,6 +49,7 @@ beforeEach(() => {
     http.get('/api/positions', () => response({ positions: [], exposure: [] })),
     http.get('/api/orders/open', () => response([])), http.get('/api/deals', () => response([])), http.get('/api/alerts', () => response([])),
     http.get('/api/health', () => response({ status: 'ok' })),
+    http.get('/api/slices', () => response({ slices: [], contracts: [] })),
     http.get('/api/risk/evidence', ({ request }) => response({ scope: { ...scope, address: new URL(request.url).searchParams.get('address') }, metrics: external, baseline, fundingGapStartedAt: null })),
     http.get('/api/boros/collateral', ({ request }) => {
       if (new URL(request.url).searchParams.get('address') !== address) return HttpResponse.json({ ok: false, error: { category: 'network', message: 'unavailable' } }, { status: 502 });

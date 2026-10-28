@@ -11,13 +11,13 @@ import os
 from pathlib import Path
 import re
 import sys
-import struct
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from risk_monitor_evidence import CONTRACTS, evidence_error, valid_value
+from risk_monitor_funding_gap import canonical_identity, floating_exemptions, number, record_funding_gap  # noqa: F401 (re-exported)
 
 ROOT = Path(__file__).resolve().parents[1]
 RULES = ROOT / 'scripts/risk-monitor-rules.json'
@@ -27,64 +27,6 @@ SEVERITY = {'PAUSED': -1, 'OK': 0, 'UNKNOWN': 1, 'WARNING': 2, 'CRITICAL': 3}
 
 class ConfigurationMismatch(ValueError):
     """The monitor must not silently use another terminal's risk settings."""
-
-
-def canonical_identity(value):
-    """Same tagged IEEE-754 encoding as the terminal's canonicalRiskIdentity."""
-    def encode(v):
-        if isinstance(v, bool):
-            return ['boolean', v]
-        if isinstance(v, (int, float)):
-            return ['number', struct.pack('>d', float(v) if v else 0.0).hex()]
-        if isinstance(v, list):
-            return ['array', [encode(x) for x in v]]
-        if isinstance(v, dict):
-            return ['object', [[k, encode(v[k])] for k in sorted(v)]]
-        return ['null' if v is None else 'string', v]
-    return json.dumps(encode(value), ensure_ascii=False, separators=(',', ':'))
-
-
-def record_funding_gap(data, config, state, now):
-    """Record current verified legs; terminal visits cannot start or extend history."""
-    risk = (data.get('farm') or {}).get('risk') or {}
-    positions = data.get('positions') or {}
-    root = str(config.get('root') or (data.get('agent') or {}).get('root') or '').lower()
-    account_id = config.get('account_id', 0)
-    if (risk.get('address', '').lower() != root or risk.get('accountId') != account_id
-            or account_id != 0 or risk.get('positionsComplete') is not True or risk.get('stale')
-            or not isinstance(positions.get('positions'), list) or not isinstance(positions.get('exposure'), list)):
-        state.pop('funding_gap', None)
-        return
-    perps = [p for group in positions['exposure'] if group.get('base') == 'ETH' for p in group.get('legs', [])]
-    boros = risk.get('positions', [])
-    rows = positions['positions']
-    pool = root + f'{account_id:02x}0002ffffff'
-    if (not isinstance(boros, list)
-            or any(number(p.get('positionQty')) is None or not isinstance(p.get('symbol'), str) for p in rows)
-            or sum(number(p['positionQty']) != 0 for p in rows) != sum(len(g.get('legs', [])) for g in positions['exposure'])
-            or any(b.get('marketAcc', '').lower() != pool or b.get('venue') not in ('HYPERLIQUID', 'BINANCE', 'OKX')
-                   or not isinstance(b.get('marketId'), int) or isinstance(b['marketId'], bool) or b['marketId'] <= 0 for b in boros)):
-        state.pop('funding_gap', None)
-        return
-    quantities = [p.get('qty') for p in perps] + [b.get('sizeToken') for b in boros]
-    if (any(not isinstance(q, (int, float)) or isinstance(q, bool) or not math.isfinite(q) or q <= 0 for q in quantities)
-            or any(p.get('side') not in ('LONG', 'SHORT') or not re.fullmatch(r'(HYPERLIQUID|BINANCE|OKX)_FUTURE_ETH_(USDT|USDC|USD)', p.get('symbol', ''))
-                   or p.get('exchange') != p['symbol'].split('_')[0] for p in perps)
-            or len({p['symbol'] for p in perps}) != len(perps)
-            or any(b.get('side') not in ('LONG', 'SHORT') or not isinstance(b.get('maturity'), (int, float)) or isinstance(b['maturity'], bool)
-                   or not math.isfinite(b['maturity']) or b['maturity'] <= 0 for b in boros)):
-        state.pop('funding_gap', None)
-        return
-    fingerprint = canonical_identity({'root': root, 'account_id': account_id, 'perps': sorted([[p['symbol'], p['exchange'], p['side'], p['qty']] for p in perps]),
-                                      'boros': sorted([[b['marketId'], b['venue'], b['side'], b['sizeToken'], b['maturity']] for b in boros])})
-    quantity = sum(max(0, p['qty'] - sum(b['sizeToken'] for b in boros if b['venue'] == p['exchange'] and b['side'] == p['side'] and b['maturity'] > now)) for p in perps)
-    old = state.get('funding_gap') or {}
-    continuous = (number(old.get('uncovered_eth')) is not None and old['uncovered_eth'] == quantity and quantity > 0
-                  and old.get('fingerprint') == fingerprint and isinstance(old.get('observed_at'), (int, float))
-                  and 0 <= now - old['observed_at'] <= 3600 and isinstance(old.get('started_at'), (int, float))
-                  and 0 < old['started_at'] <= old['observed_at'])
-    state['funding_gap'] = {'fingerprint': fingerprint, 'started_at': old['started_at'] if quantity > 0 and continuous else now,
-                            'observed_at': now, 'uncovered_eth': quantity}
 
 
 def producer_scope(config, data):
@@ -101,14 +43,6 @@ def producer_scope(config, data):
     scope = {key: identity[key] for key in ('account_id', 'base', 'collateral_token_id', 'root', 'terminal_url')}
     return {**scope, 'gate_user_id': str(user_id),
             'config_id': hashlib.sha256(canonical_identity(identity).encode()).hexdigest()}
-
-
-def number(value):
-    try:
-        result = float(value)
-        return result if math.isfinite(result) else None
-    except (ValueError, TypeError):
-        return None
 
 
 def rollover_days_to_maturity(data, config, now):
@@ -359,7 +293,9 @@ class Collector:
         if obj.get('ok') is not True or obj.get('meta', {}).get('stale') or not isinstance(report, dict):
             raise RuntimeError('Risk report unavailable')
         scope = report.get('scope') or {}
-        if (report.get('version') != 1 or not scope.get('credentialId')
+        collection = report.get('collection')
+        if (report.get('version') not in (1, 2) or not scope.get('credentialId')
+                or report.get('version') == 2 and not (isinstance(collection, dict) and isinstance(collection.get('fundingApplicability'), list))
                 or obj.get('meta', {}).get('credentialId') != scope.get('credentialId')
                 or not isinstance(scope.get('address'), str) or not re.fullmatch(r'0x[0-9a-f]{40}', scope['address'])
                 or scope.get('address') != (root or scope.get('address'))

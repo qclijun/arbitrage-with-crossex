@@ -52,15 +52,17 @@ export function riskReportRoutes(_deps: AppDeps) {
       };
       // /risk/evidence verifies its producer against the account cache populated here.
       const account = await read<RiskInputs['account']['data']>('account', `/account?${fresh}`);
-      const [positions, interest, collateral, asset, deals, orders, alerts, health] = await Promise.all([
+      const [positions, interest, collateral, asset, deals, orders, alerts, health, slices] = await Promise.all([
         read('positions', `/positions?${fresh}`), read('interest', `/account/interest?${fresh}`),
         address ? read('collateral', `/boros/collateral?address=${address}&${fresh}`) : Promise.resolve({ isError: true }),
         address ? read('asset', `/asset-view/${address}?${fresh}`) : Promise.resolve({ isError: true }),
         read('deals', '/deals?active=1'), read('orders', `/orders/open?${fresh}`),
         read('alerts', '/alerts?unacked=1'), read('health', '/health'),
+        // Strategy slices prove intentional floating quantity (ticket 16).
+        read('slices', '/slices'),
       ]);
       const supplement = await read('supplement', `/risk/evidence${address ? `?address=${address}` : ''}`);
-      const inputs = { account, positions, interest, collateral, asset, supplement, deals, orders, alerts, health } as RiskInputs;
+      const inputs = { account, positions, interest, collateral, asset, supplement, deals, orders, alerts, health, slices } as RiskInputs;
       const evidenceFor = (data: unknown) => data !== null && typeof data === 'object' ? metadata.get(data) : undefined;
       const preliminary = riskMeasurements(scope, inputs, Date.now() / 1000, false, evidenceFor);
       const token = inputs.collateral.data?.tokens.find(t => t.tokenId === 2);
@@ -91,10 +93,13 @@ export function riskReportRoutes(_deps: AppDeps) {
       const report = evaluateRisk(scope, adapted.metrics, now, prior, adapted.pauseRollover, settings);
       const checks = visibleRiskChecks(report.checks);
       const complete = adapted.metrics['data.coverage_complete']?.value === true && Object.keys(errors).length === 0;
-      return reply.ok({ version: 1, scope, observedAt: now, checks, state: report.state, errors, complete,
+      // Version 2 carries the floating exemption the funding checks applied, so
+      // the monitor's continuous-gap history uses the same quantities.
+      return reply.ok({ version: 2, scope, observedAt: now, checks, state: report.state, errors, complete,
         configuration: inputs.supplement.data?.configuration,
         counts: Object.fromEntries(['CRITICAL', 'WARNING', 'UNKNOWN', 'OK', 'PAUSED'].map(s => [s, checks.filter(c => c.status === s).length])),
-        collection: { account: inputs.account.data, agent: { root: address }, farm: inputs.asset.data, positions: inputs.positions.data },
+        collection: { account: inputs.account.data, agent: { root: address }, farm: inputs.asset.data, positions: inputs.positions.data,
+          fundingApplicability: adapted.fundingApplicability },
         note: 'Same Risk page model and visible checks. UNKNOWN is not safe.' }, { observedAt: now * 1000, coverageComplete: complete });
     });
   };

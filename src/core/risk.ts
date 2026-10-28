@@ -119,10 +119,16 @@ export function canonicalRiskIdentity(value: unknown): string {
   return JSON.stringify(encode(value));
 }
 
-export function fundingGapFingerprint(perps: { symbol: string; exchange: string; side: string; qty: number }[], boros: RiskBorosPosition[], scope: RiskScope): string {
+/** Identity of one continuous funding gap. Proven floating quantity (ticket
+ * 16) joins it only when there is some, so earlier histories keep theirs;
+ * scripts/risk_monitor.py computes the same identity. */
+export function fundingGapFingerprint(perps: { symbol: string; exchange: string; side: string; qty: number }[], boros: RiskBorosPosition[],
+  scope: RiskScope, floating: Array<{ symbol: string; side: string; qty: string }> = []): string {
   return canonicalRiskIdentity({ root: scope.address?.toLowerCase(), account_id: scope.accountId,
     perps: perps.map(p => [p.symbol, p.exchange, p.side, p.qty]).sort((a, b) => String(a[0]) < String(b[0]) ? -1 : 1),
-    boros: boros.map(b => [b.marketId, b.venue, b.side, b.sizeToken, b.maturity]).sort((a, b) => Number(a[0]) - Number(b[0])) });
+    boros: boros.map(b => [b.marketId, b.venue, b.side, b.sizeToken, b.maturity]).sort((a, b) => Number(a[0]) - Number(b[0])),
+    ...(floating.length ? { floating: floating.map(f => [f.symbol, f.side, Number(f.qty)])
+      .sort((a, b) => a[0] !== b[0] ? (String(a[0]) < String(b[0]) ? -1 : 1) : String(a[1]) < String(b[1]) ? -1 : 1) } : {}) });
 }
 export function validMetric(value: unknown, contract: MetricContract): boolean {
   if (contract.type === 'bool') return typeof value === 'boolean';

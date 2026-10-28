@@ -4,6 +4,7 @@ import { gateNumber, liquidationLines } from './liquidation';
 import { deriveAsset, pairMaturityProfit } from '../panels/assets/assetModel';
 import { contracts, fundingGapFingerprint, materialBorosLeg, MIN_ORDER_VALUE_USD, scopeKey, validMetric, validateEvidence, type MetricEvidence, type RiskScope, type RiskSupplement } from './risk';
 import { accountRiskMeasurements } from './accountRiskSources';
+import type { SlicesResponse } from './fundingApplicability';
 
 export interface RiskRead<T> { data?: T; isError?: boolean; isPending?: boolean; isPlaceholderData?: boolean }
 export interface RiskInputs {
@@ -11,6 +12,8 @@ export interface RiskInputs {
   collateral: RiskRead<BorosCollateralResponse>; asset: RiskRead<AssetViewResponse>; supplement: RiskRead<RiskSupplement>;
   deals: RiskRead<DealView[]>; orders: RiskRead<OpenOrder[]>; alerts: RiskRead<DealAlert[]>;
   health: RiskRead<{ status: string }>; opportunities?: RiskRead<OpportunitiesResult>;
+  /** Strategy slices and their reconciliation (ticket 16); absent = no floating exemption. */
+  slices?: RiskRead<SlicesResponse>;
 }
 const numeric = (v: unknown): number | null => (typeof v === 'string' || typeof v === 'number') ? gateNumber(v) : null;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -366,5 +369,6 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
     }
   }
   return { metrics, pauseRollover: accountAdapted?.pauseRollover ?? (borosComplete && days !== null && days >= 14),
-    boros: accountAdapted?.boros ?? boros, days: accountAdapted?.days ?? days };
+    boros: accountAdapted?.boros ?? boros, days: accountAdapted?.days ?? days,
+    fundingApplicability: accountAdapted?.fundingApplicability ?? [] };
 }
