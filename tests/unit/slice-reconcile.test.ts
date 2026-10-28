@@ -27,7 +27,7 @@ describe('reconcileContract', () => {
     twoLegSlice(store, 'X', { [LONG_C]: '0.25' }); // 0.25 already held, unattributed
     openInto(store, 'X', 'open-x', '1');
     expect(rec(store, LONG_C, '1.25')).toEqual({
-      status: 'reconciled', actual: '1.25', explained: '1.25', attributed: '1', unattributed: '0.25',
+      status: 'reconciled', actual: '1.25', explained: '1.25', attributed: '1', unattributed: '0.25', unknown: false,
     });
     expect(rec(store, SHORT_C, '-1')).toMatchObject({ status: 'reconciled', attributed: '-1', unattributed: '0' });
   });
@@ -50,6 +50,14 @@ describe('reconcileContract', () => {
     twoLegSlice(store, 'X');
     deal(store, 'working', { contract: LONG_C, side: 'BUY' }, null, '1');
     expect(rec(store, LONG_C, '0.3')).toMatchObject({ status: 'in-flight' });
+  });
+
+  it('never lets slices holding one contract both ways net out', () => {
+    const state = { contract: LONG_C, explained: '0', flag: null, inFlight: false, legs: [
+      { sliceId: 'L', leg: 'x', side: 'long' as const, qty: '1' },
+      { sliceId: 'S', leg: 'y', side: 'short' as const, qty: '1' },
+    ] };
+    expect(reconcileContract(state, '0')).toMatchObject({ status: 'over-attributed', attributed: '0', unknown: true });
   });
 
   it('is UNKNOWN when the position could not be read', () => {

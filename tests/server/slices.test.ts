@@ -115,6 +115,25 @@ describe('slice-scoped reductions', () => {
   });
 });
 
+describe('new risk on an unreconciled contract', () => {
+  it('refuses an open of any purpose there, records the finding, and still accepts the reduction', async () => {
+    const store = world();
+    mockGateGet('/rule/symbols', { body: rules(), times: 2 });
+    mockGateGet('/accounts', { fixture: 'account.json', times: 2 });
+    mockGateGet('/positions', { body: [{ symbol: A_CONTRACT, position_qty: '0.6' }, { symbol: B_CONTRACT, position_qty: '-1' }], times: 6 });
+    const open = await post({
+      id: 'open-0001', purpose: 'boros-strategy', boros: { base: 'ETH', venues: ['OKX'] },
+      a: { symbol: A_CONTRACT, side: 'BUY' }, qty: '0.1', execution: 'taker',
+    });
+    expect(open.statusCode).toBe(409);
+    expect(open.json().error).toMatchObject({ label: 'contract-unreconciled' });
+    expect(store.listAlerts().some((a) => /external-change \(explains 1, holds 0\.6\)/.test(a.message))).toBe(true);
+    const cut = await post({ id: 'cut-0001', purpose: 'reduce', qty: '0.5', execution: 'taker', clipBandPct: 0.5,
+      a: { symbol: A_CONTRACT, side: 'SELL', reduceOnly: true } });
+    expect(cut.statusCode, cut.body).toBe(202);
+  });
+});
+
 describe('GET /api/slices', () => {
   it('lists slices with their room and reconciles each tracked contract on a fresh read', async () => {
     world();

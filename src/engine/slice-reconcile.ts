@@ -42,19 +42,32 @@ export interface Reconciliation {
   attributed: string;
   /** actual − attributed; null when the actual is unknown. */
   unattributed: string | null;
+  /** UNKNOWN: a tracked contract that is not reconciled. New risk on it is
+   * refused until it is; hedges and reductions continue. */
+  unknown: boolean;
 }
 
 export function signedAttribution(legs: ContractState['legs']): bigint {
   return legs.reduce((sum, l) => sum + (l.side === 'long' ? fx(l.qty) : -fx(l.qty)), 0n);
 }
 
-/** True when `attributed` is a same-side part of `actual`. */
-export function fitsInside(attributed: bigint, actual: bigint): boolean {
+/** True when the slices are a same-side part of `actual`. Slices holding one
+ * net position both ways never fit: their netted sum would hide two
+ * fictitious inner positions. */
+export function fitsInside(legs: ContractState['legs'], actual: bigint): boolean {
+  const held = legs.filter((l) => fx(l.qty) !== 0n);
+  if (held.some((l) => l.side === 'long') && held.some((l) => l.side === 'short')) return false;
+  const attributed = signedAttribution(held);
   if (attributed === 0n) return true;
   return attributed > 0n ? actual >= attributed : actual <= attributed;
 }
 
 export function reconcileContract(state: ContractState, actual: string | null): Reconciliation {
+  const r = judge(state, actual);
+  return { ...r, unknown: r.status !== 'reconciled' && r.status !== 'untracked' };
+}
+
+function judge(state: ContractState, actual: string | null): Omit<Reconciliation, 'unknown'> {
   const attributed = signedAttribution(state.legs);
   const base = {
     actual,
@@ -67,6 +80,6 @@ export function reconcileContract(state: ContractState, actual: string | null): 
   if (state.explained === null) return { ...base, status: 'untracked' };
   if (state.flag) return { ...base, status: 'needs-recovery' };
   if (fx(actual) !== fx(state.explained)) return { ...base, status: 'external-change' };
-  if (!fitsInside(attributed, fx(actual))) return { ...base, status: 'over-attributed' };
+  if (!fitsInside(state.legs, fx(actual))) return { ...base, status: 'over-attributed' };
   return { ...base, status: 'reconciled' };
 }

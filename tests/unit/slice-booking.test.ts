@@ -139,6 +139,49 @@ describe('attaching deals to slices', () => {
     expect(store.slices.reducible('X')).toMatchObject({ long: { qty: '0.8', reserved: '0.5', reducible: '0.3' } });
   });
 
+  it('refuses to attach a deal that already traded — its fills are part of the explained net', () => {
+    const store = new Store(':memory:');
+    twoLegSlice(store, 'X');
+    deal(store, 'traded', { contract: LONG_C, side: 'BUY' }, null, '1');
+    order(store, 'traded', 'A', '1', '0.1', 'OPEN');
+    expect(refusalOf(() => store.slices.attach('traded', 'X', 'open')).code).toBe('invalid-input');
+  });
+
+  it('refuses to open into a slice while another slice is filling the same contract the other way', () => {
+    const store = new Store(':memory:');
+    twoLegSlice(store, 'X');
+    store.slices.create({
+      id: 'Z', kind: 'funding-two-leg', source: {}, now: 11, observed: {},
+      legs: [{ leg: 'short', contract: LONG_C, side: 'short' }, { leg: 'long', contract: SHORT_C, side: 'long' }],
+    }); // both empty: allowed
+    deal(store, 'open-x', { contract: LONG_C, side: 'BUY' }, { contract: SHORT_C, side: 'SELL' }, '1');
+    store.slices.attach('open-x', 'X', 'open'); // X now filling long
+    deal(store, 'open-z', { contract: LONG_C, side: 'SELL' }, { contract: SHORT_C, side: 'BUY' }, '1');
+    expect(refusalOf(() => store.slices.attach('open-z', 'Z', 'open')).code).toBe('opposite-slice');
+  });
+
+  it('catches up fills a crash left unbooked on a deal that already finished', () => {
+    const store = new Store(':memory:');
+    twoLegSlice(store, 'X');
+    deal(store, 'open-x', { contract: LONG_C, side: 'BUY' }, null, '1');
+    store.slices.attach('open-x', 'X', 'open');
+    order(store, 'open-x', 'A', '1', '1');
+    store.updatePair('open-x', { mode: 'DONE' }); // crashed before booking
+    store.slices.bookPending(50);
+    store.slices.bookPending(51);
+    expect(legsOf(store, 'X').long).toBe('1');
+    expect(store.slices.book(LONG_C)!.explained).toBe('1');
+  });
+
+  it('leaves a deal that started before the baseline in the baseline', () => {
+    const store = new Store(':memory:');
+    deal(store, 'old', { contract: LONG_C, side: 'BUY' }, null, '2', { mode: 'DONE', createdAt: 5 });
+    order(store, 'old', 'A', '2', '2');
+    twoLegSlice(store, 'X', { [LONG_C]: '2' }); // baseline at 10 already holds it
+    store.slices.bookPending(50);
+    expect(store.slices.book(LONG_C)!.explained).toBe('2');
+  });
+
   it('refuses a slice on a contract an unfinished deal is still working', () => {
     const store = new Store(':memory:');
     deal(store, 'busy', { contract: LONG_C, side: 'BUY' }, null, '1');

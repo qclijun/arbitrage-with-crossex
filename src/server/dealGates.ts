@@ -11,9 +11,11 @@ import type { Clients } from '../core/clients';
 import type { ErrorCategory } from '../core/errors';
 import type { Store } from '../engine/db';
 import { fx, fxStr } from '../engine/fx';
+import { reconcileContract, type Reconciliation } from '../engine/slice-reconcile';
 import { SliceRefusal } from '../engine/slices';
 import type { DealPurpose, PairRow } from '../engine/types';
 import type { BorosContext } from './dealPurpose';
+import { readSignedPositions } from './livePositions';
 import { activeDealsOn, manualGate } from './manualConflicts';
 
 export interface GateRefusal { code: number; category: ErrorCategory; label: string; message: string; retryable: boolean }
@@ -28,18 +30,26 @@ const refusal = (code: number, label: string, message: string, category: ErrorCa
 
 const fromSlice = (err: unknown): GateRefusal => {
   if (!(err instanceof SliceRefusal)) throw err;
-  return refusal(err.code === 'unknown-slice' || err.code === 'leg-mismatch' ? 400 : 409, `slice-${err.code}`, err.message);
+  return refusal(err.status, `slice-${err.code}`, err.message);
 };
 
-/** Signed live positions by contract; throws when the body is unreadable. */
-async function livePositions(clients: Clients): Promise<Map<string, bigint>> {
-  const body = (await clients.crossEx.listCrossexPositions()).body as unknown;
-  if (!Array.isArray(body)) throw new Error('positions came back unreadable');
-  const out = new Map<string, bigint>();
-  for (const p of body as Array<{ symbol?: string; positionQty?: unknown }>) {
-    out.set((p.symbol ?? '').toUpperCase(), fx(String(p.positionQty ?? '0')));
+/** New risk on a contract the slice ledger tracks needs it reconciled: an
+ * unexplained change, a flag or execution in flight there is UNKNOWN. The
+ * finding is recorded as an alert; hedges and reductions are not gated. */
+function unreconciled(store: Store, contracts: string[], positions: Map<string, bigint>, now: number): GateRefusal | null {
+  for (const contract of contracts) {
+    if (!store.slices.book(contract)) continue;
+    const rec = reconcileContract(store.slices.contractState(contract), fxStr(positions.get(contract.toUpperCase()) ?? 0n));
+    if (!rec.unknown) continue;
+    recordUnreconciled(store, contract, rec, now);
+    return refusal(409, 'contract-unreconciled', `${contract} is ${rec.status} in the slice ledger (explains ${rec.explained}, holds ${rec.actual}); no new risk there until it is reconciled`);
   }
-  return out;
+  return null;
+}
+
+export function recordUnreconciled(store: Store, contract: string, rec: Reconciliation, now: number): void {
+  if (rec.status === 'in-flight') return; // working, not a discrepancy
+  store.alert('warn', null, `slice ledger: ${contract} is ${rec.status} (explains ${rec.explained}, holds ${rec.actual})`, now);
 }
 
 /** The slice reduce's room, judged against `positions` (signed, by contract). */
@@ -66,7 +76,7 @@ function sliceRoom(store: Store, row: PairRow, sliceId: string, positions: Map<s
   return null;
 }
 
-export async function gateBeforeLeverage(store: Store, clients: Clients, row: PairRow, d: DealDeclaration): Promise<GateRefusal | Gated> {
+export async function gateBeforeLeverage(store: Store, clients: Clients, row: PairRow, d: DealDeclaration, now: number): Promise<GateRefusal | Gated> {
   if (d.sliceId !== null && d.purpose !== 'reduce') {
     return refusal(400, 'slice-purpose', 'opening or adding to a strategy slice goes through its own admission; only a reduce names a slice here');
   }
@@ -84,14 +94,18 @@ export async function gateBeforeLeverage(store: Store, clients: Clients, row: Pa
       return refusal(unread ? 503 : 409, gate.label, gate.message, unread ? 'network' : 'validation', unread);
     }
   }
-  if (d.sliceId === null) return { manualContracts, positions: null };
+  const risky = [row.a, row.b].filter((leg): leg is NonNullable<typeof leg> => leg !== null && !leg.reduceOnly).map((leg) => leg.contract);
+  const tracked = risky.filter((c) => store.slices.book(c) !== null);
+  if (d.sliceId === null && !tracked.length) return { manualContracts, positions: null };
   let positions: Map<string, bigint>;
   try {
-    positions = await livePositions(clients);
+    positions = new Map([...(await readSignedPositions(clients))].map(([c, v]) => [c, fx(v)]));
   } catch (err) {
-    return refusal(503, 'slice-unverifiable', `could not read positions to check the reduction (${(err as Error).message}); nothing was created`, 'network', true);
+    return refusal(503, 'positions-unverifiable', `could not read positions for the slice ledger (${(err as Error).message}); nothing was created`, 'network', true);
   }
-  return sliceRoom(store, row, d.sliceId, positions) ?? { manualContracts, positions };
+  const blocked = unreconciled(store, tracked, positions, now);
+  if (blocked) return blocked;
+  return (d.sliceId !== null ? sliceRoom(store, row, d.sliceId, positions) : null) ?? { manualContracts, positions };
 }
 
 /** Re-check with no await before writeDeal. */

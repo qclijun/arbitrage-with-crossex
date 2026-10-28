@@ -876,6 +876,13 @@ export function startLoop(deps: LoopDeps, opts?: { signal?: AbortSignal }): { wa
     }
   };
 
+  // Fills a crash or a failed booking left unbooked on deals the loop no
+  // longer ticks reach the slice ledger before anything else happens.
+  try {
+    deps.store.slices.bookPending(deps.clock.now());
+  } catch (err) {
+    console.error('[engine] slice catch-up booking failed', err);
+  }
   void run();
   return {
     wake: (): void => {

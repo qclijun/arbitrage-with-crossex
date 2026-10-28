@@ -8,21 +8,17 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { CoreError } from '../../core/errors';
-import { fx, fxStr } from '../../engine/fx';
+import { fx } from '../../engine/fx';
 import { reconcileContract } from '../../engine/slice-reconcile';
 import { SliceRefusal } from '../../engine/slices';
 import type { AppDeps } from '../app';
+import { recordUnreconciled } from '../dealGates';
 import { refuse } from '../errorReply';
+import { readSignedPositions } from '../livePositions';
 
 async function readPositions(deps: AppDeps): Promise<Map<string, string> | null> {
   try {
-    const body = (await deps.getClients().crossEx.listCrossexPositions()).body as unknown;
-    if (!Array.isArray(body)) return null;
-    const out = new Map<string, string>();
-    for (const p of body as Array<{ symbol?: string; positionQty?: unknown }>) {
-      out.set((p.symbol ?? '').toUpperCase(), fxStr(fx(String(p.positionQty ?? '0'))));
-    }
-    return out;
+    return await readSignedPositions(deps.getClients());
   } catch {
     return null;
   }
@@ -39,12 +35,15 @@ export function slicesRoutes(deps: AppDeps) {
       const s = store();
       const positions = await readPositions(deps);
       const actualOf = (contract: string): string | null => (positions ? (positions.get(contract) ?? '0') : null);
+      const now = deps.engine!.clock.now();
+      const contracts = s.slices.trackedContracts().map((contract) => {
+        const rec = reconcileContract(s.slices.contractState(contract), actualOf(contract));
+        if (rec.unknown && rec.actual !== null) recordUnreconciled(s, contract, rec, now);
+        return { contract, ...rec };
+      });
       return reply.ok({
         slices: s.slices.list().map((slice) => ({ ...slice, reducible: s.slices.reducible(slice.id) })),
-        contracts: s.slices.trackedContracts().map((contract) => ({
-          contract,
-          ...reconcileContract(s.slices.contractState(contract), actualOf(contract)),
-        })),
+        contracts,
       }, { observedAt: Date.now() });
     });
 
@@ -80,7 +79,7 @@ export function slicesRoutes(deps: AppDeps) {
         });
       } catch (err) {
         if (!(err instanceof SliceRefusal)) throw err;
-        return refuse(reply, { code: 409, category: 'validation', label: `slice-${err.code}`, message: err.message, retryable: false });
+        return refuse(reply, { code: err.status, category: 'validation', label: `slice-${err.code}`, message: err.message, retryable: false });
       }
       return reply.ok(reconcileContract(store().slices.contractState(contract), actual));
     });

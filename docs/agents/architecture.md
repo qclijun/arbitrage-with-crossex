@@ -36,7 +36,12 @@ code allowed to mutate state or call venue-mutating endpoints.
   first tick after a crash is indistinguishable from any other tick, because no decision
   depends on witnessing an event. Do not add recovery state.
 - Routes are thin intent writers. They write a command level / intent row and call
-  `engine.wake()`; they never place or cancel orders themselves.
+  `engine.wake()`; they never place or cancel orders themselves. The strategy slice
+  ledger (`engine/slices.ts`) follows the same split: fill-derived quantities are
+  booked only by the engine after each tick, while user commands — slice creation,
+  attaching a deal, a claim, an evidenced recovery of an unexplained position — are
+  validated and written atomically by the route like any other intent. That
+  recovery is ledger reconciliation, not crash recovery state.
 
 ### Layers
 

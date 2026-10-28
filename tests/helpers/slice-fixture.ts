@@ -10,7 +10,8 @@ const leg = (contract: string, side: Side, reduceOnly = false) => ({
   contract, side, lot: '0.001', minSize: '0', minNotional: '0', tick: '0.01', ...(reduceOnly ? { reduceOnly: true } : {}),
 });
 
-/** A deal row: A on `a`, optional B on `b`, created at `createdAt`. */
+/** A deal row: A on `a`, optional B on `b`, created at `createdAt` (default
+ * 100 — after the fixtures' slice baselines, so its fills are explained). */
 export function deal(
   store: Store,
   id: string,
@@ -25,7 +26,7 @@ export function deal(
     targetQty: qty, limitPrice: '2500', pricePolicy: 'fixed', autoPricePolicy: 'touch', deadlineAt: null,
     makerNotBefore: 0, hedgeNotBefore: 0, pocRejects: 0, hedgeRejectStreak: 0, repriceCount: 0,
     lastMakerPlacementAt: 0, postOnlyRejects: 0, bookOutageStartedAt: 0, maxClip: null, clipBandBp: null,
-    haltReason: null, reportJson: null, createdAt: opts.createdAt ?? 1,
+    haltReason: null, reportJson: null, createdAt: opts.createdAt ?? 100,
   });
 }
 

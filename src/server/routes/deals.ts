@@ -157,7 +157,7 @@ export function dealsRoutes(deps: AppDeps) {
       });
 
       // Purpose and slice gates on fresh reads, BEFORE leverage is touched.
-      const gated = await gateBeforeLeverage(deps.engine!.store, clients, row, declaration);
+      const gated = await gateBeforeLeverage(deps.engine!.store, clients, row, declaration, deps.engine!.clock.now());
       if ('code' in gated) return refuse(reply, gated);
 
       // Leverage phase: applied BEFORE the intent exists — a failure aborts with
