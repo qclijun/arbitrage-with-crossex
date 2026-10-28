@@ -35,3 +35,21 @@ export function claimExclusive(db: DatabaseSync): void {
   db.exec('BEGIN IMMEDIATE');
   db.exec('COMMIT');
 }
+
+let savepoints = 0;
+
+/** Run `fn` atomically, whether or not a transaction is already open — a
+ * savepoint nests where a second BEGIN would throw. */
+export function inSavepoint<T>(db: DatabaseSync, fn: () => T): T {
+  const name = `sp${savepoints++}`;
+  db.exec(`SAVEPOINT ${name}`);
+  try {
+    const value = fn();
+    db.exec(`RELEASE ${name}`);
+    return value;
+  } catch (err) {
+    db.exec(`ROLLBACK TO ${name}`);
+    db.exec(`RELEASE ${name}`);
+    throw err;
+  }
+}

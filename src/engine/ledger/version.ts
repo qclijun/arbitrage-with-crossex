@@ -18,6 +18,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { backupLedger, ledgerFingerprint, type BackupManifest } from './backup';
 import { LEGACY_SCHEMA, normalizeLegacyTables } from './legacy';
 import { writeLedgerMarker } from './marker';
+import { SLICE_SCHEMA } from './slice-schema';
 import { hasTable, userVersion } from './sqlite';
 
 export type LedgerRefusalCode =
@@ -78,6 +79,13 @@ export const LEDGER_STEPS: readonly LedgerStep[] = [
         changed_at INTEGER NOT NULL
       )`);
     },
+  },
+  {
+    // Version 3 (ticket 15): the strategy slice ledger (engine/slices.ts).
+    // Additive: every existing position and deal stays unattributed.
+    to: 3,
+    quiescent: false,
+    apply: (db) => db.exec(SLICE_SCHEMA),
   },
 ];
 

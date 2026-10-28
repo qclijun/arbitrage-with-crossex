@@ -584,9 +584,19 @@ async function perform(deps: LoopDeps, pair: PairRow, action: Action): Promise<v
   }
 }
 
-/** One tick for one pair. At most ONE wire mutation leaves this function. */
-export function tickPair(deps: LoopDeps, pairId: string): Promise<Action> {
-  return deps.observation ? deps.observation.tickPair(pairId, evidence => tickPairCore({ ...deps, evidence }, pairId)) : tickPairCore(deps, pairId);
+/** One tick for one pair. At most ONE wire mutation leaves this function.
+ * Whatever the tick observed — even if it then threw — is booked into the
+ * strategy slice ledger afterwards: database only, no wire (engine/slices.ts). */
+export async function tickPair(deps: LoopDeps, pairId: string): Promise<Action> {
+  try {
+    return await (deps.observation ? deps.observation.tickPair(pairId, evidence => tickPairCore({ ...deps, evidence }, pairId)) : tickPairCore(deps, pairId));
+  } finally {
+    try {
+      deps.store.slices.bookFills(pairId, deps.clock.now());
+    } catch (err) {
+      deps.store.alert('error', pairId, `slice booking failed: ${(err as Error).message}`, deps.clock.now());
+    }
+  }
 }
 
 function changedPriceIntent(deps: LoopDeps, pair: PairRow): Action | null {

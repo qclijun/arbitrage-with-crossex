@@ -1,8 +1,8 @@
 # 策略切片、实际数量与归属对账
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 04, 20
 
 ## Goal

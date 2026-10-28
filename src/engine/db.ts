@@ -10,8 +10,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { AdmissionSwitch } from './admission';
 import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
-import { claimExclusive } from './ledger/sqlite';
+import { claimExclusive, inSavepoint } from './ledger/sqlite';
 import { prepareLedger } from './ledger/version';
+import { SliceLedger } from './slices';
 import type { AlertRow, LegSpec, OrderRow, PairMode, PairRow } from './types';
 
 /** FNV-1a → base36 hash: compresses a whole client uuid into 7 chars so order
@@ -229,6 +230,8 @@ export class Store {
   private db: DatabaseSync;
   /** New funding-opportunity admission (engine/admission.ts). */
   readonly admission: AdmissionSwitch;
+  /** Strategy slices and per-contract books (engine/slices.ts). */
+  readonly slices: SliceLedger;
 
   /** Opens the ledger and runs the version gate and any pending migration
    * (ledger/version.ts) before anything else can read or write it. `now`
@@ -254,6 +257,12 @@ export class Store {
       throw err;
     }
     this.admission = new AdmissionSwitch(this.db, opts?.programVersion ?? null);
+    this.slices = new SliceLedger(this.db, (level, pairId, message, now) => this.alert(level, pairId, message, now));
+  }
+
+  /** Run several writes as one: all of them, or none (nests). */
+  atomically<T>(fn: () => T): T {
+    return inSavepoint(this.db, fn);
   }
 
   close(): void {

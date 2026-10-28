@@ -19,6 +19,7 @@ import { accountRoutes } from './routes/account';
 import { booksRoutes } from './routes/books';
 import { credentialsRoutes } from './routes/credentials';
 import { admissionRoutes } from './routes/admission';
+import { slicesRoutes } from './routes/slices';
 import { dealsRoutes } from './routes/deals';
 import { disclaimerRoutes } from './routes/disclaimer';
 import { feesRoutes } from './routes/fees';
@@ -242,6 +243,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     previewRoutes,
     dealsRoutes,
     admissionRoutes,
+    slicesRoutes,
     rebalanceRoutes,
     transferRoutes,
     versionRoutes,
