@@ -86,3 +86,7 @@ Updated: 2026-10-27 Asia/Taipei
 ## 19完成验收
 
 - 2026-10-28：[19](issues/19-admission-switch-and-legacy-entrypoints.md)用户签收，追加Answer并resolved。持久准入开关（默认关、版本变化即关、代次原子接受）与POST /deals用途分流（reduce/旧客户端/boros-strategy/manual冲突门/funding-two-leg拒绝），3f2e042＋3b61853；root 3408/8跳过、build通过，web默认并发两项既有偶发超时归21。12须经`admit`接受，18只读阶段可消费开关状态；不启用交易。
+
+## 15完成验收
+
+- 2026-10-28：[15](issues/15-strategy-slices-and-reconciliation.md)用户签收，追加Answer并resolved。策略切片数量账（97beee0＋a6b5744）：实际成交增量幂等记账、逐合约基线对账与显式恢复、未对账合约阻断新增风险、切片限定减仓；默认verify/build全绿。16可消费切片与对账；12接入创建/加仓，17接入认领；不启用交易。

@@ -1,8 +1,8 @@
 # 按切片数量限定Risk适用范围
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 04, 15, 20
 
 ## Goal
