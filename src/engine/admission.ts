@@ -71,7 +71,9 @@ export class AdmissionSwitch {
   }
 
   /** Run `write` — the acceptance — atomically with the check that admission
-   * is open at `generation`. A throw rolls the acceptance back. */
+   * is open at `generation`. A throw rolls the acceptance back. `write` runs
+   * inside this transaction, so it must not open one of its own (a Store
+   * method that BEGINs would throw). */
   admit<T>(generation: number, write: () => T): Admitted<T> {
     this.db.exec('BEGIN IMMEDIATE');
     try {

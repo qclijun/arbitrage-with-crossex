@@ -1046,7 +1046,6 @@ export interface DealAlert {
   ack: 0 | 1;
 }
 
-/** POST /api/deals request (mirrors src/engine/create.ts DealRequest). */
 /** The Boros side a strategy's perps hedge (server: src/server/dealPurpose.ts). */
 export interface BorosContext {
   base: string;
@@ -1068,6 +1067,7 @@ export type DealPurposeSpec =
   | { purpose: 'manual' }
   | { purpose: 'boros-strategy'; boros: BorosContext };
 
+/** POST /api/deals request (mirrors src/engine/create.ts DealRequest). */
 export interface DealRequest {
   id: string;
   a: { symbol: string; side: Side; reduceOnly?: boolean };

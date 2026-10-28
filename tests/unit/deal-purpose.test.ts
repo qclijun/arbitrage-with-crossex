@@ -15,7 +15,7 @@ const close = {
 const boros = { base: 'ETH', venues: ['BINANCE', 'OKX'], maturity: NOW / 1000 + 86_400, marketIds: [198, 196], route: 'singles' };
 
 const refusal = (body: object) => {
-  const d = classifyDealPurpose(body, NOW);
+  const d = classifyDealPurpose(body);
   if (d.ok) throw new Error(`expected a refusal, got ${JSON.stringify(d)}`);
   return d;
 };
@@ -28,8 +28,8 @@ describe('classifyDealPurpose', () => {
   });
 
   it('accepts a close from any client — reduce-only legs are verified against live positions later', () => {
-    expect(classifyDealPurpose(close, NOW)).toEqual({ ok: true, purpose: 'reduce', context: null });
-    expect(classifyDealPurpose({ ...close, purpose: 'reduce' }, NOW)).toEqual({ ok: true, purpose: 'reduce', context: null });
+    expect(classifyDealPurpose(close)).toEqual({ ok: true, purpose: 'reduce', context: null });
+    expect(classifyDealPurpose({ ...close, purpose: 'reduce' })).toEqual({ ok: true, purpose: 'reduce', context: null });
   });
 
   it("never lets a 'reduce' label cover a leg that adds risk, nor another label cover a close", () => {
@@ -39,13 +39,13 @@ describe('classifyDealPurpose', () => {
   });
 
   it('admits a stand-alone open as manual, for the conflict gate to judge', () => {
-    expect(classifyDealPurpose({ ...open, purpose: 'manual' }, NOW)).toEqual({ ok: true, purpose: 'manual', context: null });
-    expect(classifyDealPurpose({ a: open.a, purpose: 'manual' }, NOW)).toMatchObject({ ok: true, purpose: 'manual' });
+    expect(classifyDealPurpose({ ...open, purpose: 'manual' })).toEqual({ ok: true, purpose: 'manual', context: null });
+    expect(classifyDealPurpose({ a: open.a, purpose: 'manual' })).toMatchObject({ ok: true, purpose: 'manual' });
   });
 
   it('admits a Boros-strategy open only with its Boros context, kept verbatim', () => {
-    expect(classifyDealPurpose({ ...open, purpose: 'boros-strategy', boros }, NOW)).toEqual({ ok: true, purpose: 'boros-strategy', context: boros });
-    expect(classifyDealPurpose({ ...open, purpose: 'boros-strategy', boros: { base: 'eth', venues: ['OKX'] } }, NOW))
+    expect(classifyDealPurpose({ ...open, purpose: 'boros-strategy', boros })).toEqual({ ok: true, purpose: 'boros-strategy', context: boros });
+    expect(classifyDealPurpose({ ...open, purpose: 'boros-strategy', boros: { base: 'eth', venues: ['OKX'] } }))
       .toMatchObject({ ok: true, context: { base: 'eth', venues: ['OKX'] } });
   });
 
@@ -53,7 +53,7 @@ describe('classifyDealPurpose', () => {
     ['missing', undefined],
     ['without venues', { base: 'ETH', venues: [] }],
     ['for another coin', { ...boros, base: 'BTC' }],
-    ['with a past maturity', { ...boros, maturity: NOW / 1000 - 1 }],
+    ['with a fractional maturity', { ...boros, maturity: 1.5 }],
     ['with a non-integer market id', { ...boros, marketIds: [1.5] }],
     ['with an unknown route', { ...boros, route: 'triangle' }],
     ['with a blank venue', { ...boros, venues: [' '] }],

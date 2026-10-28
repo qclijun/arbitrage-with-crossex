@@ -105,7 +105,11 @@ let loopDeps: LoopDeps | undefined;
   // can touch the venue.
   let store: Store;
   try {
-    store = new Store(path.join(dataDir, 'deals.sqlite'), { programVersion: readLocalVersion(repoRoot) });
+    // Admission is bound to this exact build: the release version plus, for an
+    // installed tree, the commit the installer laid down (ticket 19).
+    const release = readLocalVersion(repoRoot);
+    const commit = readInstallInfo(repoRoot)?.commit;
+    store = new Store(path.join(dataDir, 'deals.sqlite'), { programVersion: release && commit ? `${release}@${commit}` : release });
   } catch (err) {
     if (err instanceof LedgerRefusal) {
       // Refused before any write (ledger/version.ts): the ledger is exactly as

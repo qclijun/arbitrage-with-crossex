@@ -10,6 +10,7 @@ import nock from 'nock';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../../src/engine/db';
 import type { PairRow } from '../../src/engine/types';
+import { manualGate } from '../../src/server/manualConflicts';
 import { A_CONTRACT, B_CONTRACT, FakeVenue, VirtualClock } from '../unit/engine-sim';
 import { gate, HOST, makeTestApp, mockGateGet } from './helpers/gate-nock';
 
@@ -118,6 +119,14 @@ describe('purpose gate', () => {
     expect(store.listPairs()).toEqual([]);
   });
 
+  it('refuses a Boros context for another coin — a forged label does not pass as the strategy', async () => {
+    const { store } = mkApp();
+    const res = await post(payload({ purpose: 'boros-strategy', boros: { ...BOROS, base: 'BTC' } }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.label).toBe('boros-context-invalid');
+    expect(store.listPairs()).toEqual([]);
+  });
+
   it('never accepts a funding-opportunity open as a plain deal', async () => {
     const { store } = mkApp();
     const res = await post(payload({ purpose: 'funding-two-leg' }));
@@ -186,8 +195,20 @@ describe('manual conflict gate', () => {
     mockGateGet('/open_orders', { body: [] });
     const res = await post(manual());
     expect(res.statusCode).toBe(503);
-    expect(res.json().error).toMatchObject({ label: 'manual-unverifiable', retryable: true });
+    expect(res.json().error).toMatchObject({ category: 'network', label: 'manual-unverifiable', retryable: true });
     expect(store.getPair('deal-purpose-1')).toBeNull();
+  });
+
+  it('treats a body that is not a list as unreadable, never as "none held"', async () => {
+    const store = new Store(':memory:');
+    const gated = await manualGate([A_CONTRACT], {
+      store,
+      readPositions: async () => [],
+      readOpenOrders: async () => ({ message: 'maintenance' }),
+    });
+    expect(gated).toMatchObject({ ok: false, label: 'manual-unverifiable' });
+    expect(await manualGate([A_CONTRACT], { store, readPositions: async () => [{ symbol: A_CONTRACT, positionQty: 'n/a' }], readOpenOrders: async () => [] }))
+      .toMatchObject({ ok: false, label: 'manual-conflict' }); // an unreadable size counts as held
   });
 
   it('re-checks for a deal that started while the gate was reading, with no await before the write', async () => {

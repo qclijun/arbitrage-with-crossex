@@ -12,14 +12,14 @@
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, usePositions, useSymbolDetail, useSymbolsByBase, useVenueBook } from '../api/queries';
-import type { ActionInput, BorosContext, PreviewResult, RestEstimate } from '../api/types';
+import type { ActionInput, PreviewResult, RestEstimate } from '../api/types';
 import { SegmentedToggle } from '../components/SegmentedToggle';
 import { amountError } from '../lib/amount';
 import { sizeUnitForBase } from '../lib/boros';
 import { fieldValue, fmtUsd } from '../lib/fmt';
 import { uuid } from '../lib/uuid';
 import { ExecuteControl } from './ExecuteControl';
-import { purposeFor } from './purpose';
+import { purposeFor, type BorosArm } from './purpose';
 import { estimateMargin } from './previewBits';
 import {
   AffixedInput,
@@ -52,6 +52,9 @@ function restOffsetPrice(rest: RestEstimate, isBuy: boolean): number {
 
 /** `onExecuted` fires once the pair is ACCEPTED (the 202 that opens the deal
  * view) — execution itself is asynchronous and tracked by the DealModal. */
+/** The pair's legs as purposeFor compares them: long symbol, then short. */
+const pairLegs = (long: string | null, short: string | null): string => `${long}|${short}`;
+
 export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
   const [base, setBase] = useState<string | null>(null);
   const [longSym, setLongSym] = useState<string | null>(null);
@@ -87,9 +90,9 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
    * option set, so it is pinned with the rest of the prefill, not derived from
    * a mutable field the user can later change. */
   const [fourLeg, setFourLeg] = useState(false);
-  /** The Boros legs a strategy prefill armed this ticket to hedge; null = a
-   * stand-alone pair. Dropped (by the purpose below) once the coin changes. */
-  const [borosContext, setBorosContext] = useState<BorosContext | null>(null);
+  /** The legs a Boros strategy prefill armed, with that strategy's Boros side;
+   * null = a stand-alone pair. Any other legs open stand-alone (purposeFor). */
+  const [borosArm, setBorosArm] = useState<BorosArm | null>(null);
 
   /**
    * Follow the coin until the user says otherwise.
@@ -159,7 +162,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
     // Four-leg arm: default the maker window to the 30m this ticket also
     // displays. Set unconditionally (both directions) so a later ordinary
     // prefill on the same mount resets it.
-    setBorosContext(prefill.boros ?? null);
+    setBorosArm(null); // re-armed once the prefill's legs resolve
     const isFourLeg = prefill.strategy === 'four-leg';
     setFourLeg(isFourLeg);
     setTimeoutSec(isFourLeg ? '1800' : '300');
@@ -187,6 +190,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
       venue ? (rules.find((r) => r.exchange === venue)?.symbol ?? null) : null;
     setLongSym(symFor(prefill.longVenue));
     setShortSym(symFor(prefill.shortVenue));
+    setBorosArm(prefill.boros ? { context: prefill.boros, legs: pairLegs(symFor(prefill.longVenue), symFor(prefill.shortVenue)) } : null);
     setPrefillDone(prefill.nonce);
   }, [prefill, prefillDone, base, venues.data, venues.isPlaceholderData]);
 
@@ -545,7 +549,7 @@ export function PairTicket({ onExecuted }: { onExecuted?: () => void } = {}) {
       <ExecuteControl
         scope="ticket-pair"
         actions={actions}
-        purpose={purposeFor(borosContext, base)}
+        purpose={purposeFor(borosArm, pairLegs(longSym, shortSym))}
         // A maker price that tracks the book moves every preview; within 5 bps
         // it is the same order (it goes out pegged to the live touch), so
         // Execute stays armed. A typed price re-previews as before.

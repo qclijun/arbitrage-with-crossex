@@ -26,9 +26,7 @@ import { AffixedInput, EstimateCard, EstimateRow, LegCard, SlippageLine } from '
 import { feeAmount, feeKind, PreviewFallback, ViolationList } from './previewBits';
 import { FieldLabel } from './SymbolCombobox';
 import { usePreviewDebounced } from './usePreview';
-
-/** Closes declare it: every leg is reduce-only, proven against the live position. */
-const REDUCE = { purpose: 'reduce' } as const;
+import { REDUCE_PURPOSE } from './purpose';
 
 interface Props {
   position: CrossexPosition;
@@ -459,7 +457,7 @@ export function ClosePopover({
 
         <div className="flex flex-col gap-1.5">
           <ExecuteControl
-            purpose={REDUCE}
+            purpose={REDUCE_PURPOSE}
             scope={`close-${position.symbol}`}
             actions={action ? [action] : null}
             tone="red"

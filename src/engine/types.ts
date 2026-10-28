@@ -116,7 +116,8 @@ export interface PairRow {
 /** Why a deal was opened. 'boros-strategy': perps of a four-/three-leg Boros
  * strategy. 'manual': a stand-alone ticket, admitted only where nothing it
  * touches is already held or working. 'reduce': every leg reduce-only. */
-export type DealPurpose = 'boros-strategy' | 'manual' | 'reduce';
+export const DEAL_PURPOSES = ['boros-strategy', 'manual', 'reduce'] as const;
+export type DealPurpose = (typeof DEAL_PURPOSES)[number];
 
 /** Write-ahead order registry row: exists (committed) BEFORE the wire call. */
 export interface OrderRow {

@@ -302,19 +302,19 @@ export function ExecuteControl({
     const base = finalizeActions(previews);
     const decorated = decorate ? decorate(base) : base;
     // An all-reduce-only deal is a close, whatever opened the ticket.
-    const declare = (d: DealRequest | null): DealRequest | null => {
+    const withPurpose = (d: DealRequest | null): DealRequest | null => {
       if (!d) return null;
       const closes = Boolean(d.a.reduceOnly) && (!d.b || Boolean(d.b.reduceOnly));
       return { ...d, ...(closes ? { purpose: 'reduce' as const } : purpose) };
     };
-    const deal = declare(dealFromActions(basketIdRef.current, decorated, previews));
+    const deal = withPurpose(dealFromActions(basketIdRef.current, decorated, previews));
     if (!deal && splitClose) {
       // Two single-leg deals under ONE basket: ids derived from the basket id
       // so a retry after a lost response re-sends the same two ids and the
       // server dedupes each leg. The pending record clears only once both
       // have landed (see executeSplit.onSuccess).
-      const a = declare(dealFromActions(`${basketIdRef.current}-a`, [decorated[0]], [previews[0]]));
-      const b = declare(dealFromActions(`${basketIdRef.current}-b`, [decorated[1]], [previews[1]]));
+      const a = withPurpose(dealFromActions(`${basketIdRef.current}-a`, [decorated[0]], [previews[0]]));
+      const b = withPurpose(dealFromActions(`${basketIdRef.current}-b`, [decorated[1]], [previews[1]]));
       if (!a || !b) return;
       restingOnlyRef.current = false;
       placedSummaryRef.current = null;

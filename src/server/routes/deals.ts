@@ -106,7 +106,7 @@ export function dealsRoutes(deps: AppDeps) {
     const refuseManual = (reply: FastifyReply, gate: Exclude<ManualGate, { ok: true }>): FastifyReply =>
       refuse(reply, {
         code: gate.label === 'manual-unverifiable' ? 503 : 409,
-        category: 'validation',
+        category: gate.label === 'manual-unverifiable' ? 'network' : 'validation',
         label: gate.label,
         message: gate.message,
         retryable: gate.label === 'manual-unverifiable',
@@ -136,7 +136,7 @@ export function dealsRoutes(deps: AppDeps) {
         });
       }
       // What the deal is FOR picks its gate (ticket 19); nothing is read yet.
-      const declared = classifyDealPurpose(body, deps.engine!.clock.now());
+      const declared = classifyDealPurpose(body);
       if (!declared.ok) {
         return refuse(reply, { code: declared.status, category: 'validation', label: declared.label, message: declared.message, retryable: false });
       }
@@ -171,8 +171,8 @@ export function dealsRoutes(deps: AppDeps) {
       if (gated.length) {
         const gate = await manualGate(gated, {
           store: deps.engine!.store,
-          readPositions: async () => (await clients.crossEx.listCrossexPositions()).body ?? [],
-          readOpenOrders: async () => (await clients.crossEx.listCrossexOpenOrders({})).body ?? [],
+          readPositions: async () => (await clients.crossEx.listCrossexPositions()).body,
+          readOpenOrders: async () => (await clients.crossEx.listCrossexOpenOrders({})).body,
         });
         if (!gate.ok) return refuseManual(reply, gate);
       }

@@ -6,7 +6,7 @@
  * resolveDeal; 'manual' opens face the conflict gate (manualConflicts.ts).
  */
 import { parseSymbol } from '../core/numbers';
-import type { DealPurpose } from '../engine/types';
+import { DEAL_PURPOSES, type DealPurpose } from '../engine/types';
 
 /** The Boros side a strategy's perps hedge, as the opening page knew it. */
 export interface BorosContext {
@@ -37,9 +37,11 @@ export type PurposeDecision =
   | { ok: true; purpose: DealPurpose; context: BorosContext | null }
   | { ok: false; status: 400 | 409; label: PurposeLabel; message: string };
 
+const isDealPurpose = (value: unknown): value is DealPurpose => (DEAL_PURPOSES as readonly unknown[]).includes(value);
+
 const no = (status: 400 | 409, label: PurposeLabel, message: string): PurposeDecision => ({ ok: false, status, label, message });
 
-function borosContextProblem(raw: unknown, base: string, nowMs: number): string | null {
+function borosContextProblem(raw: unknown, base: string): string | null {
   if (typeof raw !== 'object' || raw === null) return 'a Boros-strategy open must name the Boros legs it hedges';
   const c = raw as Record<string, unknown>;
   if (typeof c.base !== 'string' || c.base.toUpperCase() !== base) return `the Boros legs are not ${base}`;
@@ -48,8 +50,10 @@ function borosContextProblem(raw: unknown, base: string, nowMs: number): string 
     !venues.every((v) => typeof v === 'string' && v.trim() !== '' && v.length <= 40)) {
     return 'the Boros venues must be one or two venue keys';
   }
-  if (c.maturity !== undefined && !(Number.isInteger(c.maturity) && (c.maturity as number) * 1000 > nowMs)) {
-    return 'the Boros maturity must be a future unix time in seconds';
+  // Not required to be in the future: a repair may name a position at or past
+  // its maturity, and the label grants nothing a past date could abuse.
+  if (c.maturity !== undefined && !(Number.isInteger(c.maturity) && (c.maturity as number) > 0)) {
+    return 'the Boros maturity must be a unix time in seconds';
   }
   if (c.marketIds !== undefined && !(Array.isArray(c.marketIds) && c.marketIds.every((id) => Number.isInteger(id) && id > 0))) {
     return 'Boros market ids must be positive integers';
@@ -58,7 +62,7 @@ function borosContextProblem(raw: unknown, base: string, nowMs: number): string 
   return null;
 }
 
-export function classifyDealPurpose(body: PurposeBody, nowMs: number): PurposeDecision {
+export function classifyDealPurpose(body: PurposeBody): PurposeDecision {
   const riskAdding = !body.a?.reduceOnly || (body.b != null && !body.b.reduceOnly);
   const { purpose } = body;
   if (purpose === undefined) {
@@ -68,7 +72,7 @@ export function classifyDealPurpose(body: PurposeBody, nowMs: number): PurposeDe
   if (purpose === 'funding-two-leg') {
     return no(409, 'funding-admission-required', 'Funding-opportunity opens are accepted only through the opportunity admission, not as a plain deal.');
   }
-  if (purpose !== 'reduce' && purpose !== 'manual' && purpose !== 'boros-strategy') {
+  if (!isDealPurpose(purpose)) {
     return no(400, 'purpose-unknown', `unknown deal purpose ${JSON.stringify(purpose)}; nothing was created`);
   }
   if ((purpose === 'reduce') === riskAdding) {
@@ -81,7 +85,7 @@ export function classifyDealPurpose(body: PurposeBody, nowMs: number): PurposeDe
     return { ok: true, purpose, context: null };
   }
   const base = parseSymbol(body.a?.symbol ?? '').base.toUpperCase();
-  const problem = borosContextProblem(body.boros, base, nowMs);
+  const problem = borosContextProblem(body.boros, base);
   if (problem) return no(400, 'boros-context-invalid', `${problem}; nothing was created`);
   return { ok: true, purpose, context: body.boros as BorosContext };
 }

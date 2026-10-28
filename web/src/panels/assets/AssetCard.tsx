@@ -43,6 +43,7 @@ import { ClosePairForm } from '../PerpOnlyBox';
 import { BorosLogInButton } from '../../trade/BorosAgentSetup';
 import { CloseBorosForm } from '../../trade/CloseBorosForm';
 import { ClosePopover } from '../../trade/ClosePopover';
+import { borosContext } from '../../trade/purpose';
 import { useTradeFlowOptional } from '../../trade/TradeFlow';
 import { useActiveWallet, useTrackedAddressOptional } from '../trackedAddress';
 import {
@@ -5113,19 +5114,19 @@ export function AssetCard({
   const deficitFor = (venue: string, leg: 'perp' | 'boros') =>
     gaps.find((g) => g.venue === venue && g.leg === leg && g.kind === 'deficit');
   const missing = (leg: 'perp' | 'boros') => gaps.filter((g) => g.leg === leg && g.kind === 'missing');
+  /** The Boros legs perps opened from this card hedge: the card's coin, the
+   * rate-leg venues, and their soonest maturity there (else the asset's). */
+  const borosHedged = (venues: string[]): BorosContext => {
+    const atVenues = group.borosOpen.filter((b) => venues.includes(b.venue)).map((b) => b.maturity);
+    const pool = atVenues.length > 0 ? atVenues : group.borosOpen.map((b) => b.maturity);
+    return borosContext(group.base, venues, pool.length > 0 ? Math.min(...pool) : undefined);
+  };
   /**
    * When BOTH legs of a side are missing — a long at one venue and a short
    * at another — the repair is one PAIR, not two single legs: the pair
    * ticket opens both at once and hedges them against each other. The
    * partner is the opposite-direction missing gap on the same side.
    */
-  /** The Boros legs perps opened from this card hedge: the card's coin, the
-   * rate-leg venues, and their soonest maturity there (else the asset's). */
-  const borosHedged = (venues: string[]): BorosContext => {
-    const atVenues = group.borosOpen.filter((b) => venues.includes(b.venue)).map((b) => b.maturity);
-    const pool = atVenues.length > 0 ? atVenues : group.borosOpen.map((b) => b.maturity);
-    return { base: group.base, venues: [...new Set(venues)], ...(pool.length > 0 ? { maturity: Math.min(...pool) } : {}) };
-  };
   const pairPartner = (g: HedgeGapRow): HedgeGapRow | undefined =>
     missing(g.leg).find((o) => o.venue !== g.venue && o.action.startsWith('long') !== g.action.startsWith('long'));
   const armGap = (g: HedgeGapRow): (() => void) | undefined => {
@@ -5543,7 +5544,7 @@ export function AssetCard({
     if (sides.long && sides.short) {
       flow.prefillPair({
         base: group.base, longVenue: p.longVenue, shortVenue: p.shortVenue, notionalUsd, sizeBase, sizeUnit: p.unit,
-        boros: { base: group.base, venues: [...new Set([p.longVenue, p.shortVenue])], maturity: p.maturity },
+        boros: borosContext(group.base, [p.longVenue, p.shortVenue], p.maturity),
       });
     } else {
       flow.prefillSinglePerp({
@@ -5553,7 +5554,7 @@ export function AssetCard({
         notionalUsd,
         sizeBase,
         sizeUnit: p.unit,
-        boros: { base: group.base, venues: [...new Set([p.longVenue, p.shortVenue])], maturity: p.maturity },
+        boros: borosContext(group.base, [p.longVenue, p.shortVenue], p.maturity),
       });
     }
     flow.openRail();
