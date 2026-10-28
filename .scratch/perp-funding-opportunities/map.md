@@ -78,3 +78,7 @@ Updated: 2026-10-27 Asia/Taipei
 ## 11完成验收
 
 - 2026-10-28：[11](issues/11-costs-and-payback-scenarios.md)用户签收，追加Answer并resolved。纯情景`scenario.ts`＋证据适配`cost-evidence.ts`（dd69055），双轴审查后修正未成交maker不计价差收益、穿越盘口阻断及读取抛错隔离（73d48ea）；单测16/16，默认verify root 3335/8跳过、web 1711，build通过。12不再等待11（其余依赖保留）；严格10秒准入及账户借款/换汇证据归12，A页接线归13，不启用交易。
+
+## 20完成验收
+
+- 2026-10-28：[20](issues/20-ledger-schema-and-upgrade-compatibility.md)用户签收，追加Answer并resolved。账本版本/迁移/备份/恢复协议（899a370）及审查修正（7f1c597）；v1屏障使历史release启动即失败，安装器按标记拒绝回滚，恢复仅限迁移后无写入。root 3365/8跳过、build通过，web默认并发偶发超时归21。15/19不再受20阻塞（其余依赖保留）；领域迁移须经`LEDGER_STEPS`，真实升级端到端由19/21验证，不启用交易。

@@ -1,8 +1,8 @@
 # 账本版本、升级迁移与安全回退边界
 
 Type: task
-Status: claimed
-Assignee: claude
+Status: resolved
+Assignee: Claude
 Blocked by: 04
 
 ## Goal
@@ -22,7 +22,13 @@ Blocked by: 04
 
 临时SQLite离线覆盖旧schema/未知列、索引/trigger/FK、旧订单实际累计、部分执行/unknown、幂等重开、迁移中断/失败及一致备份恢复。用真实支持版本的合成账本验证兼容矩阵、旧启动/程序回退不能误写新账；新增写入后旧备份恢复明确拒绝，记录完整保留。19关闭/排空协议尚未完成时不得宣称真实升级已可执行；20提供基础协议，19/21完成端到端验证，不形成相互依赖环。默认verify/build通过；不对真实库执行迁移、停机或回退。
 
+## Answer
+
+2026-10-28用户签收。实现899a370＋7f1c597：`PRAGMA user_version`为账本版本，`src/engine/ledger/`统一版本/迁移/备份/恢复协议。Store取得写锁后先做版本门（更高版本零写入拒绝），需收敛步骤遇未完成deal或PENDING/OPEN/隔离订单零写入拒绝；否则`VACUUM INTO`一致备份并重开校验（0600/0700清单），再把v0建表补齐、各步骤、迁移日志（含备份及内容指纹）、FK检查与版本号放入同一事务，失败或SIGKILL均回到原版本。v1屏障：`alerts`改名`alert_log`、同名索引占位，6f0f051至1.7.7及前HEAD真实`Store`均在启动即失败、账本字节不变，备份可启动。`install.sh`/`install.ps1`按`data/ledger-version.json`对比`app.old/ledger-support.json`拒绝回滚；`yarn ledger:restore`仅在迁移后无写入时持锁原子恢复并保留原账本。领域票须经`LEDGER_STEPS`加步骤。Windows安装器仅静态验证；默认verify root全绿，web默认并发偶发UI超时（主机高负载，本票未改web）归21复验。19关闭/排空及真实升级端到端由19/21承接；不对真实库迁移，不启用交易。详见[20实施交接](../evidence/20-implementation-handoff.md)。
+
 ## Comments
 
 - 2026-10-27：06-Q4用户已确认；当前源码缺口见[事实核查](../evidence/delivery-readiness-review.md)。新票仍等待06最终确认；各领域实现须消费本协议，不能自行扩大回退承诺。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
+- 2026-10-28：用户确认接缝（user_version、单事务步骤、VACUUM INTO备份、alerts索引屏障、全部DONE才迁移、安装器标记及受限恢复工具），claimed并实施；双轴审查后修正恢复定位/原子性及迁移期写锁。
+- 2026-10-28：用户签收，追加Answer并resolved。
