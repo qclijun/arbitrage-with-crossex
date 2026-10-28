@@ -11,6 +11,9 @@
  * holds it until `close()` (src/engine/db.ts), so every step strictly serializes
  * its Store lifetimes — a second `new Store(path)` while one is open throws
  * `database is locked`. Each test gets its own temp dir.
+ *
+ * The seeded deals are finished: the version-1 upgrade these legacy shapes now
+ * go through refuses a ledger with unconverged executions (ledger-version.test).
  */
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
@@ -100,7 +103,7 @@ function seedOldDb(file: string, opts?: { extraOrder?: boolean }): void {
          target_qty, limit_price, price_policy, deadline_at,
          maker_not_before, hedge_not_before, poc_rejects, hedge_reject_streak,
          max_clip, clip_band_bp, halt_reason, report_json, created_at)
-       VALUES ('old-deal','CONVERTING',
+       VALUES ('old-deal','DONE',
          'HYPERLIQUID_FUTURE_ETH_USDC','BUY','0.001','0','0','0.01',0,
          'OKX_FUTURE_ETH_USDT','SELL','0.001','0','0','0.01',0,
          '0.152','2500','touch',1770000000000,
@@ -118,7 +121,7 @@ function seedOldDb(file: string, opts?: { extraOrder?: boolean }): void {
         `INSERT INTO orders (pair_id, leg, seq, client_id, kind, side, qty, price, tif,
            state, cum_qty, created_at)
          VALUES ('old-deal','B',1,'tOldDealB1','taker','SELL','0.152',null,'ioc',
-           'OPEN','0',114)`,
+           'DEAD','0',114)`,
       ).run();
     }
   } finally {
@@ -179,7 +182,7 @@ describe('Store migration of a pre-existing file', () => {
       // The pre-existing row came back with every value intact and reinterpreted
       // as nothing.
       const old = store.getPair('old-deal')!;
-      expect(old.mode).toBe('CONVERTING');
+      expect(old.mode).toBe('DONE');
       expect(old.pricePolicy).toBe('touch'); // still the ORIGINAL value
       expect(old.targetQty).toBe('0.152');
       expect(old.limitPrice).toBe('2500');
@@ -250,7 +253,7 @@ describe('Store migration of a pre-existing file', () => {
       // ON either fails or cascades. Both orders must still be here.
       const orders = store.listOrders('old-deal');
       expect(orders.map((o) => o.clientId).sort()).toEqual(['tOldDealA1', 'tOldDealB1']);
-      expect(orders.find((o) => o.leg === 'B')!.state).toBe('OPEN');
+      expect(orders.find((o) => o.leg === 'B')!.state).toBe('DEAD');
       expect(store.getPair('old-deal')!.targetQty).toBe('0.152');
     } finally {
       store.close();
@@ -356,7 +359,7 @@ describe('Store migration does not disturb the orders-table probe', () => {
         cancel_requested INTEGER NOT NULL DEFAULT 0, quarantined_status TEXT,
         created_at INTEGER NOT NULL, resolved_at INTEGER,
         PRIMARY KEY (pair_id, leg, seq));`);
-    db.prepare(`INSERT INTO pair (id, mode, a_contract, a_side, a_lot, a_min_size, a_min_notional, target_qty, price_policy, created_at) VALUES ('o2','OPENING','C','BUY','0.001','0','0','0.152','touch',1)`).run();
+    db.prepare(`INSERT INTO pair (id, mode, a_contract, a_side, a_lot, a_min_size, a_min_notional, target_qty, price_policy, created_at) VALUES ('o2','DONE','C','BUY','0.001','0','0','0.152','touch',1)`).run();
     db.prepare(`INSERT INTO orders (pair_id, leg, seq, client_id, kind, side, qty, tif, state, cum_qty, created_at) VALUES ('o2','A',1,'tO2A1','maker','BUY','0.152','poc','CLOSED','0.152',1)`).run();
     db.close();
 

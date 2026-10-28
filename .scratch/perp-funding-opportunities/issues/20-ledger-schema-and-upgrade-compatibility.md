@@ -1,8 +1,8 @@
 # 账本版本、升级迁移与安全回退边界
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: claude
 Blocked by: 04
 
 ## Goal

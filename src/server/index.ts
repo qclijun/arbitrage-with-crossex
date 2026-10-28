@@ -12,6 +12,7 @@ import { fetchBorosMarkets, resolveBorosFetch, resolveCollateralPricesUsd, setCl
 import { gateProxy, makeClientsIfConfigured, requireClients, type Clients } from '../core/clients';
 import { EngineTransport } from '../core/engine-transport';
 import { Store } from '../engine/db';
+import { LedgerRefusal } from '../engine/ledger/version';
 import { EngineObservation } from '../engine/observation';
 import { startLoop, type LoopDeps } from '../engine/loop';
 import { gateVenue } from '../engine/venueGate';
@@ -118,6 +119,12 @@ let loopDeps: LoopDeps | undefined;
   try {
     store = new Store(path.join(dataDir, 'deals.sqlite'));
   } catch (err) {
+    if (err instanceof LedgerRefusal) {
+      // Refused before any write (ledger/version.ts): the ledger is exactly as
+      // it was, for the program that can run on it.
+      console.error(`Cannot start arb-tools: ${err.message}`);
+      process.exit(1);
+    }
     if (!isSqliteLockError(err)) throw err;
     console.error(
       `Cannot start arb-tools: the trading database is locked. Another server instance may already be running.\n` +

@@ -143,6 +143,7 @@ function runInstaller(setup: Setup): Result {
     'open() { :; }',
     ...[
       'swap_app',
+      'ledger_blocks_rollback',
       'restore_app',
       'fail_not_restored',
       'server_pids',

@@ -402,6 +402,24 @@ function Swap-App {
   # only way back - see Restore-App.
 }
 
+# A rollback swaps the PROGRAM; the ledger stays. Once the new version has
+# upgraded it (data\ledger-version.json) past what app.old declares it can run
+# on (ledger-support.json; none means 0), the old program must not get it back.
+# An unreadable marker counts as upgraded.
+function Test-LedgerBlocksRollback {
+  $marker = Join-Path $Root 'data\ledger-version.json'
+  if (-not (Test-Path $marker)) { return $false }
+  try { $have = (Get-Content -Raw $marker | ConvertFrom-Json).version } catch { return $true }
+  if ($have -isnot [int] -and $have -isnot [long]) { return $true }
+  $old = 0
+  $support = Join-Path $Root 'app.old\ledger-support.json'
+  if (Test-Path $support) {
+    try { $declared = (Get-Content -Raw $support | ConvertFrom-Json).maxLedgerVersion } catch { $declared = 0 }
+    if ($declared -is [int] -or $declared -is [long]) { $old = $declared }
+  }
+  return $have -gt $old
+}
+
 # Put the previous version back, and start it. Called only when the new version
 # did not come up: without this, a release that installs but cannot boot leaves
 # the machine with no server at all - on a box that may be minding an open
@@ -411,6 +429,12 @@ function Restore-App {
   $old    = Join-Path $Root 'app.old'
   $failed = Join-Path $Root 'app.failed'
   if (-not (Test-Path $old)) { return $false }
+  if (Test-LedgerBlocksRollback) {
+    Write-Host 'Not rolling back: the new version already upgraded the trade ledger, and the previous version cannot run on it.' -ForegroundColor Red
+    Write-Host "      your ledger and its pre-upgrade backup are in $Root\data; nothing was deleted" -ForegroundColor Red
+    Write-Host '      re-run this installer to finish the update (do not reinstall an older version)' -ForegroundColor Red
+    return $false
+  }
 
   Write-Host 'Rolling back to the previous version...' -ForegroundColor Yellow
   # Not Stop-RunningService: that Fails on a busy port, and we are already on

@@ -241,12 +241,31 @@ swap_app() {
   return 0
 }
 
+# A rollback swaps the PROGRAM; the ledger stays. Once the new version has
+# upgraded it (data/ledger-version.json) past what app.old declares it can run
+# on (ledger-support.json; none means 0), the old program must not get it back.
+# An unreadable marker counts as upgraded.
+ledger_blocks_rollback() {
+  local marker="$ROOT/data/ledger-version.json" have old
+  [ -f "$marker" ] || return 1
+  have="$(sed -n 's/.*"version"[^0-9]*\([0-9][0-9]*\).*/\1/p' "$marker" | head -n 1)"
+  old="$(sed -n 's/.*"maxLedgerVersion"[^0-9]*\([0-9][0-9]*\).*/\1/p' "$ROOT/app.old/ledger-support.json" 2>/dev/null | head -n 1)"
+  [ -n "$have" ] || return 0
+  [ "$have" -gt "${old:-0}" ]
+}
+
 # Put the previous version back, and start it. Called only when the new version
 # did not come up: without this, a release that installs but cannot boot leaves
 # the machine with no server at all — on a box that may be minding an open
 # position, where the reconcile loop is what hedges, requotes and closes.
 restore_app() {
   [ -d "$ROOT/app.old" ] || return 1
+  if ledger_blocks_rollback; then
+    printf '\033[1;31m%s\033[0m\n' "Not rolling back: the new version already upgraded the trade ledger, and the previous version cannot run on it." >&2
+    echo "      your ledger and its pre-upgrade backup are in $ROOT/data; nothing was deleted" >&2
+    echo "      re-run this installer to finish the update (do not reinstall an older version)" >&2
+    return 1
+  fi
   printf '\033[1;33m%s\033[0m\n' "Rolling back to the previous version…" >&2
   rm -rf "$ROOT/app.failed"
   [ -d "$ROOT/app" ] && { mv "$ROOT/app" "$ROOT/app.failed" || return 1; }

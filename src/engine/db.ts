@@ -9,6 +9,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
+import { prepareLedger } from './ledger/version';
 import type { AlertRow, LegSpec, OrderRow, PairMode, PairRow } from './types';
 
 /** FNV-1a → base36 hash: compresses a whole client uuid into 7 chars so order
@@ -21,70 +22,6 @@ function fnv1a36(s: string): string {
   }
   return (h >>> 0).toString(36).padStart(7, '0');
 }
-
-const PRICE_POLICY_CHECK = /(CHECK\s*\(\s*(?:price_policy|"price_policy"|`price_policy`|\[price_policy\])\s+IN\s*\()([^)]*)(\)\s*\))/i;
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS pair (
-  id TEXT PRIMARY KEY,
-  mode TEXT NOT NULL CHECK (mode IN ('OPENING','CONVERTING','STOPPING','HALTED','DONE')),
-  a_contract TEXT NOT NULL, a_side TEXT NOT NULL, a_lot TEXT NOT NULL,
-  a_min_size TEXT NOT NULL, a_min_notional TEXT NOT NULL,
-  a_tick TEXT NOT NULL DEFAULT '0.0001', a_reduce_only INTEGER NOT NULL DEFAULT 0,
-  b_contract TEXT, b_side TEXT, b_lot TEXT,
-  b_min_size TEXT, b_min_notional TEXT,
-  b_tick TEXT, b_reduce_only INTEGER NOT NULL DEFAULT 0,
-  target_qty TEXT NOT NULL,
-  limit_price TEXT,
-  price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (price_policy IN ('fixed','touch','best')),
-  auto_price_policy TEXT NOT NULL DEFAULT 'touch' CHECK (auto_price_policy IN ('touch','best')),
-  deadline_at INTEGER,
-  maker_not_before INTEGER NOT NULL DEFAULT 0,
-  hedge_not_before INTEGER NOT NULL DEFAULT 0,
-  poc_rejects INTEGER NOT NULL DEFAULT 0,
-  hedge_reject_streak INTEGER NOT NULL DEFAULT 0,
-  reprice_count INTEGER NOT NULL DEFAULT 0,
-  last_maker_placement_at INTEGER NOT NULL DEFAULT 0,
-  post_only_rejects INTEGER NOT NULL DEFAULT 0,
-  book_outage_started_at INTEGER NOT NULL DEFAULT 0,
-  max_clip TEXT,
-  clip_band_bp INTEGER,
-  halt_reason TEXT,
-  report_json TEXT,
-  created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS orders (
-  pair_id TEXT NOT NULL REFERENCES pair(id),
-  leg TEXT NOT NULL CHECK (leg IN ('A','B')),
-  seq INTEGER NOT NULL,
-  client_id TEXT NOT NULL UNIQUE,
-  kind TEXT NOT NULL CHECK (kind IN ('maker','taker')),
-  side TEXT NOT NULL,
-  qty TEXT NOT NULL,
-  price TEXT,
-  tif TEXT NOT NULL CHECK (tif IN ('poc','ioc')),
-  state TEXT NOT NULL CHECK (state IN ('PENDING','OPEN','CLOSED','DEAD')),
-  venue_order_id TEXT,
-  cum_qty TEXT NOT NULL DEFAULT '0',
-  avg_fill_price TEXT NOT NULL DEFAULT '0',
-  close_reason TEXT,
-  cancel_requested INTEGER NOT NULL DEFAULT 0,
-  quarantined_status TEXT,
-  venue_reason TEXT,
-  read_fail_streak INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  resolved_at INTEGER,
-  PRIMARY KEY (pair_id, leg, seq)
-);
-CREATE TABLE IF NOT EXISTS alerts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts INTEGER NOT NULL,
-  level TEXT NOT NULL,
-  pair_id TEXT,
-  message TEXT NOT NULL,
-  ack INTEGER NOT NULL DEFAULT 0
-);
-`;
 
 interface PairDbRow {
   id: string;
@@ -285,136 +222,24 @@ const ORDER_COLS: Record<keyof OrderPatch, string> = {
 export class Store {
   private db: DatabaseSync;
 
-  constructor(path: string) {
+  /** Opens the ledger and runs the version gate and any pending migration
+   * (ledger/version.ts) before anything else can read or write it. `now`
+   * stamps a migration's backup and journal row. */
+  constructor(path: string, opts?: { now?: number }) {
     this.db = new DatabaseSync(path);
-    this.db.exec('PRAGMA journal_mode = WAL');
-    this.db.exec('PRAGMA synchronous = FULL');
-    this.db.exec('PRAGMA foreign_keys = ON');
-    this.db.exec('PRAGMA busy_timeout = 5000');
-    if (path !== ':memory:') {
-      // Single-instance guard: the first process owns the file exclusively.
-      this.db.exec('PRAGMA locking_mode = EXCLUSIVE');
-    }
-    this.db.exec(SCHEMA);
-    this.migrate();
-  }
-
-  /** Idempotent additive migrations for DBs created before a column existed —
-   * SQLite has no "ADD COLUMN IF NOT EXISTS", so probe table_info and add when
-   * missing. Additive-only: existing rows keep their data. */
-  private migrate(): void {
-    // --- orders: the original column-probe branch (unchanged) ---------------
-    const cols = this.db.prepare(`PRAGMA table_info(orders)`).all() as unknown as { name: string }[];
-    if (!cols.some((c) => c.name === 'avg_fill_price')) {
-      this.db.exec(`ALTER TABLE orders ADD COLUMN avg_fill_price TEXT NOT NULL DEFAULT '0'`);
-    }
-    if (!cols.some((c) => c.name === 'venue_reason')) {
-      this.db.exec(`ALTER TABLE orders ADD COLUMN venue_reason TEXT`);
-    }
-    if (!cols.some((c) => c.name === 'read_fail_streak')) {
-      this.db.exec(`ALTER TABLE orders ADD COLUMN read_fail_streak INTEGER NOT NULL DEFAULT 0`);
-    }
-
-    // --- pair: new columns, then the price_policy CHECK --------------------
-    // The SCHEMA's `CREATE TABLE IF NOT EXISTS` is a no-op on an existing file,
-    // so a column added only there never reaches a live install. Probe and add.
-    const pairCols = this.pairColumns();
-    const missing: Array<[string, string]> = [
-      ['reprice_count', `INTEGER NOT NULL DEFAULT 0`],
-      ['last_maker_placement_at', `INTEGER NOT NULL DEFAULT 0`],
-      ['post_only_rejects', `INTEGER NOT NULL DEFAULT 0`],
-      // A pre-'best' database has no family policy. 'touch' is the historical
-      // default and is correct for every such row (no old deal was 'best').
-      ['auto_price_policy', `TEXT NOT NULL DEFAULT 'touch'`],
-      ['book_outage_started_at', `INTEGER NOT NULL DEFAULT 0`],
-    ];
-    for (const [name, decl] of missing) {
-      if (!pairCols.some((c) => c.name === name)) {
-        this.db.exec(`ALTER TABLE pair ADD COLUMN ${name} ${decl}`);
-      }
-    }
-
-    // `ALTER TABLE ADD COLUMN` can NEVER widen an existing CHECK, so a database
-    // built before `'best'` would open fine and then throw the first time a
-    // deal stored it. The only SQLite path that changes a CHECK is a table
-    // rebuild (create → copy → drop → rename), run once, guarded by a probe so
-    // a fresh install (already widened by SCHEMA) skips it entirely.
-    if (!this.pairCheckAdmits('best')) this.rebuildPairWithWidenedCheck();
-  }
-
-  private pairColumns(): { name: string }[] {
-    return this.db.prepare(`PRAGMA table_info(pair)`).all() as unknown as { name: string }[];
-  }
-
-  /** True when the LIVE `pair` DDL already admits `value` in its price_policy
-   * CHECK. The stored DDL in sqlite_master is the only place a CHECK is
-   * observable — PRAGMA table_info does not report them. */
-  private pairCheckAdmits(value: string): boolean {
-    const values = this.pairSchema().match(PRICE_POLICY_CHECK)?.[2];
-    return values?.split(',').some((entry) => entry.trim() === `'${value}'`) ?? false;
-  }
-
-  private pairSchema(): string {
-    const row = this.db
-      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pair'`)
-      .get() as unknown as { sql: string } | undefined;
-    if (!row) throw new Error('pair schema is missing');
-    return row.sql;
-  }
-
-  /**
-   * Rebuild `pair` with `CHECK (price_policy IN ('fixed','touch','best'))`,
-   * preserving every column and every row.
-   *
-   * `orders.pair_id REFERENCES pair(id)` and PRAGMA foreign_keys is ON, so a
-   * bare `DROP TABLE pair` fails ("FOREIGN KEY constraint failed") — and with
-   * `defer_foreign_keys` it still fails, because DROP is immediate. The
-   * documented SQLite recipe applies: disable FK enforcement, rebuild inside
-   * ONE transaction, verify with `foreign_key_check`, then re-enable.
-   * `PRAGMA foreign_keys` is a no-op inside a transaction, so it is toggled
-   * OUTSIDE the BEGIN. This runs only in the migration, never on `orders`.
-   */
-  private rebuildPairWithWidenedCheck(): void {
-    // Preserve the actual installed schema, including columns introduced by
-    // other versions. Only widen this one CHECK; a canonical field list cannot
-    // safely recreate an installation that also carries e.g. account_scope.
-    const existing = this.pairColumns().map((c) => c.name);
-    const schema = this.pairSchema();
-    if (!PRICE_POLICY_CHECK.test(schema)) throw new Error('cannot recognize pair price_policy CHECK; ledger left intact');
-    const widened = schema.replace(PRICE_POLICY_CHECK, (_match, prefix: string, values: string, suffix: string) =>
-      `${prefix}${values},'best'${suffix}`,
-    );
-    const target = widened.replace(
-      /^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:pair|"pair"|'pair'|`pair`|\[pair\])(?=\s*\()/i,
-      'CREATE TABLE pair_rebuild',
-    );
-    if (target === widened) throw new Error('cannot recognize pair table declaration; ledger left intact');
-    const objects = this.db.prepare(
-      "SELECT sql FROM sqlite_master WHERE tbl_name = 'pair' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type, name",
-    ).all() as unknown as { sql: string }[];
-    // table_info excludes generated columns, which are recomputed by SQLite.
-    const cols = existing.map((name) => `"${name.replaceAll('"', '""')}"`).join(', ');
-    this.db.exec('PRAGMA foreign_keys = OFF');
     try {
-      this.db.exec('BEGIN IMMEDIATE');
-      try {
-        this.db.exec('DROP TABLE IF EXISTS pair_rebuild'); // a torn prior attempt cannot block this
-        this.db.exec(target);
-        this.db.exec(`INSERT INTO pair_rebuild (${cols}) SELECT ${cols} FROM pair`);
-        this.db.exec('DROP TABLE pair');
-        this.db.exec('ALTER TABLE pair_rebuild RENAME TO pair');
-        for (const object of objects) this.db.exec(object.sql);
-        const violations = this.db.prepare('PRAGMA foreign_key_check').all();
-        if (violations.length) {
-          throw new Error(`pair rebuild left ${violations.length} foreign-key violation(s)`);
-        }
-        this.db.exec('COMMIT');
-      } catch (err) {
-        this.db.exec('ROLLBACK');
-        throw err;
-      }
-    } finally {
+      this.db.exec('PRAGMA journal_mode = WAL');
+      this.db.exec('PRAGMA synchronous = FULL');
       this.db.exec('PRAGMA foreign_keys = ON');
+      this.db.exec('PRAGMA busy_timeout = 5000');
+      if (path !== ':memory:') {
+        // Single-instance guard: the first process owns the file exclusively.
+        this.db.exec('PRAGMA locking_mode = EXCLUSIVE');
+      }
+      prepareLedger(this.db, { file: path === ':memory:' ? null : path, now: opts?.now ?? Date.now() });
+    } catch (err) {
+      this.db.close(); // a refused ledger must not stay locked by this process
+      throw err;
     }
   }
 
@@ -698,24 +523,24 @@ export class Store {
     const existing = this.db
       .prepare(
         opts?.once
-          ? 'SELECT id FROM alerts WHERE pair_id IS ? AND message = ?'
-          : 'SELECT id FROM alerts WHERE ack = 0 AND pair_id IS ? AND message = ?',
+          ? 'SELECT id FROM alert_log WHERE pair_id IS ? AND message = ?'
+          : 'SELECT id FROM alert_log WHERE ack = 0 AND pair_id IS ? AND message = ?',
       )
       .get(pairId, message);
     if (existing) return;
     this.db
-      .prepare('INSERT INTO alerts (ts, level, pair_id, message, ack) VALUES (?,?,?,?,0)')
+      .prepare('INSERT INTO alert_log (ts, level, pair_id, message, ack) VALUES (?,?,?,?,0)')
       .run(now, level, pairId, message);
   }
 
   listAlerts(opts?: { unackedOnly?: boolean }): AlertRow[] {
     const sql = opts?.unackedOnly
-      ? 'SELECT * FROM alerts WHERE ack = 0 ORDER BY id'
-      : 'SELECT * FROM alerts ORDER BY id';
+      ? 'SELECT * FROM alert_log WHERE ack = 0 ORDER BY id'
+      : 'SELECT * FROM alert_log ORDER BY id';
     return this.db.prepare(sql).all() as unknown as AlertRow[];
   }
 
   ackAlert(id: number): void {
-    this.db.prepare('UPDATE alerts SET ack = 1 WHERE id = ?').run(id);
+    this.db.prepare('UPDATE alert_log SET ack = 1 WHERE id = ?').run(id);
   }
 }
