@@ -7,8 +7,9 @@
 - `src/engine/ledger/version.ts`：`prepareLedger`在Store构造内、任何读写前运行。版本高于本程序→`LedgerRefusal('future-version')`，不写文件、不改标记；需收敛的步骤遇未完成deal/活动/隔离订单→`not-quiescent`，列出deal与client id，零写入、无备份、无标记，旧程序仍可启动。否则：非新库先备份→写`data/ledger-version.json`为目标版本（提交前写，崩溃只会多拒绝回滚）→关FK→单个`BEGIN IMMEDIATE`执行v0建表补齐、各步骤、`ledger_migration`日志（含备份文件/sha256及迁移后内容指纹）、FK检查、`user_version`→提交；任一失败整体回滚并把标记写回原版本。`LEDGER_STEPS`是领域票（19开关、12意图、15切片、16 Risk）唯一的迁移入口；改变既有行语义的步骤须同时屏蔽会误读的程序。
 - `src/engine/ledger/legacy.ts`：v0建表及原`migrate()`的列补齐/CHECK重建，移出`db.ts`并改为在调用方事务内执行（原实现ADD COLUMN非整批原子，现整体原子）。
 - `src/engine/ledger/backup.ts`：从持有EXCLUSIVE锁的连接`VACUUM INTO`临时文件（含已提交WAL），只读重开校验integrity、版本、逐表行数后fsync并改名；清单`<备份>.json`含版本、时间、字节、sha256、行数。目录0700、文件0600（Windows继承数据目录ACL）。
-- `src/engine/ledger/restore.ts`＋`scripts/ledger-restore.ts`（`yarn ledger:restore <备份>`）：校验清单sha256；在账本自身锁下确认是最新迁移的备份、内容指纹与迁移时一致；否则`backup-unverified`/`ledger-in-use`/`not-latest-backup`/`ledger-has-new-writes`拒绝且不改动。允许时原账本（含-wal/-shm）改名`deals.sqlite.replaced-<UTC>`保留，备份经临时文件fsync后放回，标记写回旧版本。
+- `src/engine/ledger/restore.ts`＋`scripts/ledger-restore.ts`（`yarn ledger:restore <备份>`）：账本取备份所在`ledger-backups`的上级目录及清单`ledger`名，不依赖运行目录/环境变量；账本不存在不创建空库。校验清单sha256；在账本自身写锁下确认是最新迁移的备份、内容指纹与迁移时一致；否则`backup-unverified`/`ledger-in-use`/`not-latest-backup`/`ledger-has-new-writes`拒绝且不改动（未升级账本亦为拒绝而非崩溃）。允许时仍持锁：`VACUUM INTO`把原账本完整保存为`deals.sqlite.replaced-<UTC>`，备份复制为临时文件fsync，切出WAL后一次原子rename覆盖账本——任一时刻账本要么是原账要么是完整备份。不能覆盖打开文件的平台（Windows）先释放锁再rename，其间存在服务被拉起的窗口，须先停服务。标记写回旧版本。
 - `install.sh`/`install.ps1`：`restore_app`/`Restore-App`在停服务或移动任何目录前检查`data/ledger-version.json`对比`app.old/ledger-support.json`（缺失视为0；标记不可读视为已升级）；超出则明确说明并不回滚。`ledger-support.json`声明`maxLedgerVersion`，测试锁定等于`LEDGER_VERSION`。
+- `src/engine/ledger/sqlite.ts`/`marker.ts`：共用SQLite辅助（含原`index.ts`锁错误判断）及标记文件。Store打开文件账本即以空写事务取得并保持写锁（WAL下仅读不排他，审查复现），版本检查、备份、迁移之间无其他写者。
 - `src/server/index.ts`：`LedgerRefusal`打印原因并退出1；`db.ts`告警SQL改用`alert_log`。
 
 ## 兼容矩阵与入口
@@ -18,9 +19,13 @@
 | 6f0f051首个engine至1.7.7及本票前HEAD | 正常 | 启动即`there is already an index named alerts`退出，早于loop/listen，账本字节不变 |
 | 本版本 | 收敛则备份并迁移；未收敛拒绝且零写入 | 正常；更高版本拒绝 |
 
-实测：`git archive`取6f0f051、136f2f7（1.7.3）、93bdd31（1.7.7）、21b51bd的`src`，各自真实`Store`分别打开本版本迁移出的v1合成账本（全部拒绝、sha256不变）及其v0备份（全部可启动），日志`/tmp/ticket20-evidence/release-matrix.log`。CLI拒绝/恢复实跑见同目录`cli/`。
+实测（未纳入默认verify：CI浅克隆无历史）：`git archive <rev> src`取6f0f051、136f2f7（1.7.3）、93bdd31（1.7.7）、21b51bd的`src`，各自真实`Store`分别打开本版本迁移出的v1合成账本（全部拒绝、sha256不变）及其v0备份（全部可启动），日志`/tmp/ticket20-evidence/release-matrix.log`。CLI拒绝/恢复实跑见同目录`cli/`。
 
-入口：macOS `install.sh`回滚在bash下实跑（`tests/server/installer-ledger-rollback.test.ts`）；Windows `install.ps1`本机无PowerShell，仅静态断言，**未实机验证**；应用内更新调用同一安装器，原本已拒绝活动deal。源码`yarn dev/start`及任何旧程序依赖存储屏障。手工复制备份覆盖账本、手工SQL改`user_version`或删除索引不受支持，不承诺安全。
+入口：macOS `install.sh`回滚在bash下实跑（`tests/server/installer-ledger-rollback.test.ts`）；Windows `install.ps1`本机无PowerShell，仅静态断言，**未实机验证**——若其判断出错放行回滚，旧程序仍被存储屏障挡在启动前，结果是无服务而非误写新账；应用内更新调用同一安装器，原本已拒绝活动deal。源码`yarn dev/start`及任何旧程序依赖存储屏障。手工复制备份覆盖账本、手工SQL改`user_version`或删除索引不受支持，不承诺安全。
+
+## 审查
+
+双轴审查（标准轴无硬违背；规格轴3项错误、4项缺口）。已修（先红后绿）：恢复工具按备份位置定位账本、账本缺失/未升级拒绝而非建空库或崩溃；恢复改为持锁原子替换；Store取得写锁后才检查/备份/迁移；新增子进程SIGKILL中断迁移回归（重开为v0、旧程序可启动，再次迁移成功；标记先行为1，只多拒绝回滚）；锁错误判断、标识符引用、表探测去重，标记文件独立模块；安装器提示改为“标记为已升级”。未改（判断项）：`steps`测试接缝保留以支持中断测试；版本规则在TS与两个安装器各写一次（安装器不能引用TS），以`ledger-support.json`等于`LEDGER_VERSION`的测试绑定。
 
 ## 未覆盖与交接限制
 
@@ -30,4 +35,6 @@
 
 ## 验证
 
-新测试：`tests/unit/ledger-version.test.ts`（13）、`tests/unit/ledger-restore.test.ts`（5）、`tests/server/installer-ledger-rollback.test.ts`（8）；`engine-store-migration.test.ts`种子改为已结束deal（未收敛拒绝由新测试覆盖），安装器回滚测试加载新函数。tsc通过；root unit/server 146文件3361通过/8跳过，文件预算通过；`yarn --cwd web build`退出0。默认`yarn verify`退出1：web 1/1711失败（`App.setupOnce`找不到Settings对话框），日志`/tmp/ticket20-verify-run1-fail.log`。随后默认并发重跑web两次：一次`FinishSetupPill`失败、一次1711全过（`/tmp/ticket20-web-run3.log`）。本票未改web；失败测试每次不同，主机负载约25（16核，6个长期SAT求解进程满载）。未改测试或配置，最终完整门槛于全部实现后重跑。
+新测试：`tests/unit/ledger-version.test.ts`（15）、`tests/unit/ledger-restore.test.ts`（7）、`tests/server/installer-ledger-rollback.test.ts`（8）；`engine-store-migration.test.ts`种子改为已结束deal（未收敛拒绝由新测试覆盖），安装器回滚测试加载新函数。tsc通过；root unit/server 146文件3361通过/8跳过，文件预算通过；`yarn --cwd web build`退出0。默认`yarn verify`退出1：web 1/1711失败（`App.setupOnce`找不到Settings对话框），日志`/tmp/ticket20-verify-run1-fail.log`。随后默认并发重跑web两次：一次`FinishSetupPill`失败、一次1711全过（`/tmp/ticket20-web-run3.log`）。本票未改web；失败测试每次不同，主机负载约25（16核，6个长期SAT求解进程满载）。未改测试或配置，最终完整门槛于全部实现后重跑。
+
+审查修复后：tsc通过，root unit/server 146文件3365通过/8跳过。

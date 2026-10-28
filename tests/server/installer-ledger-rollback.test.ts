@@ -70,7 +70,7 @@ describe('install.sh restore_app', () => {
   it('refuses to put back a program that predates the ledger version, and moves nothing', () => {
     const r = restore({ marker: marker(1) });
     expect(r.status).toBe(1);
-    expect(r.err).toContain('Not rolling back: the new version already upgraded the trade ledger');
+    expect(r.err).toContain('Not rolling back: the trade ledger is marked as upgraded by the new version');
     expect(r.err).not.toContain('Rolling back to the previous version');
     expect(r.app).toBe('new');
     expect(r.old).toBe(true);

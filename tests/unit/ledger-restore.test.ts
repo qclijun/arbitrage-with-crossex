@@ -56,7 +56,7 @@ describe('restoreLedgerBackup', () => {
     store.alert('warn', null, 'written after the upgrade', NOW + 1);
     store.close();
 
-    const err = refusal(() => restoreLedgerBackup({ ledgerFile: file, backupFile: backup, now: NOW + 2 }));
+    const err = refusal(() => restoreLedgerBackup({ backupFile: backup, now: NOW + 2 }));
     expect(err.code).toBe('ledger-has-new-writes');
     expect(alertCount(file)).toBe(3);
     new Store(file, { now: NOW }).close(); // still the upgraded ledger
@@ -66,17 +66,31 @@ describe('restoreLedgerBackup', () => {
     const { file, backup } = upgraded();
     const store = new Store(file, { now: NOW });
     try {
-      expect(refusal(() => restoreLedgerBackup({ ledgerFile: file, backupFile: backup, now: NOW })).code)
+      expect(refusal(() => restoreLedgerBackup({ backupFile: backup, now: NOW })).code)
         .toBe('ledger-in-use');
     } finally {
       store.close();
     }
   });
 
+  it('finds the ledger from the backup, and refuses without creating one when it is gone', () => {
+    const { dir, file, backup } = upgraded();
+    fs.renameSync(file, path.join(dir, 'moved.sqlite'));
+    expect(refusal(() => restoreLedgerBackup({ backupFile: backup, now: NOW })).code).toBe('not-latest-backup');
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it('refuses, rather than crashes, on a ledger that was never upgraded', () => {
+    const { file, backup } = upgraded();
+    fs.rmSync(file);
+    seedLegacyLedger(file);
+    expect(refusal(() => restoreLedgerBackup({ backupFile: backup, now: NOW })).code).toBe('not-latest-backup');
+  });
+
   it('refuses a backup whose bytes no longer match its manifest', () => {
     const { file, backup } = upgraded();
     fs.appendFileSync(backup, 'x');
-    expect(refusal(() => restoreLedgerBackup({ ledgerFile: file, backupFile: backup, now: NOW })).code)
+    expect(refusal(() => restoreLedgerBackup({ backupFile: backup, now: NOW })).code)
       .toBe('backup-unverified');
   });
 
@@ -85,17 +99,19 @@ describe('restoreLedgerBackup', () => {
     const stray = path.join(dir, 'ledger-backups', 'deals-v0-to-v1-19990101T000000Z.sqlite');
     fs.copyFileSync(backup, stray);
     fs.copyFileSync(`${backup}.json`, `${stray}.json`);
-    expect(refusal(() => restoreLedgerBackup({ ledgerFile: file, backupFile: stray, now: NOW })).code)
+    expect(refusal(() => restoreLedgerBackup({ backupFile: stray, now: NOW })).code)
       .toBe('not-latest-backup');
   });
 
   it('restores an untouched upgrade and sets the replaced ledger aside', () => {
     const { dir, file, backup } = upgraded();
-    const result = restoreLedgerBackup({ ledgerFile: file, backupFile: backup, now: NOW + 5000 });
+    const result = restoreLedgerBackup({ backupFile: backup, now: NOW + 5000 });
 
     expect(result.version).toBe(0);
     expect(result.replacedFile).toBe(`${file}.replaced-20261028T010208Z`);
     expect(alertCount(result.replacedFile)).toBe(2);
+    expect(fs.existsSync(`${file}.restoring`)).toBe(false);
+    expect(fs.existsSync(`${file}-wal`)).toBe(false);
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'ledger-version.json'), 'utf8'))).toEqual({ version: 0 });
     if (process.platform !== 'win32') expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     const db = new DatabaseSync(file);

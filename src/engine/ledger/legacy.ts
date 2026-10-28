@@ -5,6 +5,7 @@
  * all of it into a single transaction.
  */
 import type { DatabaseSync } from 'node:sqlite';
+import { quoteIdent } from './sqlite';
 
 export const LEGACY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS pair (
@@ -146,7 +147,7 @@ function rebuildPairWithWidenedCheck(db: DatabaseSync): void {
     "SELECT sql FROM sqlite_master WHERE tbl_name = 'pair' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type, name",
   ).all() as unknown as { sql: string }[];
   // table_info excludes generated columns, which are recomputed by SQLite.
-  const cols = columns(db, 'pair').map((name) => `"${name.replaceAll('"', '""')}"`).join(', ');
+  const cols = columns(db, 'pair').map(quoteIdent).join(', ');
   db.exec('DROP TABLE IF EXISTS pair_rebuild');
   db.exec(target);
   db.exec(`INSERT INTO pair_rebuild (${cols}) SELECT ${cols} FROM pair`);

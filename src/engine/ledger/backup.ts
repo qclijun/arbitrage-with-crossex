@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { quoteIdent, userVersion } from './sqlite';
 
 export const BACKUP_DIR = 'ledger-backups';
 
@@ -34,10 +35,6 @@ export function sha256File(file: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
-export function userVersion(db: DatabaseSync): number {
-  return (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-}
-
 /** User tables in name order; `sqlite_%` bookkeeping is SQLite's, not ours. */
 function tables(db: DatabaseSync, except: readonly string[] = []): string[] {
   return (db.prepare(
@@ -45,12 +42,10 @@ function tables(db: DatabaseSync, except: readonly string[] = []): string[] {
   ).all() as { name: string }[]).map((t) => t.name).filter((name) => !except.includes(name));
 }
 
-const quoted = (name: string): string => `"${name.replaceAll('"', '""')}"`;
-
 function rowCounts(db: DatabaseSync): Record<string, number> {
   const rows: Record<string, number> = {};
   for (const name of tables(db)) {
-    rows[name] = (db.prepare(`SELECT count(*) AS n FROM ${quoted(name)}`).get() as { n: number }).n;
+    rows[name] = (db.prepare(`SELECT count(*) AS n FROM ${quoteIdent(name)}`).get() as { n: number }).n;
   }
   return rows;
 }
@@ -61,7 +56,7 @@ function rowCounts(db: DatabaseSync): Record<string, number> {
 export function ledgerFingerprint(db: DatabaseSync): string {
   const hash = crypto.createHash('sha256');
   for (const name of tables(db, ['ledger_migration'])) {
-    const rows = (db.prepare(`SELECT * FROM ${quoted(name)}`).all() as unknown[]).map((r) => JSON.stringify(r)).sort();
+    const rows = (db.prepare(`SELECT * FROM ${quoteIdent(name)}`).all() as unknown[]).map((r) => JSON.stringify(r)).sort();
     hash.update(JSON.stringify([name, rows]));
   }
   return hash.digest('hex');

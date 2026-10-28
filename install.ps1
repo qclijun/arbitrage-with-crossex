@@ -430,7 +430,7 @@ function Restore-App {
   $failed = Join-Path $Root 'app.failed'
   if (-not (Test-Path $old)) { return $false }
   if (Test-LedgerBlocksRollback) {
-    Write-Host 'Not rolling back: the new version already upgraded the trade ledger, and the previous version cannot run on it.' -ForegroundColor Red
+    Write-Host 'Not rolling back: the trade ledger is marked as upgraded by the new version, and the previous version cannot run on it.' -ForegroundColor Red
     Write-Host "      your ledger and its pre-upgrade backup are in $Root\data; nothing was deleted" -ForegroundColor Red
     Write-Host '      re-run this installer to finish the update (do not reinstall an older version)' -ForegroundColor Red
     return $false

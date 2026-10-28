@@ -9,6 +9,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
+import { claimExclusive } from './ledger/sqlite';
 import { prepareLedger } from './ledger/version';
 import type { AlertRow, LegSpec, OrderRow, PairMode, PairRow } from './types';
 
@@ -235,6 +236,9 @@ export class Store {
       if (path !== ':memory:') {
         // Single-instance guard: the first process owns the file exclusively.
         this.db.exec('PRAGMA locking_mode = EXCLUSIVE');
+        // Held from here on, so nothing else writes between the version
+        // check, the backup and the migration.
+        claimExclusive(this.db);
       }
       prepareLedger(this.db, { file: path === ':memory:' ? null : path, now: opts?.now ?? Date.now() });
     } catch (err) {

@@ -261,7 +261,7 @@ ledger_blocks_rollback() {
 restore_app() {
   [ -d "$ROOT/app.old" ] || return 1
   if ledger_blocks_rollback; then
-    printf '\033[1;31m%s\033[0m\n' "Not rolling back: the new version already upgraded the trade ledger, and the previous version cannot run on it." >&2
+    printf '\033[1;31m%s\033[0m\n' "Not rolling back: the trade ledger is marked as upgraded by the new version, and the previous version cannot run on it." >&2
     echo "      your ledger and its pre-upgrade backup are in $ROOT/data; nothing was deleted" >&2
     echo "      re-run this installer to finish the update (do not reinstall an older version)" >&2
     return 1

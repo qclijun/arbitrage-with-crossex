@@ -4,11 +4,13 @@
  * time behind a verified backup, and — from version 1 — fenced against every
  * pre-protocol release, which would otherwise boot on it and write.
  */
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../../src/engine/db';
 import { LEDGER_VERSION, LedgerRefusal, prepareLedger } from '../../src/engine/ledger/version';
@@ -228,5 +230,58 @@ describe('a failed migration leaves no half-upgraded ledger', () => {
     expect(store.getPair('old-deal')!.bookOutageStartedAt).toBe(0);
     store.close();
     expect(marker(dir)).toEqual({ version: 1 });
+  });
+});
+
+describe('a killed migration leaves no half-upgraded ledger', () => {
+  it('reopens at version 0 after a hard kill mid-transaction, then upgrades', () => {
+    const dir = tempDir();
+    const file = path.join(dir, 'deals.sqlite');
+    seedLegacyLedger(file);
+    const version = fileURLToPath(new URL('../../src/engine/ledger/version.ts', import.meta.url));
+    const script = path.join(dir, 'kill.ts');
+    fs.writeFileSync(script, [
+      "import { DatabaseSync } from 'node:sqlite';",
+      `import { LEDGER_STEPS, prepareLedger } from ${JSON.stringify(version)};`,
+      `const db = new DatabaseSync(${JSON.stringify(file)});`,
+      "db.exec('PRAGMA locking_mode = EXCLUSIVE');",
+      `prepareLedger(db, { file: ${JSON.stringify(file)}, now: ${NOW}, steps: [{ ...LEDGER_STEPS[0], apply: (inner) => {`,
+      '  LEDGER_STEPS[0].apply(inner);',
+      "  process.kill(process.pid, 'SIGKILL');",
+      '} }] });',
+    ].join('\n'));
+    const repo = fileURLToPath(new URL('../..', import.meta.url));
+    const run = spawnSync(process.execPath, ['--import', 'tsx', script], { cwd: repo, encoding: 'utf8' });
+    expect(run.signal).toBe('SIGKILL');
+    // Marked before the commit: the installers now refuse a rollback that is
+    // still safe, never the reverse.
+    expect(marker(dir)).toEqual({ version: 1 });
+    raw(file, (db) => {
+      expect(userVersion(db)).toBe(0);
+      expect(db.prepare("SELECT type FROM sqlite_master WHERE name = 'alerts'").get()).toEqual({ type: 'table' });
+      expect(() => db.exec(LEGACY_BOOT_SCHEMA)).not.toThrow();
+    });
+    const store = new Store(file, { now: NOW + 1000 });
+    expect(store.listOrders('old-deal')).toHaveLength(2);
+    store.close();
+    raw(file, (db) => expect(userVersion(db)).toBe(1));
+  });
+});
+
+describe('the open ledger is held exclusively', () => {
+  it('keeps every other connection from writing between the check, the backup and the migration', () => {
+    const file = path.join(tempDir(), 'deals.sqlite');
+    seedLegacyLedger(file);
+    const store = new Store(file, { now: NOW });
+    try {
+      const other = new DatabaseSync(file);
+      try {
+        expect(() => other.exec("INSERT INTO alert_log (ts, level, message) VALUES (1, 'warn', 'sneak')")).toThrow(/locked/);
+      } finally {
+        other.close();
+      }
+    } finally {
+      store.close();
+    }
   });
 });

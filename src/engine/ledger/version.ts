@@ -14,15 +14,11 @@
  * ledger may be an older one, and the only code guaranteed to run there is
  * the code that release already shipped.
  */
-import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { backupLedger, ledgerFingerprint, userVersion, writeJsonOwnerOnly, type BackupManifest } from './backup';
+import { backupLedger, ledgerFingerprint, type BackupManifest } from './backup';
 import { LEGACY_SCHEMA, normalizeLegacyTables } from './legacy';
-
-/** File beside the ledger that installers read to decide whether rolling back
- * to an older program is allowed; `ledger-support.json` in an app directory
- * declares the newest version that program can run on. */
-export const LEDGER_MARKER = 'ledger-version.json';
+import { writeLedgerMarker } from './marker';
+import { hasTable, userVersion } from './sqlite';
 
 export type LedgerRefusalCode =
   | 'future-version'
@@ -77,14 +73,6 @@ CREATE TABLE IF NOT EXISTS ledger_migration (
   backup_sha256 TEXT,
   content_sha256 TEXT NOT NULL
 );`;
-
-export function writeLedgerMarker(ledgerFile: string | null, version: number): void {
-  if (ledgerFile) writeJsonOwnerOnly(path.join(path.dirname(ledgerFile), LEDGER_MARKER), { version });
-}
-
-function hasTable(db: DatabaseSync, name: string): boolean {
-  return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined;
-}
 
 function assertQuiescent(db: DatabaseSync): void {
   const open: string[] = [];

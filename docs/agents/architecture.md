@@ -5,7 +5,7 @@
 - `src/core/` contains exchange and domain logic; `src/engine/` owns the reconcile loop and SQLite state; `src/server/` contains the Fastify API and routes.
 - `web/src/` is the React/Vite interface. `tests/unit/`, `tests/server/`, and `tests/live/` hold unit, API, and live-account tests; shared fixtures and helpers live under `tests/fixtures/` and `tests/helpers/`.
 - `docs/` contains user and design documentation. Read `docs/MAKER-HEDGE.md` before changing trade execution or recovery behavior.
-- `scripts/` holds standalone Python tools (standard library only, read-only): `risk_monitor*.py` and `opportunity_screening.py`. They are independent of the Node app and are not covered by `yarn verify`. `scripts/stop.sh` stops the running server (`yarn stop`).
+- `scripts/` holds standalone Python tools (standard library only, read-only): `risk_monitor*.py` and `opportunity_screening.py`. They are independent of the Node app and are not covered by `yarn verify`. `scripts/stop.sh` stops the running server (`yarn stop`). `scripts/ledger-restore.ts` (`yarn ledger:restore`) is the one script that writes data: it restores a ledger upgrade's backup, and refuses once the upgraded ledger was written (`src/engine/ledger/`).
 - `install.sh` / `install.ps1` are the user-facing installers. They download a private Node runtime and register a LaunchAgent / Scheduled Task; user data lives outside the app dir because updates wipe it.
 ## Architecture
 

@@ -12,6 +12,7 @@ import { fetchBorosMarkets, resolveBorosFetch, resolveCollateralPricesUsd, setCl
 import { gateProxy, makeClientsIfConfigured, requireClients, type Clients } from '../core/clients';
 import { EngineTransport } from '../core/engine-transport';
 import { Store } from '../engine/db';
+import { isSqliteLockError } from '../engine/ledger/sqlite';
 import { LedgerRefusal } from '../engine/ledger/version';
 import { EngineObservation } from '../engine/observation';
 import { startLoop, type LoopDeps } from '../engine/loop';
@@ -40,19 +41,6 @@ const port = Number(process.env.PORT ?? 6688);
 // Loopback only, always: this server exposes a credentialed trading API and
 // must never be reachable off the machine that runs it.
 const host = '127.0.0.1';
-
-function isSqliteLockError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const sqliteError = error as { errcode?: unknown; errstr?: unknown; message?: unknown };
-  const details = [sqliteError.errstr, sqliteError.message]
-    .filter((value): value is string => typeof value === 'string')
-    .join(' ');
-  return (
-    sqliteError.errcode === 5 ||
-    sqliteError.errcode === 6 ||
-    /database.*\b(?:locked|busy)\b/i.test(details)
-  );
-}
 
 function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
