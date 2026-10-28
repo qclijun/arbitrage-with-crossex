@@ -82,3 +82,7 @@ Updated: 2026-10-27 Asia/Taipei
 ## 20完成验收
 
 - 2026-10-28：[20](issues/20-ledger-schema-and-upgrade-compatibility.md)用户签收，追加Answer并resolved。账本版本/迁移/备份/恢复协议（899a370）及审查修正（7f1c597）；v1屏障使历史release启动即失败，安装器按标记拒绝回滚，恢复仅限迁移后无写入。root 3365/8跳过、build通过，web默认并发偶发超时归21。15/19不再受20阻塞（其余依赖保留）；领域迁移须经`LEDGER_STEPS`，真实升级端到端由19/21验证，不启用交易。
+
+## 19完成验收
+
+- 2026-10-28：[19](issues/19-admission-switch-and-legacy-entrypoints.md)用户签收，追加Answer并resolved。持久准入开关（默认关、版本变化即关、代次原子接受）与POST /deals用途分流（reduce/旧客户端/boros-strategy/manual冲突门/funding-two-leg拒绝），3f2e042＋3b61853；root 3408/8跳过、build通过，web默认并发两项既有偶发超时归21。12须经`admit`接受，18只读阶段可消费开关状态；不启用交易。

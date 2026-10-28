@@ -1,7 +1,7 @@
 # 持久准入开关、旧入口兼容与在途隔离
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Claude
 Blocked by: 03, 04, 20
 
@@ -22,7 +22,13 @@ Blocked by: 03, 04, 20
 
 离线fake clock/venue及app.inject验证：首次/重启/配置不明关闭，开启/关闭并发，关闭后迟到请求，重开旧预览仍无效；同id已接受回执仍可查询，缺字段/伪造来源/旧协议不降级；真实减风险及在途部分成交/unknown/转换不被误停。至少覆盖四腿/三腿合法用途、共享合约未知归属、非机会请求不强加历史、reduceOnly标签不自证。证明闭入口不等同stop.sh或全票Stop；一tick一wire边界不变。默认verify/build通过；与18、12及21分别验证只读交付与完整人工启用，不实际启用或部署。
 
+## Answer
+
+2026-10-28用户签收。实现3f2e042＋3b61853：账本步骤2加`pair.purpose/purpose_context`及`admission_switch`；`AdmissionSwitch`默认/无记录/构建（版本＋安装提交）或账本版本变化即关，每次开关递增代次，`admit(generation, write)`同事务核对开且代次一致，关后迟到与重开后旧代次均拒；`GET/POST /api/admission`只写开关，不停deal/loop、不调venue。POST /deals先按purpose分流：全reduceOnly为`reduce`（实时持仓校验不变），开仓缺purpose为`client-outdated`，`boros-strategy`须Boros上下文（base＋venues必填，其余有则校验）并保持原行为、无特权，`manual`仅在合约无持仓/活动deal/挂单时于设杠杆前放行（新鲜读取，不可读即拒，写入前同步复查），`funding-two-leg`恒不经/deals。web各票据声明purpose，仅在策略预填解析出的精确腿上声明`boros-strategy`。已知：伪造`boros-strategy`的API请求可跳过独立冲突门（用户选择不核实Boros仓，只得原行为）；默认verify web两项既有偶发超时归21。详见[19实施交接](../evidence/19-implementation-handoff.md)。12须经`admit`接受意图，不启用交易。
+
 ## Comments
 
 - 2026-10-27：06-Q1/Q3/Q5用户已确认，现有逐deal控制不能替代本票。仍由06阻塞；20先提供可验证的持久兼容基础。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
+- 2026-10-28：用户确认接缝（开关范围/代次、独立票无冲突才开、四腿标签＋上下文、旧客户端开仓拒绝），claimed并实施；双轴审查后修正策略上下文随换腿残留及读取fail-open。
+- 2026-10-28：用户签收，追加Answer并resolved。
