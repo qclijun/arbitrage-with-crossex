@@ -23,6 +23,7 @@ import { slicesRoutes } from './routes/slices';
 import { dealsRoutes } from './routes/deals';
 import { disclaimerRoutes } from './routes/disclaimer';
 import { feesRoutes } from './routes/fees';
+import { fundingIntentRoutes } from './routes/fundingIntents';
 import { fundingSpreadsRoutes } from './routes/fundingSpreads';
 import { healthRoutes } from './routes/health';
 import { assetViewRoutes } from './routes/assetView';
@@ -66,6 +67,11 @@ export interface AppDeps {
      * the user never waits out a tick sleep. */
     wake?: () => void;
   };
+  /** Funding-opportunity admission (ticket 12): the published history and
+   * the CrossEx-symbol → venue-contract mapping it was ranked on. Absent, the
+   * preview and acceptance routes refuse (503) — never a plain-pair fallback.
+   * `reads` defaults to fresh Gate reads (server/funding/reads.ts). */
+  funding?: Pick<import('./funding/evidence').FundingPorts, 'history' | 'legOf'> & { reads?: import('./funding/reads').FundingReads };
   /** Enables PUT /api/credentials (validate → rewrite .env → hot-swap the client). */
   credentials?: {
     envPath: string;
@@ -243,6 +249,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     previewRoutes,
     dealsRoutes,
     admissionRoutes,
+    fundingIntentRoutes,
     slicesRoutes,
     rebalanceRoutes,
     transferRoutes,

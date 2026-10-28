@@ -42,6 +42,12 @@ code allowed to mutate state or call venue-mutating endpoints.
   attaching a deal, a claim, an evidenced recovery of an unexplained position — are
   validated and written atomically by the route like any other intent. That
   recovery is ledger reconciliation, not crash recovery state.
+- Leverage a deal owns (`PairRow.leverage`, `engine/leverage.ts`) is set by the engine,
+  one leg per tick, before anything is placed; a refusal or an unconfirmed outcome
+  ends the deal with nothing placed. The funding-opportunity admission
+  (`server/funding/`, `/api/funding/*`) relies on this: its preview and acceptance
+  only read, and acceptance writes intent, slice and deal in one admission
+  transaction. The older `POST /deals` still sets leverage itself — a known exception.
 
 ### Layers
 

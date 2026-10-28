@@ -18,6 +18,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { backupLedger, ledgerFingerprint, type BackupManifest } from './backup';
 import { LEGACY_SCHEMA, normalizeLegacyTables } from './legacy';
 import { writeLedgerMarker } from './marker';
+import { FUNDING_INTENT_SCHEMA } from './funding-intent-schema';
 import { SLICE_SCHEMA } from './slice-schema';
 import { hasTable, userVersion } from './sqlite';
 
@@ -94,6 +95,13 @@ export const LEDGER_STEPS: readonly LedgerStep[] = [
     to: 4,
     quiescent: false,
     apply: (db) => db.exec('ALTER TABLE pair ADD COLUMN leverage_json TEXT'),
+  },
+  {
+    // Version 5 (ticket 12): accepted funding-opportunity intents
+    // (engine/funding-intents.ts). Additive: a new table only.
+    to: 5,
+    quiescent: false,
+    apply: (db) => db.exec(FUNDING_INTENT_SCHEMA),
   },
 ];
 

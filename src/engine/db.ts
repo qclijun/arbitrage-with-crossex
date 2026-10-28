@@ -9,6 +9,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { AdmissionSwitch } from './admission';
+import { FundingIntents } from './funding-intents';
 import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
 import { claimExclusive, inSavepoint } from './ledger/sqlite';
 import { prepareLedger } from './ledger/version';
@@ -234,6 +235,8 @@ export class Store {
   readonly admission: AdmissionSwitch;
   /** Strategy slices and per-contract books (engine/slices.ts). */
   readonly slices: SliceLedger;
+  /** Accepted funding-opportunity intents (engine/funding-intents.ts). */
+  readonly fundingIntents: FundingIntents;
 
   /** Opens the ledger and runs the version gate and any pending migration
    * (ledger/version.ts) before anything else can read or write it. `now`
@@ -260,6 +263,7 @@ export class Store {
     }
     this.admission = new AdmissionSwitch(this.db, opts?.programVersion ?? null);
     this.slices = new SliceLedger(this.db, (level, pairId, message, now) => this.alert(level, pairId, message, now));
+    this.fundingIntents = new FundingIntents(this.db);
   }
 
   /** Run several writes as one: all of them, or none (nests). */
