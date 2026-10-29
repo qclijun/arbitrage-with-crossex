@@ -4,10 +4,10 @@
  * shows. Pure. Execution limits are listed per row and never touch rank or
  * eligibility; costs are not here (tickets 11/13 wire them through a preview).
  */
-import { SUPPORTED_COINS } from '../../core/coins';
+import { isSupportedCoin } from '../../core/coins';
 import { HISTORY_DAYS, type HistoryDays, type LegHistoryResult } from '../../core/funding/history';
 import { legKey, type FundingHistoryCache, type HistoryCacheView } from '../../core/funding/history-cache';
-import type { FundingContractListing, FundingFeedStatus, FundingMarketView } from '../../core/funding/market';
+import { readyListings, type FundingContractListing, type FundingMarketView, type MarketFeedStatus } from '../../core/funding/market';
 import {
   enumerateFundingCandidates,
   rankFundingCandidates,
@@ -91,7 +91,7 @@ export interface FundingBoard extends Omit<RankingPage, 'rows' | 'fingerprint'> 
   history: HistoryCacheView;
   contracts: { state: FundingMarketView['contracts']['state']; at: number | null; lastAttempt: { at: number; ok: boolean } | null;
     count: number; unpaired: UnpairedContract[] };
-  feeds: FundingFeedStatus[];
+  feeds: MarketFeedStatus[];
   /** The new-open switch (ticket 19); null without an engine. Observation never opens anything. */
   admission: AdmissionState | null;
 }
@@ -106,7 +106,7 @@ function legHistory(leg: LegHistoryResult): BoardLegHistory {
   };
 }
 
-function window(w: RankingWindow): BoardWindow {
+function boardWindow(w: RankingWindow): BoardWindow {
   const { result } = w;
   return {
     days: w.days, eligible: w.eligible, coverage: w.coverage, netTotal: w.netTotal, netAnnualized: w.netAnnualized, reasons: w.reasons,
@@ -118,7 +118,7 @@ function window(w: RankingWindow): BoardWindow {
 /** Why this pair could not be opened as shown, whatever its history: unproven symbol, unit or coin. */
 function executionBlockers(candidate: FundingCandidate, listings: Map<string, FundingContractListing>): string[] {
   const out: string[] = [];
-  if (!(SUPPORTED_COINS as readonly string[]).includes(candidate.underlying)) out.push('coin-unsupported');
+  if (!isSupportedCoin(candidate.underlying)) out.push('coin-unsupported');
   for (const side of SIDES) {
     const symbol = listings.get(legKey(candidate[side]))?.symbol ?? null;
     if (!symbol) out.push(`${side}:symbol-unmapped`);
@@ -138,7 +138,7 @@ export function buildFundingBoard(input: {
   now: number;
 }): FundingBoard {
   const { query, history, market, now } = input;
-  const listings = market.contracts.state === 'ready' ? market.contracts.listings : [];
+  const listings = readyListings(market.contracts);
   const byLeg = new Map(listings.map((l) => [legKey(l), l]));
   const { candidates, unpaired } = enumerateFundingCandidates(listings);
   const rank = (offset: number) => rankFundingCandidates({
@@ -160,7 +160,7 @@ export function buildFundingBoard(input: {
     rankingChanged,
     rows: rows.map((row) => ({
       id: row.candidate.id, underlying: row.candidate.underlying, short: leg(row.candidate.short), long: leg(row.candidate.long),
-      rank: row.rank, windows: row.windows.map(window), current: row.current, executionBlockers: row.executionBlockers,
+      rank: row.rank, windows: row.windows.map(boardWindow), current: row.current, executionBlockers: row.executionBlockers,
     })),
     options: {
       underlyings: [...new Set(candidates.map((c) => c.underlying))].sort(),

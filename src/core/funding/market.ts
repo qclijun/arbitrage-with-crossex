@@ -21,7 +21,7 @@ export type FundingContractsView =
   | { state: 'cold'; lastAttempt: { at: number; ok: false } | null }
   | { state: 'ready'; at: number; listings: FundingContractListing[]; lastAttempt: { at: number; ok: boolean } };
 
-export interface FundingFeedStatus {
+export interface MarketFeedStatus {
   venue: string;
   ok: boolean;
   /** Last successful read; its quotes are still served after a failure. */
@@ -35,7 +35,7 @@ export interface FundingMarketView {
   contracts: FundingContractsView;
   /** Current-period quotes by `legKey`. */
   current: ReadonlyMap<string, CurrentFundingRate>;
-  feeds: FundingFeedStatus[];
+  feeds: MarketFeedStatus[];
 }
 
 export interface FundingMarketDeps {
@@ -46,6 +46,10 @@ export interface FundingMarketDeps {
   now?: () => number;
 }
 
+/** The proven contracts, or none until they have been read. */
+export const readyListings = (contracts: FundingContractsView): FundingContractListing[] =>
+  contracts.state === 'ready' ? contracts.listings : [];
+
 interface VenueQuotes {
   at: number;
   quotes: Map<string, CurrentFundingRate>;
@@ -55,7 +59,7 @@ export function createFundingMarket(deps: FundingMarketDeps) {
   const now = deps.now ?? Date.now;
   let contracts: FundingContractsView = deps.contracts ? { state: 'cold', lastAttempt: null } : { state: 'unwired' };
   const quotes = new Map<string, VenueQuotes>();
-  let feeds: FundingFeedStatus[] = [];
+  let feeds: MarketFeedStatus[] = [];
   let inflight: Promise<void> | null = null;
 
   async function readContracts(read: () => Promise<FundingContractListing[]>): Promise<void> {
@@ -69,20 +73,23 @@ export function createFundingMarket(deps: FundingMarketDeps) {
     }
   }
 
-  async function readVenue(venue: string): Promise<FundingFeedStatus> {
+  async function readVenue(venue: string): Promise<MarketFeedStatus> {
     const prior = quotes.get(venue);
     const kept = { at: prior?.at ?? null, count: prior?.quotes.size ?? 0 };
     const feed = deps.feeds[venue];
     if (!feed) return { venue, ok: false, ...kept, error: 'no-feed' };
+    let rows: VenueFundingRate[];
     try {
-      const rows = await feed();
-      const at = now();
-      quotes.set(venue, { at, quotes: new Map(rows.map((r) => [legKey({ venue, contractId: r.contractId }),
-        { rate: r.rateText, intervalHours: r.intervalHours, at }])) });
-      return { venue, ok: true, at, count: rows.length, error: null };
+      rows = await feed();
     } catch (err) {
       return { venue, ok: false, ...kept, error: classifyGateError(err).category };
     }
+    // A feed that parses to nothing is a broken feed, not a venue with no contracts.
+    if (!rows.length) return { venue, ok: false, ...kept, error: 'empty' };
+    const at = now();
+    quotes.set(venue, { at, quotes: new Map(rows.map((r) => [legKey({ venue, contractId: r.contractId }),
+      { rate: r.rateText, intervalHours: r.intervalHours, at }])) });
+    return { venue, ok: true, at, count: rows.length, error: null };
   }
 
   async function round(): Promise<void> {

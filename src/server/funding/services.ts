@@ -8,15 +8,12 @@
 import { FUNDING_FEEDS } from '../../core/funding/feeds';
 import { FundingHistoryCache, type HistoryLegKey } from '../../core/funding/history-cache';
 import { createFundingHistoryRefresher, type FundingHistorySource } from '../../core/funding/history-collector';
-import { createFundingMarket, type FundingContractListing } from '../../core/funding/market';
+import { createFundingMarket, readyListings, type FundingContractListing } from '../../core/funding/market';
 
 export function createFundingServices(opts: { contracts?: () => Promise<FundingContractListing[]>; sources?: FundingHistorySource[] } = {}) {
   const history = new FundingHistoryCache();
   const market = createFundingMarket({ contracts: opts.contracts, feeds: FUNDING_FEEDS });
-  const listings = (): FundingContractListing[] => {
-    const contracts = market.view().contracts;
-    return contracts.state === 'ready' ? contracts.listings : [];
-  };
+  const listings = () => readyListings(market.view().contracts);
   const refresher = createFundingHistoryRefresher({
     cache: history,
     sources: opts.sources ?? [],

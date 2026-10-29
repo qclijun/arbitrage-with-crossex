@@ -21,7 +21,8 @@ Status: final — 2026-10-27最终共同理解已确认，06已resolved
 | [18](issues/18-funding-page-and-read-api.md) | 正式A页和只读API | 09/10/19 |
 | [19](issues/19-admission-switch-and-legacy-entrypoints.md) | 开关/代次及旧入口兼容、在途隔离 | 20及03/04 |
 | [20](issues/20-ledger-schema-and-upgrade-compatibility.md) | 版本/迁移/备份/程序回退兼容基础 | 04及06 |
-| [21](issues/21-integrated-readiness-and-enablement.md) | 跨票最终验证和人工启用准备证据 | 07—20全部正式交付 |
+| [22](issues/22-history-adapters-and-contract-identity.md) | 官方历史适配器及合约身份证明映射（2026-10-29自18拆出） | 07/08/09/18 |
+| [21](issues/21-integrated-readiness-and-enablement.md) | 跨票最终验证和人工启用准备证据 | 07—20及22全部正式交付 |
 
 06已resolved，所有task移除06阻塞；其余完整边以各票Blocked by为准。10实现消费09缓存，已补齐09依赖。20定义通用版本/迁移协议，12/15等拥有领域schema；19定义开关/兼容，12消费它并拥有原子接受/幂等。18不重做10的领域排序，13不重做12的服务端校验，14不创建第二恢复执行器。单writer、十进制字符串及既有安全边界贯穿全部责任。
 

@@ -1,8 +1,8 @@
 /** Invented opportunities-page payloads (ticket 18) for UI tests; nothing here is a venue read. */
+import { HISTORY_DAYS as DAYS } from '../../../src/core/funding/history';
 import type { BoardRow, BoardWindow, FundingBoard } from '../api/fundingOpportunities';
 
 const CUTOFF = Date.UTC(2026, 9, 1);
-const DAYS = [7, 30, 90, 180, 365] as const;
 
 const legHistory = (total: string, annualized: string, coverage: 'complete' | 'unknown' | 'unsupported' = 'complete') => ({
   coverage, fresh: true, total: coverage === 'complete' ? total : null, annualized: coverage === 'complete' ? annualized : null,
@@ -33,7 +33,7 @@ export function boardRow(underlying: string, short: string, long: string, rank: 
 export function fundingBoard(over: Partial<FundingBoard> = {}): FundingBoard {
   const rows = [
     boardRow('BTC', 'BINANCE BTCUSDT', 'BYBIT BTCUSDT', 1, '0.438', {
-      current: { short: { rate: '0.0001', intervalHours: 8, at: CUTOFF }, long: { rate: '0.0002', intervalHours: 8, at: CUTOFF },
+      current: { short: { rate: '0.0000125', intervalHours: 1, at: CUTOFF }, long: { rate: '0.0002', intervalHours: 8, at: CUTOFF },
         netAnnualized: '-0.1095', reversed: true },
     }),
     boardRow('BTC', 'BYBIT BTCUSDT', 'BINANCE BTCUSDT', 2, '-0.438'),

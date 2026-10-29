@@ -51,7 +51,25 @@ export function coverageLabel(coverage: BoardWindow['coverage']): string {
 export function windowValue(w: BoardWindow | undefined): { text: string; known: boolean } {
   if (!w) return { text: '—', known: false };
   if (w.netAnnualized === null) return { text: coverageLabel(w.coverage), known: false };
-  return { text: `${(Number(w.netAnnualized) * 100).toFixed(2)}%`, known: true };
+  return { text: pct(w.netAnnualized), known: true };
 }
 
-export const pct = (fraction: string): string => `${(Number(fraction) * 100).toFixed(2)}%`;
+/** An exact decimal fraction as an exact percent, by moving the point: no float. */
+export function pctExact(fraction: string): string | null {
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(fraction);
+  if (!m) return null;
+  const decimals = (m[3] ?? '').padEnd(2, '0');
+  const whole = (m[2] + decimals.slice(0, 2)).replace(/^0+(?=\d)/, '');
+  const rest = decimals.slice(2).replace(/0+$/, '');
+  return `${m[1]}${whole}${rest ? `.${rest}` : ''}`;
+}
+
+/** Two decimals for display; a non-zero value too small for them keeps two significant digits instead of reading as 0.00%. */
+export function pct(fraction: string): string {
+  const exact = pctExact(fraction);
+  if (exact === null) return '—';
+  const n = Number(exact);
+  if (n === 0 || Math.abs(n) >= 0.005) return `${n.toFixed(2)}%`;
+  const m = /^(-?)0\.(0*)(\d{1,2})/.exec(exact)!;
+  return `${m[1]}0.${m[2]}${m[3]}%`;
+}

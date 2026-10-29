@@ -1,6 +1,6 @@
 import type { BoardRow, FundingBoard } from '../../api/fundingOpportunities';
 import { VenueChip } from '../../components/VenueChip';
-import { windowValue } from './labels';
+import { coverageLabel, windowValue } from './labels';
 
 /** A window's figure; only an eligible one is coloured, so stale evidence never reads as a live ranking. */
 function Rate({ row, days }: { row: BoardRow; days: number }) {
@@ -13,8 +13,8 @@ function Rate({ row, days }: { row: BoardRow; days: number }) {
 
 function Status({ row, days }: { row: BoardRow; days: number }) {
   const selected = row.windows.find((w) => w.days === days);
-  const stale = selected?.reasons.some((r) => r.endsWith('history-stale') || r === 'history-cutoff-behind');
-  const label = row.rank !== null ? 'Ranked' : stale ? 'STALE' : 'UNKNOWN';
+  // Complete history that is not ranked can only be out of date; otherwise the coverage says why.
+  const label = row.rank !== null ? 'Ranked' : !selected ? 'UNKNOWN' : selected.coverage === 'complete' ? 'STALE' : coverageLabel(selected.coverage);
   return (
     <span className="flex flex-col gap-0.5 text-[11px]">
       <span className={row.rank !== null ? 'text-ink-300' : 'text-amber-300/90'}>{label}</span>

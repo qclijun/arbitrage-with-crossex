@@ -1,6 +1,6 @@
 import type { BoardLegHistory, BoardRow, BoardWindow } from '../../api/fundingOpportunities';
 import { fmtTime, toDate } from '../../lib/fmt';
-import { coverageLabel, pct, reasonText, windowValue } from './labels';
+import { coverageLabel, pct, pctExact, reasonText, windowValue } from './labels';
 
 const micro = 'text-[11px] text-ink-400';
 const section = 'mt-4 border-t border-ink-800 pt-3';
@@ -34,7 +34,7 @@ function WindowRow({ w, underlying }: { w: BoardWindow; underlying: string }) {
  * and current-rate evidence; costs, sizing and opening are not wired yet.
  */
 export function CandidateDetail({ row, days, snapshotId }: { row: BoardRow; days: number; snapshotId: string | null }) {
-  const verifiedAt = row.windows.find((w) => w.days === days)?.legs;
+  const selectedLegs = row.windows.find((w) => w.days === days)?.legs;
   return (
     <aside aria-label="Candidate detail" className="min-w-0 rounded border border-ink-800 p-3 text-[12px]">
       <h3 className="text-[14px] font-semibold text-ink-50">{row.underlying}</h3>
@@ -53,9 +53,9 @@ export function CandidateDetail({ row, days, snapshotId }: { row: BoardRow; days
         <tbody>{row.windows.map((w) => <WindowRow key={w.days} w={w} underlying={row.underlying} />)}</tbody>
       </table>
       </div>
-      {verifiedAt && (
+      {selectedLegs && (
         <p className={`mt-1 ${micro}`}>
-          Verified {fmtTime(toDate(verifiedAt.short.verifiedAt))} (short) / {fmtTime(toDate(verifiedAt.long.verifiedAt))} (long)
+          Verified {fmtTime(toDate(selectedLegs.short.verifiedAt))} (short) / {fmtTime(toDate(selectedLegs.long.verifiedAt))} (long)
         </p>
       )}
 
@@ -63,10 +63,15 @@ export function CandidateDetail({ row, days, snapshotId }: { row: BoardRow; days
         <h4 className="font-semibold text-ink-100">Current period</h4>
         {row.current ? (
           <>
-            <p className="num">
-              Short {pct(row.current.short.rate)} / {row.current.short.intervalHours}h · Long {pct(row.current.long.rate)} / {row.current.long.intervalHours}h
-              · net {pct(row.current.netAnnualized)} APR
-            </p>
+            {(['short', 'long'] as const).map((side) => {
+              const q = row.current![side];
+              return (
+                <p key={side} className="num">
+                  {side === 'short' ? 'Short' : 'Long'} {pctExact(q.rate)}% / {q.intervalHours}h <span className={micro}>read {fmtTime(toDate(q.at))}</span>
+                </p>
+              );
+            })}
+            <p className="num">Net {pct(row.current.netAnnualized)} APR at each leg&apos;s own interval</p>
             {row.current.reversed && (
               <p className="text-amber-300/90">Current spread runs opposite to the {days}d history — a hint only; the pair is not swapped or re-ranked.</p>
             )}
@@ -81,7 +86,7 @@ export function CandidateDetail({ row, days, snapshotId }: { row: BoardRow; days
         {row.executionBlockers.length ? (
           <ul className="list-disc pl-4">{row.executionBlockers.map((b) => <li key={b}>{reasonText(b, row.underlying)}</li>)}</ul>
         ) : (
-          <p className={micro}>None known from the listing. History-eligible is still not permission to open.</p>
+          <p className={micro}>None known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.</p>
         )}
       </div>
 

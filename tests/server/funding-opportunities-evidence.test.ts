@@ -120,6 +120,13 @@ describe('funding opportunities evidence', () => {
     });
     expect(deal.status).toBe(409);
     expect(deal.body.error.label).toBe('funding-admission-required');
+    // An old client's open (no purpose) on the same legs is refused too, before any venue read.
+    const legacy = await w.post('/api/deals', {
+      id: 'forged-legacy', qty: '0.01', execution: 'maker', price: '60000', timeoutSec: 300,
+      a: { symbol: 'BYBIT_FUTURE_BTC_USDT', side: 'BUY' }, b: { symbol: 'BINANCE_FUTURE_BTC_USDT', side: 'SELL' },
+    });
+    expect(legacy.status).toBe(400);
+    expect(legacy.body.error.label).toBe('client-outdated');
     expect(w.store.listPairs()).toEqual([]);
     expect(w.venue.createCalls).toEqual([]);
     expect(w.venue.leverageCalls).toEqual([]);

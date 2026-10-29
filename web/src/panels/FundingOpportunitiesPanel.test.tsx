@@ -46,7 +46,9 @@ describe('FundingOpportunitiesPanel', () => {
     expect(rows[0]).toHaveTextContent('Current reversed');
     // Negative and UNKNOWN rows stay listed; UNKNOWN is never a number.
     expect(rows[1]).toHaveTextContent('-43.80%');
-    expect(rows[2]).toHaveTextContent('UNSUPPORTED');
+    // The status names the coverage itself: UNSUPPORTED is not UNKNOWN.
+    expect(rows[2].lastChild).toHaveTextContent('UNSUPPORTED');
+    expect(rows[2].lastChild).not.toHaveTextContent('UNKNOWN');
     expect(rows[3]).toHaveTextContent('UNKNOWN');
     expect(rows[3]).toHaveTextContent('Observe only');
 
@@ -56,6 +58,9 @@ describe('FundingOpportunitiesPanel', () => {
     expect(d).toHaveTextContent('Direction is fixed');
     expect(within(d).getAllByRole('row').slice(1).map((r) => r.firstChild?.textContent)).toEqual(['7d', '30d', '90d', '180d', '365d']);
     expect(d).toHaveTextContent('-10.95%');
+    // A current quote shows its exact rate and when it was read.
+    expect(d).toHaveTextContent('Short 0.00125% / 1h');
+    expect(d).toHaveTextContent(/read (\d\d-\d\d )?\d\d:\d\d:\d\d/);
     expect(d).toHaveTextContent('a hint only');
     expect(d).toHaveTextContent('Costs and sizing: UNKNOWN');
     expect(screen.getByText(/Manual opening is not enabled/)).toBeInTheDocument();
@@ -121,5 +126,15 @@ describe('FundingOpportunitiesPanel', () => {
     expect(spreads).toHaveLength(0);
     fireEvent.click(screen.getByText(/Current rates \(unranked/));
     await waitFor(() => expect(spreads).toHaveLength(1));
+  });
+
+  it('never rounds a real non-zero figure to zero, and names a failed first contract read', async () => {
+    const board = fundingBoard({ contracts: { state: 'cold', at: null, lastAttempt: { at: 1, ok: false }, count: 0, unpaired: [] } });
+    board.rows[0].windows[1].netAnnualized = '0.00004';
+    serve(board);
+    renderWithClient(<FundingOpportunitiesPanel />);
+    await screen.findByRole('table', { name: 'Directed funding pairs' });
+    expect(within(table()).getAllByRole('row')[1]).toHaveTextContent('0.004%');
+    expect(screen.getByText(/The contract list could not be read/)).toBeInTheDocument();
   });
 });

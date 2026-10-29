@@ -7,6 +7,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { CoreError } from '../../core/errors';
+import { HISTORY_DAYS } from '../../core/funding/history';
 import type { AppDeps } from '../app';
 import { buildFundingBoard, isHistoryDays, type BoardQuery } from '../funding/board';
 
@@ -21,7 +22,7 @@ function integer(raw: string | undefined, fallback: number, name: string, min: n
 
 function days(raw: string | undefined, fallback: number, name: string) {
   const n = integer(raw, fallback, name, 1);
-  if (!isHistoryDays(n)) throw new CoreError(`${name} must be one of 7, 30, 90, 180, 365`, 'validation');
+  if (!isHistoryDays(n)) throw new CoreError(`${name} must be one of ${HISTORY_DAYS.join(', ')}`, 'validation');
   return n;
 }
 

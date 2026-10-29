@@ -104,4 +104,18 @@ describe('funding market poller', () => {
     ]);
     expect(view.current.has(legKey({ venue: 'OKX', contractId: 'BTC-USDT-SWAP' }))).toBe(false);
   });
+
+  it('a feed that prices nothing is a broken read, not a venue with no contracts: the last quotes stay', async () => {
+    const w = world();
+    let empty = false;
+    const feeds = { ...w.feeds, BINANCE: async () => (empty ? [] : [quote('BTCUSDT', '0.0001')]) };
+    const market = createFundingMarket({ contracts: w.contracts, feeds, now: w.now });
+    await market.runOnce();
+    w.advance(60_000);
+    empty = true;
+    await market.runOnce();
+    const view = market.view();
+    expect(view.feeds.find((f) => f.venue === 'BINANCE')).toEqual({ venue: 'BINANCE', ok: false, at: 1_000_000, count: 1, error: 'empty' });
+    expect(view.current.get(legKey({ venue: 'BINANCE', contractId: 'BTCUSDT' }))).toEqual({ rate: '0.0001', intervalHours: 8, at: 1_000_000 });
+  });
 });

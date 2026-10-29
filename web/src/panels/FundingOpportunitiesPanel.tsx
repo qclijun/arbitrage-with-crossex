@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { HISTORY_DAYS } from '../../../src/core/funding/history';
 import { useFundingOpportunities, type BoardParams, type FundingBoard } from '../api/fundingOpportunities';
 import { Chip } from '../components/Chip';
 import { QueryError } from '../components/QueryError';
@@ -9,7 +10,6 @@ import { CandidateTable } from './funding/CandidateTable';
 import { UNPAIRED } from './funding/labels';
 import { FundingSpreadsPanel } from './FundingSpreadsPanel';
 
-const WINDOWS = [7, 30, 90, 180, 365];
 const micro = 'text-[11px] text-ink-400';
 
 /** Why the page shows less than a full market, in the server's own terms. */
@@ -22,7 +22,11 @@ function Notices({ board }: { board: FundingBoard }) {
         Manual opening is not enabled{board.admission?.open ? ' on this page yet' : ''} — this page only observes.
       </Chip>
       {contracts.state === 'unwired' && <Chip sm tone="amber">No proven contract mapping is wired yet — no candidates can be formed.</Chip>}
-      {contracts.state === 'cold' && <Chip sm tone="amber">The contract list has not been read yet.</Chip>}
+      {contracts.state === 'cold' && (
+        <Chip sm tone="amber">
+          {contracts.lastAttempt ? 'The contract list could not be read — no candidates yet.' : 'The contract list has not been read yet.'}
+        </Chip>
+      )}
       {contracts.lastAttempt?.ok === false && contracts.at !== null && (
         <Chip sm tone="amber">Contract list refresh failed — using the list read {fmtTime(toDate(contracts.at))}.</Chip>
       )}
@@ -47,7 +51,7 @@ function Filters({ board, params, set }: { board: FundingBoard | undefined; para
   return (
     <div className="mb-3 flex flex-wrap items-center gap-3">
       <span className="inline-flex gap-1" role="group" aria-label="History window">
-        {WINDOWS.map((d) => (
+        {HISTORY_DAYS.map((d) => (
           <button key={d} type="button" aria-pressed={params.days === d} onClick={() => set({ days: d })}
             className={`rounded px-2 py-0.5 text-[11px] ${params.days === d ? 'bg-ink-700 text-ink-50' : 'text-ink-400'}`}>
             {d}d
