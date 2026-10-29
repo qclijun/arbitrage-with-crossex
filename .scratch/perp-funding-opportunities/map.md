@@ -67,3 +67,4 @@ Updated: 2026-10-27 Asia/Taipei
 逐票签收结论见[完成验收记录](map-acceptance.md)（08—11、20、19、15、16已resolved）。
 - 2026-10-29：[18](issues/18-funding-page-and-read-api.md)已claimed并实施（待签收）：正式A页与只读API，后台市场轮询、排名指纹跨页；用户决定真实历史适配器与合约身份映射另开[22](issues/22-history-adapters-and-contract-identity.md)（21增依赖22），旧当前费率表保留为折叠视图。见[18实施交接](evidence/18-implementation-handoff.md)。人工开仓仍关闭。
 - 2026-10-29：[13](issues/13-exact-prefill-and-confirmation.md)已claimed并实施（待签收）：A页详情内精确两腿预览/确认/长按接受，内存回执；持久身份与恢复归14。见[13实施交接](evidence/13-implementation-handoff.md)。人工开仓仍默认关闭。
+- 2026-10-29：[14](issues/14-durable-submission-and-resume.md)已claimed并实施（待签收）：提交前每意图localStorage持久记录（失败不发送），丢响应按原id查询，服务端按预览到期/消费/未知证明迟到不可接受才释放；刷新/跨页恢复真实回执（含dust、在途≠成交、隔离原样），按候选只读列账本意图。见[14实施交接](evidence/14-implementation-handoff.md)。人工开仓仍默认关闭。
