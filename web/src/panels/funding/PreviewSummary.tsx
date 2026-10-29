@@ -18,7 +18,7 @@ export function warningText(code: string): string {
 }
 
 const money = (v: string | null, currency: string) => (v === null ? 'UNKNOWN' : `${v} ${currency}`);
-const days = (v: string) => (/^-?\d/.test(v) ? `${v} d` : v === 'unknown' ? 'UNKNOWN' : v);
+const paybackText = (v: string) => (/^-?\d/.test(v) ? `${v} d` : v === 'unknown' ? 'UNKNOWN' : v);
 
 /** Everything the user confirms, exactly as the server bound it. */
 export function PreviewSummary({ preview }: { preview: FundingPreview }) {
@@ -53,11 +53,11 @@ export function PreviewSummary({ preview }: { preview: FundingPreview }) {
         <tbody>
           <tr className="border-t border-ink-800">
             <td>Maker fills, hedge taker</td><td className="num">{money(c.amounts.normalOneTime, c.currency)}</td>
-            <td className="num">{money(c.amounts.normalHold, c.currency)}</td><td className="num">{days(c.payback.normal)}</td>
+            <td className="num">{money(c.amounts.normalHold, c.currency)}</td><td className="num">{paybackText(c.payback.normal)}</td>
           </tr>
           <tr className="border-t border-ink-800">
             <td>Maker remainder converts to taker</td><td className="num">{money(c.amounts.conversionOneTime, c.currency)}</td>
-            <td className="num">{money(c.amounts.conversionHold, c.currency)}</td><td className="num">{days(c.payback.conversion)}</td>
+            <td className="num">{money(c.amounts.conversionHold, c.currency)}</td><td className="num">{paybackText(c.payback.conversion)}</td>
           </tr>
         </tbody>
       </table>

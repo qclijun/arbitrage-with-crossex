@@ -27,3 +27,4 @@ Blocked by: 03, 05, 12, 18
 - 2026-10-27：06候选定稿：消费18正式A页及12协议，把11金额/费用情景、精确参数和人工确认接入右侧连续详情；不开新独立交易捷径。观察阶段保持关闭，完整启用等待21及用户明确操作。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
 - 2026-10-29：用户确认范围与接缝并claimed：A页右侧详情内新建`FundingOrderForm`，复用HoldToConfirmButton(800ms)，只走12协议（`/funding/preview`→`/funding/intents`），不改PairTicket/ExecuteControl及四腿/三腿入口；13只做内存回执（确认时生成intentId、202/200回执与本页轮询、409附新预览即替换并清确认、网络错误显示结果未知且禁止新建、不自动重试），intentId持久化/丢响应查询/刷新恢复归14；持有天数必填无默认；准入关闭时可预览不可提交。测试接缝：web组件`FundingOrderForm`（msw），服务端不改。
+- 2026-10-29：实现197f1cd＋审查修正（本次提交）：详情内`FundingOrderForm`走12协议，编辑/新snapshot作废预览与确认，到期以服务端口径且受请求发出时刻约束，409新预览替换，网络错误/5xx结果未知不重试并阻止本页新开，回执轮询至DONE。默认`yarn verify`退出0、build通过。等待用户签收，不启用交易。详见[13实施交接](../evidence/13-implementation-handoff.md)。

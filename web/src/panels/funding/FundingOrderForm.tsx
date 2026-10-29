@@ -1,7 +1,10 @@
+import type { HistoryDays } from '../../../../src/core/funding/history';
+import type { FundingReceipt } from '../../api/fundingIntents';
 import type { BoardRow } from '../../api/fundingOpportunities';
 import { HoldToConfirmButton } from '../../components/HoldToConfirmButton';
 import { FundingReceiptView } from './FundingReceiptView';
-import type { OrderDraft } from './orderDraft';
+import { decimalSign } from './labels';
+import { TIMEOUT_RANGE, type OrderDraft } from './orderDraft';
 import { PreviewSummary, warningText } from './PreviewSummary';
 import { useFundingOrder } from './useFundingOrder';
 
@@ -26,47 +29,52 @@ function Field({ label, value, error, disabled, onChange, placeholder }: {
  * through ticket 12, confirms what the server bound, and holds to accept.
  * The server re-checks everything; this form never decides admission.
  */
-export function FundingOrderForm({ row, days, snapshotId, admissionOpen, blocked = null, onUnknown, holdMs, now = Date.now }: {
-  row: BoardRow; days: number; snapshotId: string; admissionOpen: boolean;
+export function FundingOrderForm({ row, days, snapshotId, admissionOpen, blocked = null, accepted = null, onAccepted, onUnknown, holdMs, now = Date.now }: {
+  row: BoardRow; days: HistoryDays; snapshotId: string; admissionOpen: boolean;
   /** An earlier acceptance on this page whose result is unknown: nothing new may start. */
   blocked?: string | null;
+  /** This pair's acceptance on this page, shown instead of a new draft. */
+  accepted?: FundingReceipt | null;
+  onAccepted?: (receipt: FundingReceipt) => void;
   onUnknown?: (intentId: string) => void; holdMs?: number; now?: () => number;
 }) {
-  const o = useFundingOrder({ row, days, snapshotId, now, onUnknown });
-  const { draft, errors, stage } = o;
+  const order = useFundingOrder({ row, days, snapshotId, now, accepted, onAccepted, onUnknown });
+  const { draft, errors, stage } = order;
+  if (stage.kind === 'accepted') return <FundingReceiptView accepted={stage.receipt} />;
   if (!row.short.symbol || !row.long.symbol) {
     return <p className={micro}>This pair cannot be opened: a leg has no proven CrossEx symbol.</p>;
   }
-  const off = o.locked || !!blocked;
-  const set = <K extends keyof OrderDraft>(k: K) => (v: OrderDraft[K]) => o.edit(k, v);
+  const frozen = order.locked || !!blocked;
+  const setField = <K extends keyof OrderDraft>(k: K) => (v: OrderDraft[K]) => order.edit(k, v);
   const preview = stage.kind === 'preview' || stage.kind === 'sending' ? stage.preview : null;
-  const negativeHistory = Number(row.windows.find((w) => w.days === days)?.netTotal ?? NaN) <= 0;
-  const canHold = stage.kind === 'preview' && !!stage.preview.previewId && !o.expired && admissionOpen && !blocked
-    && o.acks.conversion && o.acks.risks;
+  const historySign = decimalSign(row.windows.find((w) => w.days === days)?.netTotal);
+  const negativeHistory = historySign === 0 || historySign === -1;
+  const canHold = stage.kind === 'preview' && !!stage.preview.previewId && !order.expired && admissionOpen && !blocked
+    && order.acks.conversion && order.acks.risks;
 
   return (
     <div aria-label="Open this pair" role="group" className="text-[12px]">
       <div className="flex flex-wrap gap-3">
-        <Field label={`Quantity (${row.underlying})`} value={draft.quantity} error={errors.quantity} disabled={off} onChange={set('quantity')} />
-        <Field label="Short leverage" value={draft.leverageShort} error={errors.leverageShort} disabled={off} onChange={set('leverageShort')} />
-        <Field label="Long leverage" value={draft.leverageLong} error={errors.leverageLong} disabled={off} onChange={set('leverageLong')} />
-        <Field label="Maker price" value={draft.makerPrice} error={errors.makerPrice} disabled={off} onChange={set('makerPrice')} placeholder="best" />
-        <Field label="Maker timeout (s)" value={draft.timeoutSec} error={errors.timeoutSec} disabled={off} onChange={set('timeoutSec')} />
-        <Field label="Hold days" value={draft.holdDays} error={errors.holdDays} disabled={off} onChange={set('holdDays')} />
+        <Field label={`Quantity (${row.underlying})`} value={draft.quantity} error={errors.quantity} disabled={frozen} onChange={setField('quantity')} />
+        <Field label="Short leverage" value={draft.leverageShort} error={errors.leverageShort} disabled={frozen} onChange={setField('leverageShort')} />
+        <Field label="Long leverage" value={draft.leverageLong} error={errors.leverageLong} disabled={frozen} onChange={setField('leverageLong')} />
+        <Field label="Maker price" value={draft.makerPrice} error={errors.makerPrice} disabled={frozen} onChange={setField('makerPrice')} placeholder="best" />
+        <Field label="Maker timeout (s)" value={draft.timeoutSec} error={errors.timeoutSec} disabled={frozen} onChange={setField('timeoutSec')} />
+        <Field label="Hold days" value={draft.holdDays} error={errors.holdDays} disabled={frozen} onChange={setField('holdDays')} />
       </div>
-      <p className={micro}>Maker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.</p>
-      <fieldset className="mt-2 flex gap-4" disabled={off}>
+      <p className={micro}>Maker timeout {TIMEOUT_RANGE.min}–{TIMEOUT_RANGE.max} s ({TIMEOUT_RANGE.default} default). Hold days only shape the scenarios below.</p>
+      <fieldset className="mt-2 flex gap-4" disabled={frozen}>
         <legend className={micro}>Maker leg (the other leg hedges as taker)</legend>
         {(['short', 'long'] as const).map((side) => (
           <label key={side} className="flex items-center gap-1.5">
-            <input type="radio" name={`maker-${row.id}`} checked={draft.makerLeg === side} onChange={() => o.edit('makerLeg', side)}
+            <input type="radio" name={`maker-${row.id}`} checked={draft.makerLeg === side} onChange={() => order.edit('makerLeg', side)}
               aria-label={`Maker: ${side} ${row[side].venue}`} />
             {side} {row[side].venue} {row[side].contractId}
           </label>
         ))}
       </fieldset>
-      <button type="button" className="mt-2 rounded border border-ink-600 px-3 py-1" disabled={off || stage.kind === 'previewing' || Object.keys(errors).length > 0}
-        onClick={() => void o.requestPreview()}>
+      <button type="button" className="mt-2 rounded border border-ink-600 px-3 py-1" disabled={frozen || stage.kind === 'previewing' || Object.keys(errors).length > 0}
+        onClick={() => void order.requestPreview()}>
         Preview
       </button>
       {stage.kind === 'draft' && stage.message && <p role="alert" className="mt-2 text-rose-300">{stage.message}</p>}
@@ -81,23 +89,22 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, blocked
           )}
           <ul className="mt-2 list-disc pl-4 text-ink-300">{preview.content.warnings.map((w) => <li key={w}>{warningText(w)}</li>)}</ul>
           <label className="mt-2 flex items-center gap-1.5">
-            <input type="checkbox" checked={o.acks.conversion} disabled={off} onChange={(e) => o.setAcks((a) => ({ ...a, conversion: e.target.checked }))} />
+            <input type="checkbox" checked={order.acks.conversion} disabled={frozen} onChange={(e) => order.setAcks((a) => ({ ...a, conversion: e.target.checked }))} />
             I authorize converting the unfilled maker remainder to taker after {preview.content.timeoutSec} s.
           </label>
           <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={o.acks.risks} disabled={off} onChange={(e) => o.setAcks((a) => ({ ...a, risks: e.target.checked }))} />
+            <input type="checkbox" checked={order.acks.risks} disabled={frozen} onChange={(e) => order.setAcks((a) => ({ ...a, risks: e.target.checked }))} />
             I accept the risks listed above.
           </label>
           <p className={micro}>
-            {o.expired ? 'Preview expired — preview again.' : stage.kind === 'preview' ? `Valid for ${Math.max(0, Math.ceil((stage.deadline - o.clock) / 1000))} s.` : ''}
+            {order.expired ? 'Preview expired — preview again.' : stage.kind === 'preview' ? `Valid for ${Math.max(0, Math.ceil((stage.deadline - order.clock) / 1000))} s.` : ''}
             {!admissionOpen && ' Manual opening is not enabled: this preview can only be observed.'}
           </p>
-          <HoldToConfirmButton onConfirm={() => void o.confirm()} disabled={!canHold} holdMs={holdMs} className="mt-2">
+          <HoldToConfirmButton onConfirm={() => void order.confirm()} disabled={!canHold} holdMs={holdMs} className="mt-2">
             Hold to open
           </HoldToConfirmButton>
         </>
       )}
-      {stage.kind === 'accepted' && <FundingReceiptView accepted={stage.receipt} />}
       {stage.kind === 'unknown' && (
         <p role="alert" className="mt-2 text-rose-300">
           Result unknown for intent {stage.intentId}: it may have been accepted. Do not open again; nothing was retried. ({stage.message})

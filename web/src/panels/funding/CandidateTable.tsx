@@ -1,13 +1,13 @@
 import type { BoardRow, FundingBoard } from '../../api/fundingOpportunities';
 import { VenueChip } from '../../components/VenueChip';
-import { coverageLabel, windowValue } from './labels';
+import { coverageLabel, decimalSign, windowValue } from './labels';
 
 /** A window's figure; only an eligible one is coloured, so stale evidence never reads as a live ranking. */
 function Rate({ row, days }: { row: BoardRow; days: number }) {
   const w = row.windows.find((x) => x.days === days);
   const { text, known } = windowValue(w);
-  const n = Number(w?.netAnnualized);
-  const tone = !known ? 'text-amber-300/90' : !w?.eligible ? 'text-ink-500' : n > 0 ? 'text-emerald-400' : n < 0 ? 'text-rose-400' : 'text-ink-300';
+  const sign = decimalSign(w?.netAnnualized);
+  const tone = !known ? 'text-amber-300/90' : !w?.eligible ? 'text-ink-500' : sign === 1 ? 'text-emerald-400' : sign === -1 ? 'text-rose-400' : 'text-ink-300';
   return <span className={`num ${tone}`}>{text}</span>;
 }
 

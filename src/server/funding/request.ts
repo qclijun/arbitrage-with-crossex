@@ -12,6 +12,7 @@ import { exact, sign } from '../../core/funding/exact';
 import { HISTORY_DAYS, type HistoryDays } from '../../core/funding/history';
 import type { Side } from '../../core/funding/scenario';
 import { parseSymbol } from '../../core/numbers';
+import { TIMEOUT_DEFAULT_S, TIMEOUT_MAX_S, TIMEOUT_MIN_S } from './timeouts';
 
 export interface RequestLeg { venue: string; contractId: string; symbol: string }
 
@@ -31,9 +32,7 @@ export interface PreviewRequest {
   holdDays: string;
 }
 
-export const TIMEOUT_DEFAULT_S = 300;
-export const TIMEOUT_MIN_S = 30;
-export const TIMEOUT_MAX_S = 3_600;
+export { TIMEOUT_DEFAULT_S, TIMEOUT_MAX_S, TIMEOUT_MIN_S };
 /** Amounts are shown in the legs' shared quote; a USDT/USDC mix in USDT. */
 export function currencyOf(r: Pick<PreviewRequest, 'short' | 'long'>): string {
   const [a, b] = [parseSymbol(r.short.symbol).quote, parseSymbol(r.long.symbol).quote];

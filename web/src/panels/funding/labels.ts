@@ -54,6 +54,13 @@ export function windowValue(w: BoardWindow | undefined): { text: string; known: 
   return { text: pct(w.netAnnualized), known: true };
 }
 
+/** The sign of a decimal string, read from its digits: -1, 0 or 1; null when it is not a decimal. */
+export function decimalSign(value: string | null | undefined): -1 | 0 | 1 | null {
+  if (value == null || !/^-?\d+(\.\d+)?$/.test(value)) return null;
+  if (!/[1-9]/.test(value)) return 0;
+  return value.startsWith('-') ? -1 : 1;
+}
+
 /** An exact decimal fraction as an exact percent, by moving the point: no float. */
 export function pctExact(fraction: string): string | null {
   const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(fraction);

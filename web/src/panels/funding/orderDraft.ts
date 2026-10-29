@@ -3,12 +3,15 @@
  * Nothing is defaulted that the user must choose — maker leg, both leverages,
  * quantity and hold days — and a value out of range is an error, never clamped.
  */
-import type { BoardRow } from '../../api/fundingOpportunities';
+import type { HistoryDays } from '../../../../src/core/funding/history';
+import type { Side } from '../../../../src/core/funding/scenario';
+import { TIMEOUT_DEFAULT_S, TIMEOUT_MAX_S, TIMEOUT_MIN_S } from '../../../../src/server/funding/timeouts';
 import type { FundingPreviewRequest } from '../../api/fundingIntents';
+import type { BoardRow } from '../../api/fundingOpportunities';
 
 export interface OrderDraft {
   quantity: string;
-  makerLeg: 'short' | 'long' | null;
+  makerLeg: Side | null;
   leverageShort: string;
   leverageLong: string;
   /** Blank: rest at the maker leg's own-side best, read and bound by the preview. */
@@ -18,13 +21,13 @@ export interface OrderDraft {
 }
 
 export const EMPTY_DRAFT: OrderDraft = {
-  quantity: '', makerLeg: null, leverageShort: '', leverageLong: '', makerPrice: '', timeoutSec: '300', holdDays: '',
+  quantity: '', makerLeg: null, leverageShort: '', leverageLong: '', makerPrice: '', timeoutSec: String(TIMEOUT_DEFAULT_S), holdDays: '',
 };
 
 const DECIMAL = /^\d+(\.\d{1,12})?$/;
 const positive = (v: string) => DECIMAL.test(v) && /[1-9]/.test(v);
 const LEVERAGE = /^[1-9]\d{0,2}$/;
-export const TIMEOUT_RANGE = { min: 30, max: 3_600 };
+export const TIMEOUT_RANGE = { min: TIMEOUT_MIN_S, max: TIMEOUT_MAX_S, default: TIMEOUT_DEFAULT_S };
 
 /** Why the draft cannot be previewed yet, per field; empty when it can. */
 export function draftErrors(d: OrderDraft): Partial<Record<keyof OrderDraft, string>> {
@@ -41,7 +44,7 @@ export function draftErrors(d: OrderDraft): Partial<Record<keyof OrderDraft, str
 }
 
 /** The exact request for this candidate; call only on a draft without errors. */
-export function previewRequest(row: BoardRow, days: number, snapshotId: string, d: OrderDraft): FundingPreviewRequest {
+export function previewRequest(row: BoardRow, days: HistoryDays, snapshotId: string, d: OrderDraft): FundingPreviewRequest {
   return {
     underlying: row.underlying,
     short: { venue: row.short.venue, contractId: row.short.contractId, symbol: row.short.symbol! },

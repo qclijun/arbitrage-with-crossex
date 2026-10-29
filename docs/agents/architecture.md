@@ -48,10 +48,12 @@ code allowed to mutate state or call venue-mutating endpoints.
   (`server/funding/`, `/api/funding/*`) relies on this: its preview and acceptance
   only read, and acceptance writes intent, slice and deal in one admission
   transaction. The older `POST /deals` still sets leverage itself — a known exception.
-  The read-only opportunities page (`GET /api/funding/opportunities`,
-  `server/funding/board.ts`) ranks from memory only: the published history cache
-  and `core/funding/market.ts`, both filled by background pollers
+  The opportunities page ranks from memory only (`GET /api/funding/opportunities`,
+  `server/funding/board.ts`): the published history cache and
+  `core/funding/market.ts`, both filled by background pollers
   (`server/funding/services.ts`), so a browser request never reaches a venue.
+  Its order form (`web/src/panels/funding/`) opens a pair only through that
+  preview and acceptance; it never posts `/deals`.
 
 ### Layers
 

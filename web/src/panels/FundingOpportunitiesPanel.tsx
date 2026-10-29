@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { HISTORY_DAYS } from '../../../src/core/funding/history';
+import type { FundingReceipt } from '../api/fundingIntents';
 import { useFundingOpportunities, type BoardParams, type FundingBoard } from '../api/fundingOpportunities';
 import { Chip } from '../components/Chip';
 import { QueryError } from '../components/QueryError';
@@ -100,6 +101,8 @@ export function FundingOpportunitiesPanel() {
   const [changed, setChanged] = useState(false);
   // An acceptance whose result is unknown blocks every new open on this page (ticket 14 looks it up).
   const [unknownIntent, setUnknownIntent] = useState<string | null>(null);
+  // Acceptances made on this page, by pair, so returning to a pair shows its receipt (ticket 14 restores across reloads).
+  const [accepted, setAccepted] = useState<Record<string, FundingReceipt>>({});
   const { data, isPending, isError, error } = useFundingOpportunities(params);
 
   // The server answered page one of a new ranking: follow it, and say so.
@@ -165,7 +168,8 @@ export function FundingOpportunitiesPanel() {
             </div>
             {selected && (
               <CandidateDetail row={selected} days={data.days} snapshotId={data.snapshotId} admissionOpen={!!data.admission?.open}
-                blocked={unknownIntent} onUnknown={setUnknownIntent} />
+                blocked={unknownIntent} accepted={accepted[selected.id] ?? null}
+                onAccepted={(receipt) => setAccepted((all) => ({ ...all, [selected.id]: receipt }))} onUnknown={setUnknownIntent} />
             )}
           </div>
         </>

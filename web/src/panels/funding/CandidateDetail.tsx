@@ -1,3 +1,5 @@
+import type { HistoryDays } from '../../../../src/core/funding/history';
+import type { FundingReceipt } from '../../api/fundingIntents';
 import type { BoardLegHistory, BoardRow, BoardWindow } from '../../api/fundingOpportunities';
 import { fmtTime, toDate } from '../../lib/fmt';
 import { FundingOrderForm } from './FundingOrderForm';
@@ -31,13 +33,17 @@ function WindowRow({ w, underlying }: { w: BoardWindow; underlying: string }) {
 }
 
 /**
- * The selected pair, both legs fixed as listed. Everything here is history
- * and current-rate evidence; costs, sizing and opening are not wired yet.
+ * The selected pair, both legs fixed as listed: its history and current-rate
+ * evidence, and the form that opens exactly this pair through a preview.
  */
-export function CandidateDetail({ row, days, snapshotId, admissionOpen, blocked, onUnknown }: {
-  row: BoardRow; days: number; snapshotId: string | null; admissionOpen: boolean;
+export function CandidateDetail({ row, days, snapshotId, admissionOpen, blocked, accepted, onAccepted, onUnknown }: {
+  row: BoardRow; days: HistoryDays; snapshotId: string | null; admissionOpen: boolean;
   /** An acceptance on this page with an unknown result: no new open may start. */
-  blocked: string | null; onUnknown: (intentId: string) => void;
+  blocked: string | null;
+  /** This pair's acceptance on this page, if any. */
+  accepted: FundingReceipt | null;
+  onAccepted: (receipt: FundingReceipt) => void;
+  onUnknown: (intentId: string) => void;
 }) {
   const selectedLegs = row.windows.find((w) => w.days === days)?.legs;
   return (
@@ -101,7 +107,7 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen, blocked,
         {snapshotId ? (
           // A new pair or window is a new draft; nothing typed carries over.
           <FundingOrderForm key={`${row.id}/${days}`} row={row} days={days} snapshotId={snapshotId} admissionOpen={admissionOpen}
-            blocked={blocked} onUnknown={onUnknown} />
+            blocked={blocked} accepted={accepted} onAccepted={onAccepted} onUnknown={onUnknown} />
         ) : (
           <p className={micro}>No history snapshot is published: nothing can be previewed.</p>
         )}

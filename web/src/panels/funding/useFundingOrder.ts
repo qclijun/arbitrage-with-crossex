@@ -7,9 +7,11 @@
  * owns looking it up). Nothing here decides admission; the server does.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { HistoryDays } from '../../../../src/core/funding/history';
 import { ApiError, readEvidence } from '../../api/client';
 import { acceptFunding, previewFunding, type FundingPreview, type FundingReceipt } from '../../api/fundingIntents';
 import type { BoardRow } from '../../api/fundingOpportunities';
+import { uuid } from '../../lib/uuid';
 import { draftErrors, EMPTY_DRAFT, previewRequest, type OrderDraft } from './orderDraft';
 
 export type OrderStage =
@@ -23,20 +25,40 @@ export type OrderStage =
 export interface Acks { conversion: boolean; risks: boolean }
 const NO_ACKS: Acks = { conversion: false, risks: false };
 
-/** The server's expiry on this browser's clock: the preview's remaining life as the server counted it. */
-function deadlineOf(preview: FundingPreview, now: number): number {
-  const serverNow = readEvidence(preview)?.ts ?? preview.readAt;
-  return now + (preview.expiresAt - serverNow);
+/**
+ * The server's expiry on this browser's clock, never later than it can be.
+ * The evidence read began after our request was sent, so the preview's life
+ * runs out no later than `sentAt` plus that life; when the envelope carries the
+ * server's clock (a refusal's preview does not), its count can only be earlier.
+ */
+function deadlineOf(preview: FundingPreview, sentAt: number, now: number): number {
+  const bound = sentAt + (preview.expiresAt - preview.readAt);
+  const serverNow = readEvidence(preview)?.ts;
+  return serverNow === undefined ? bound : Math.min(bound, now + (preview.expiresAt - serverNow));
+}
+
+/** A refusal's `preview`, only when it has the shape of one. */
+function previewIn(details: Record<string, unknown> | undefined): FundingPreview | undefined {
+  const p = details?.preview as Partial<FundingPreview> | undefined;
+  const ok = !!p && typeof p === 'object' && typeof p.expiresAt === 'number' && typeof p.readAt === 'number'
+    && typeof p.contentHash === 'string' && !!p.content && Array.isArray(p.blockers);
+  return ok ? (p as FundingPreview) : undefined;
 }
 
 /** Only a 4xx is a definitive refusal; anything else may have been accepted. */
 const definitive = (err: unknown): err is ApiError =>
   err instanceof ApiError && err.httpStatus !== undefined && err.httpStatus >= 400 && err.httpStatus < 500;
 
-export function useFundingOrder(opts: { row: BoardRow; days: number; snapshotId: string; now: () => number; onUnknown?: (intentId: string) => void }) {
-  const { row, days, snapshotId, now, onUnknown } = opts;
+export function useFundingOrder(opts: {
+  row: BoardRow; days: HistoryDays; snapshotId: string; now: () => number;
+  /** Already accepted on this page: show its receipt, start nothing. */
+  accepted?: FundingReceipt | null;
+  onAccepted?: (receipt: FundingReceipt) => void;
+  onUnknown?: (intentId: string) => void;
+}) {
+  const { row, days, snapshotId, now, accepted, onAccepted, onUnknown } = opts;
   const [draft, setDraft] = useState<OrderDraft>(EMPTY_DRAFT);
-  const [stage, setStage] = useState<OrderStage>({ kind: 'draft' });
+  const [stage, setStage] = useState<OrderStage>(accepted ? { kind: 'accepted', receipt: accepted } : { kind: 'draft' });
   const [acks, setAcks] = useState<Acks>(NO_ACKS);
   const [clock, setClock] = useState(now());
   // A preview answer for an older draft is dropped, never shown.
@@ -64,21 +86,22 @@ export function useFundingOrder(opts: { row: BoardRow; days: number; snapshotId:
     setStage((s) => (s.kind === 'preview' || s.kind === 'previewing' || s.kind === 'draft' ? { kind: 'draft' } : s));
   }, []);
 
-  const show = (preview: FundingPreview, notice?: string) => {
+  const show = (preview: FundingPreview, sentAt: number, notice?: string) => {
     setAcks(NO_ACKS);
-    setStage({ kind: 'preview', preview, deadline: deadlineOf(preview, now()), notice });
+    setStage({ kind: 'preview', preview, deadline: deadlineOf(preview, sentAt, now()), notice });
   };
 
   const requestPreview = async () => {
     if (Object.keys(errors).length || locked) return;
-    const mine = ++seq.current;
+    const request = ++seq.current;
     setAcks(NO_ACKS);
     setStage({ kind: 'previewing' });
+    const sentAt = now();
     try {
       const preview = await previewFunding(previewRequest(row, days, snapshotId, draft));
-      if (mine === seq.current) show(preview);
+      if (request === seq.current) show(preview, sentAt);
     } catch (err) {
-      if (mine === seq.current) setStage({ kind: 'draft', message: (err as Error).message });
+      if (request === seq.current) setStage({ kind: 'draft', message: (err as Error).message });
     }
   };
 
@@ -90,21 +113,23 @@ export function useFundingOrder(opts: { row: BoardRow; days: number; snapshotId:
       setClock(now());
       return;
     }
-    const intentId = crypto.randomUUID();
+    const intentId = uuid();
     seq.current += 1;
     setStage({ kind: 'sending', preview, deadline, intentId });
+    const sentAt = now();
     try {
       const receipt = await acceptFunding({ intentId, previewId: preview.previewId!, contentHash: preview.contentHash,
         authorizeConversion: acks.conversion, acknowledgeRisks: acks.risks });
       setStage({ kind: 'accepted', receipt });
+      onAccepted?.(receipt);
     } catch (err) {
       if (!definitive(err)) {
         onUnknown?.(intentId);
         setStage({ kind: 'unknown', intentId, message: (err as Error).message });
         return;
       }
-      const next = err.details?.preview as FundingPreview | undefined;
-      if (next) show(next, err.message);
+      const next = previewIn(err.details);
+      if (next) show(next, sentAt, err.message);
       else setStage({ kind: 'draft', message: err.message });
     }
   };
