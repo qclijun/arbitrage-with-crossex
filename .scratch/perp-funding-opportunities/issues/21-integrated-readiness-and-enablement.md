@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: none
-Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
+Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23
 
 ## Goal
 
@@ -31,3 +31,5 @@ Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
 
 - 2026-10-27：08查明并修复配置就绪竞态，默认完整verify（root3316通过/8跳过、web1711通过）及build通过，见[08最终验收](../evidence/08-final-validation.md)。PairTicket本轮未超时、重挂载约4.6秒的诊断线索保留；本票仍须在最终正式实现版本完成完整门槛及其余集成证据，不继承本次为整体验收通过。
 - 2026-10-29：18拆出[22官方历史适配器与合约身份映射](22-history-adapters-and-contract-identity.md)，本票增加对22的依赖。
+
+- 2026-10-30：用户按UNKNOWN签收22实现，完整公开限流校准移至[23](23-public-history-calibration.md)，本票新增23依赖，不能因22 resolved跳过该证据。22最终默认完整verify为5402通过/8跳过，build通过，但这不是本票整体验收。第二轮StrategyWizard零成交用例曾瞬态失败，单跑及默认完整前端诊断未复现，根因未宣布修复；本票最终门禁需继续确认，见[22门禁记录](../evidence/22-full-gate-repair.md)。

@@ -23,3 +23,5 @@ HL分页疑问经新增官方 info-endpoint Pagination 文档解决（500 elemen
 完整门禁另暴露既有 UserGuideHint 已挂载状态竞态，修复及两项先红后绿的组件回归见[门禁修复记录](22-full-gate-repair.md)。两个审查 agent 均复核无问题，属于必要的完整门禁修复，没有调整测试并发/超时。
 
 主agent最终默认完整`yarn verify`退出0：后端177文件3614通过/8跳过，前端117文件1788通过（`/tmp/issue22-verify-clean.log`）；production build退出0（`/tmp/issue22-web-build-final.log`）。零成交用例的第二轮瞬态失败仍按门禁记录标明未复现，不宣称已修复其根因。
+
+用户最终选择按UNKNOWN签收22实现；未完成公开校准移至[23](../issues/23-public-history-calibration.md)，21新增23依赖。签收不改变公开证据的PARTIAL/UNKNOWN结论。
