@@ -70,8 +70,10 @@ async function main() {
         const declared = parsed?.rateLimits?.find((r: any) => r.rateLimitType === 'REQUEST_WEIGHT' && r.interval === 'MINUTE' && r.intervalNum === 1);
         if (Number.isSafeInteger(declared?.limit) && declared.limit > 0) minuteLimit = declared.limit;
         const code = parsed?.retCode ?? parsed?.code ?? null;
+        const limited = code === 10006 || code === 10429 || code === -1003 || code === '50011' || code === '50040';
+        const validPayload = request.name === 'instruments' ? Array.isArray(parsed?.symbols) : Array.isArray(rows);
         const ok = response.status >= 200 && response.status < 300
-          && (venue !== 'OKX' || code === '0') && (venue !== 'BYBIT' || code === 0);
+          && validPayload && !limited && (venue !== 'OKX' || code === '0') && (venue !== 'BYBIT' || code === 0);
         const used = response.headers['x-mbx-used-weight-1m'];
         const stop = !ok || response.headers['retry-after'] !== undefined
           || response.headers['x-bapi-limit-status'] === '0'

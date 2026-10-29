@@ -29,6 +29,7 @@ Blocked by: 22
 - [07来源研究及补充](../evidence/history-source-research.md)
 - [23公开校准与剩余UNKNOWN](../evidence/23-public-calibration.md)
 - [23逐请求参数/响应头/正文哈希与原始归档](../evidence/23-public-samples-20261030/manifest.json)
+- [23双轴复审](../evidence/23-review.md) / [实施交接与验证](../evidence/23-implementation-handoff.md)
 
 ## Comments
 
