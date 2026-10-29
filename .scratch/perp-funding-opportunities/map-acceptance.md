@@ -42,3 +42,7 @@
 ## 18完成验收
 
 - 2026-10-29：[18](issues/18-funding-page-and-read-api.md)用户签收，追加Answer并resolved。正式A页与只读API（ad58fb0＋2aed7e5）：内存只读排名、排名指纹跨页、后台当前费率轮询、旧表折叠；生产来源为空如实未接线（22承接）。13、17不再受18阻塞（其余依赖保留），22可开始；不启用交易。
+
+## 13完成验收
+
+- 2026-10-29：[13](issues/13-exact-prefill-and-confirmation.md)用户签收，追加Answer并resolved。A页精确两腿预览/确认/长按接受（197f1cd＋ee426f0），内存回执；默认verify/build全绿。14不再受13阻塞（其余依赖已resolved），可开始；不启用交易。

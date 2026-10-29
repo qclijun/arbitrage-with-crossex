@@ -1,7 +1,7 @@
 # 精确两腿预填、编辑失效与风险确认
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Claude
 Blocked by: 03, 05, 12, 18
 
@@ -21,6 +21,10 @@ Blocked by: 03, 05, 12, 18
 
 离线UI TDD覆盖同venue多合约、精度/小额/步长、maker与手动杠杆、编辑长按中止、过期/更新回执、转换授权与双费用情景、未知费率/薄盘口、负情景警告及重确认。证明身份、数量、方向不偷换，旧凭证/禁用门槛不能绕过12；不影响既有四腿/三腿入口。类型检查、针对单文件测试与最终yarn verify/web production build，不读实盘数据。
 
+## Answer
+
+2026-10-29用户签收。实现197f1cd＋ee426f0：A页右侧详情内`FundingOrderForm`只走12协议，精确两腿/快照/窗口与原样十进制，maker腿、两腿杠杆、数量、持有天数无默认，timeout 30–3600不夹值；任何编辑或新snapshot作废预览与确认；长按需无阻断previewId、未过期（服务端口径且不晚于请求发出时刻＋寿命）、准入开启、转换授权与风险确认；409新预览替换并清确认，网络错误/5xx结果未知不重试并阻止本页新开；回执轮询至DONE并显示两腿实际累计。默认`yarn verify`退出0、build通过。intentId持久化、丢响应查询与刷新恢复归14；不启用交易。详见[13实施交接](../evidence/13-implementation-handoff.md)。
+
 ## Comments
 
 - 2026-10-27：03确认后预拆；等待05/06及12，不把当前预填能力冒充精确身份协议。
@@ -28,3 +32,4 @@ Blocked by: 03, 05, 12, 18
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
 - 2026-10-29：用户确认范围与接缝并claimed：A页右侧详情内新建`FundingOrderForm`，复用HoldToConfirmButton(800ms)，只走12协议（`/funding/preview`→`/funding/intents`），不改PairTicket/ExecuteControl及四腿/三腿入口；13只做内存回执（确认时生成intentId、202/200回执与本页轮询、409附新预览即替换并清确认、网络错误显示结果未知且禁止新建、不自动重试），intentId持久化/丢响应查询/刷新恢复归14；持有天数必填无默认；准入关闭时可预览不可提交。测试接缝：web组件`FundingOrderForm`（msw），服务端不改。
 - 2026-10-29：实现197f1cd＋审查修正（本次提交）：详情内`FundingOrderForm`走12协议，编辑/新snapshot作废预览与确认，到期以服务端口径且受请求发出时刻约束，409新预览替换，网络错误/5xx结果未知不重试并阻止本页新开，回执轮询至DONE。默认`yarn verify`退出0、build通过。等待用户签收，不启用交易。详见[13实施交接](../evidence/13-implementation-handoff.md)。
+- 2026-10-29：用户签收，追加Answer并resolved。
