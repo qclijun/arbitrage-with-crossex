@@ -19,7 +19,7 @@ import { BorosLiquidityPanel } from './panels/BorosLiquidityPanel';
 import { CollateralPanel } from './panels/CollateralPanel';
 import { RiskPanel } from './panels/RiskPanel';
 import { FeesPanel } from './panels/FeesPanel';
-import { FundingSpreadsPanel } from './panels/FundingSpreadsPanel';
+import { FundingOpportunitiesPanel } from './panels/FundingOpportunitiesPanel';
 import { OpenOrdersPanel } from './panels/OpenOrdersPanel';
 import { OpportunitiesPanel } from './panels/OpportunitiesPanel';
 import { AssetsHome } from './panels/assets/AssetsHome';
@@ -263,7 +263,7 @@ export default function App() {
                     <AssetsHome />
                   </TabPanel>
                   <TabPanel id="funding" active={activeTab === 'funding'}>
-                    <FundingSpreadsPanel />
+                    <FundingOpportunitiesPanel />
                   </TabPanel>
                   <TabPanel id="balances" active={activeTab === 'balances'}>
                     <BalancesPanel />

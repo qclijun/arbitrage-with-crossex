@@ -25,8 +25,8 @@ describe('funding feed parsers', () => {
       [{ symbol: '1000PEPEUSDT', fundingIntervalHours: 4 }],
     );
     expect(rates).toEqual([
-      { base: 'BTC', rate: 0.0001, intervalHours: 8, markPrice: 80000, nextFundingTime: 1_000 },
-      { base: '1000PEPE', rate: -0.0004, intervalHours: 4, markPrice: 0.0043, nextFundingTime: null },
+      { base: 'BTC', contractId: 'BTCUSDT', rate: 0.0001, rateText: '0.0001', intervalHours: 8, markPrice: 80000, nextFundingTime: 1_000 },
+      { base: '1000PEPE', contractId: '1000PEPEUSDT', rate: -0.0004, rateText: '-0.0004', intervalHours: 4, markPrice: 0.0043, nextFundingTime: null },
     ]);
   });
 
@@ -43,19 +43,36 @@ describe('funding feed parsers', () => {
     expect(parseGate([
       { name: 'PEPE_USDT', funding_rate: '0.0001', funding_interval: 14_400, mark_price: '0.0000043', funding_next_apply: 100 },
       { name: 'OLD_USDT', funding_rate: '0.0001', funding_interval: 28_800, in_delisting: true },
-    ])).toEqual([{ base: 'PEPE', rate: 0.0001, intervalHours: 4, markPrice: 0.0000043, nextFundingTime: 100_000 }]);
+    ])).toEqual([{ base: 'PEPE', contractId: 'PEPE_USDT', rate: 0.0001, rateText: '0.0001', intervalHours: 4, markPrice: 0.0000043, nextFundingTime: 100_000 }]);
     expect(parseHyperliquid([
       { universe: [{ name: 'kPEPE' }, { name: 'GONE', isDelisted: true }] },
       [{ funding: '0.0000125', markPx: '0.0043' }, { funding: '0.01', markPx: '1' }],
-    ])).toEqual([{ base: 'kPEPE', rate: 0.0000125, intervalHours: 1, markPrice: 0.0043, nextFundingTime: null }]);
+    ])).toEqual([{ base: 'kPEPE', contractId: 'kPEPE', rate: 0.0000125, rateText: '0.0000125', intervalHours: 1, markPrice: 0.0043, nextFundingTime: null }]);
     expect(parseKraken({ tickers: [
       { symbol: 'PF_XBTUSD', tag: 'perpetual', relativeFundingRate: 0.00002, markPrice: 80000 },
       { symbol: 'FF_XBTUSD_260101', tag: 'month', relativeFundingRate: 1 },
-    ] })).toEqual([{ base: 'BTC', rate: 0.00002, intervalHours: 1, markPrice: 80000, nextFundingTime: null }]);
+    ] })).toEqual([{ base: 'BTC', contractId: 'PF_XBTUSD', rate: 0.00002, rateText: '0.00002', intervalHours: 1, markPrice: 80000, nextFundingTime: null }]);
     expect(parseLighter({ funding_rates: [
       { exchange: 'binance', symbol: 'BTC', rate: 0.0003 },
       { exchange: 'lighter', symbol: 'BTC', rate: 0.0001 },
-    ] })).toEqual([{ base: 'BTC', rate: 0.0001, intervalHours: 8, markPrice: null, nextFundingTime: null }]);
+    ] })).toEqual([{ base: 'BTC', contractId: 'BTC', rate: 0.0001, rateText: '0.0001', intervalHours: 8, markPrice: null, nextFundingTime: null }]);
+  });
+});
+
+describe('funding feed identity', () => {
+  it('keeps each row\'s venue-native contract ID and the rate exactly as the venue wrote it', () => {
+    const pick = (rows: VenueFundingRate[]) => rows.map(({ contractId, rateText }) => ({ contractId, rateText }));
+    expect(pick(parseBinanceStyle([{ symbol: '1000PEPEUSDT', lastFundingRate: '-0.00040000' }], []))).toEqual([{ contractId: '1000PEPEUSDT', rateText: '-0.00040000' }]);
+    expect(pick(parseOkx({ data: [{ instId: 'ETH-USDT-SWAP', fundingRate: '0.0002', fundingTime: String(12 * H), prevFundingTime: String(8 * H) }] })))
+      .toEqual([{ contractId: 'ETH-USDT-SWAP', rateText: '0.0002' }]);
+    expect(pick(parseBybit({ result: { list: [{ symbol: 'SHIB1000USDT', fundingRate: '0.0001', fundingIntervalHour: '2' }] } })))
+      .toEqual([{ contractId: 'SHIB1000USDT', rateText: '0.0001' }]);
+    expect(pick(parseGate([{ name: 'PEPE_USDT', funding_rate: '0.0001', funding_interval: 14_400 }]))).toEqual([{ contractId: 'PEPE_USDT', rateText: '0.0001' }]);
+    expect(pick(parseHyperliquid([{ universe: [{ name: 'kPEPE' }] }, [{ funding: '0.0000125' }]]))).toEqual([{ contractId: 'kPEPE', rateText: '0.0000125' }]);
+    // A JSON number in exponent form is still an exact decimal once written out.
+    expect(pick(parseKraken({ tickers: [{ symbol: 'PF_XBTUSD', tag: 'perpetual', relativeFundingRate: 1.5e-7 }] })))
+      .toEqual([{ contractId: 'PF_XBTUSD', rateText: '0.00000015' }]);
+    expect(pick(parseLighter({ funding_rates: [{ exchange: 'lighter', symbol: 'BTC', rate: -0.0001 }] }))).toEqual([{ contractId: 'BTC', rateText: '-0.0001' }]);
   });
 });
 
@@ -72,7 +89,7 @@ describe('underlyingOf', () => {
 });
 
 const rate = (base: string, r: number, hours: number, price: number | null): VenueFundingRate => ({
-  base, rate: r, intervalHours: hours, markPrice: price, nextFundingTime: null,
+  base, contractId: base, rate: r, rateText: String(r), intervalHours: hours, markPrice: price, nextFundingTime: null,
 });
 const listing = (venue: string, base: string, quote = 'USDT'): CrossexListing => ({ venue, base, symbol: `${venue}_FUTURE_${base}_${quote}` });
 const fees = (taker: string) => ['GATE', 'BINANCE', 'HYPERLIQUID', 'BYBIT'].map((v) => ({ exchangeType: v, futureMakerFee: '0', futureTakerFee: taker }));

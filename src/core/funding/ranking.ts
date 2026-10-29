@@ -6,6 +6,7 @@
  * score is the pure settled funding-rate spread: no costs, leverage or
  * execution permission are implied. Pure: callers supply the live contracts.
  */
+import { createHash } from 'node:crypto';
 import { HISTORY_DAYS, divideRounded, parseDecimal, scale, snapshotCutoff, type Coverage, type FundingHistoryResult, type HistoryDays } from './history';
 import { legKey, type FundingHistoryCache, type HistoryLegKey } from './history-cache';
 
@@ -142,6 +143,11 @@ export interface RankingPage {
   snapshotId: string | null;
   days: HistoryDays;
   compareDays: HistoryDays;
+  /**
+   * Identity of the whole filtered order (snapshot, window, filters, every row's
+   * place and rankedness): pages with the same fingerprint come from one ranking.
+   */
+  fingerprint: string;
   /** Every candidate, before filters. */
   candidateCount: number;
   /** Candidates left after filters. */
@@ -261,8 +267,14 @@ export function rankFundingCandidates(input: {
     current: contrast(candidate, input.current, selected, input.now),
     executionBlockers: [...(input.executionBlockers?.(candidate) ?? [])],
   }));
+  const snapshotId = input.history.snapshot()?.id ?? null;
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify([snapshotId, days, underlyings ?? null, venues ?? null, !!positiveOnly,
+      scored.map(({ candidate, selected }) => [candidate.id, selected.eligible])]))
+    .digest('hex');
   return {
-    snapshotId: input.history.snapshot()?.id ?? null,
+    snapshotId,
+    fingerprint,
     days,
     compareDays,
     candidateCount: input.candidates.length,

@@ -24,6 +24,7 @@ import { dealsRoutes } from './routes/deals';
 import { disclaimerRoutes } from './routes/disclaimer';
 import { feesRoutes } from './routes/fees';
 import { fundingIntentRoutes } from './routes/fundingIntents';
+import { fundingOpportunitiesRoutes } from './routes/fundingOpportunities';
 import { fundingSpreadsRoutes } from './routes/fundingSpreads';
 import { healthRoutes } from './routes/health';
 import { assetViewRoutes } from './routes/assetView';
@@ -45,6 +46,8 @@ import { tradesRoutes } from './routes/trades';
 import { credentialIdentity } from './readScope';
 import { riskEvidenceRoutes } from './routes/riskEvidence';
 import { riskReportRoutes } from './routes/riskReport';
+import type { FundingMarket } from '../core/funding/market';
+import type { BoardHistory } from './funding/board';
 import type { FundingPorts } from './funding/evidence';
 import type { FundingReads } from './funding/reads';
 import type { BotClient } from './telegram/botClient';
@@ -74,6 +77,10 @@ export interface AppDeps {
    * preview and acceptance routes refuse (503) — never a plain-pair fallback.
    * `reads` defaults to fresh Gate reads (server/funding/reads.ts). */
   funding?: Pick<FundingPorts, 'history' | 'legOf'> & { reads?: FundingReads };
+  /** The read-only opportunities page (ticket 18): the same published history
+   * and the background market poller's memory. Absent, the page answers 503.
+   * Neither is read through a venue on request. */
+  opportunities?: { history: BoardHistory; market: Pick<FundingMarket, 'view'> };
   /** Enables PUT /api/credentials (validate → rewrite .env → hot-swap the client). */
   credentials?: {
     envPath: string;
@@ -242,6 +249,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     symbolsRoutes,
     opportunitiesRoutes,
     fundingSpreadsRoutes,
+    fundingOpportunitiesRoutes,
     borosPairRoutes,
     borosLiquidityRoutes,
     assetViewRoutes,

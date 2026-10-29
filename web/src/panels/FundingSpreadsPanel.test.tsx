@@ -11,7 +11,7 @@ function renderWithClient(ui: ReactElement) {
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
 }
 
-const rate = (base: string, r: number, price: number) => ({ base, rate: r, intervalHours: 8, markPrice: price, nextFundingTime: null });
+const rate = (base: string, r: number, price: number) => ({ base, contractId: base, rate: r, rateText: String(r), intervalHours: 8, markPrice: price, nextFundingTime: null });
 const listing = (venue: string, base: string) => ({ venue, base, symbol: `${venue}_FUTURE_${base}_USDT` });
 
 function serve() {

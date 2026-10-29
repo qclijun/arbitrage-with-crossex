@@ -12,8 +12,12 @@ import { bookRequestOptions } from '../estimate/books';
 export interface VenueFundingRate {
   /** The venue-native base exactly as CrossEx lists it (kPEPE, 1000PEPE, SHIB1000). */
   base: string;
+  /** The venue's own contract ID (BTCUSDT, ETH-USDT-SWAP, kPEPE): the key its settled history uses. */
+  contractId: string;
   /** Current-period rate, a fraction per funding interval. */
   rate: number;
+  /** The same rate as an exact decimal, as the venue wrote it. */
+  rateText: string;
   intervalHours: number;
   /** Mark price of one venue contract unit, when the feed carries it. */
   markPrice: number | null;
@@ -36,9 +40,24 @@ const positive = (v: unknown): number | null => {
 const rows = (v: unknown): Array<Record<string, unknown>> =>
   Array.isArray(v) ? v.filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null) : [];
 
-function push(out: VenueFundingRate[], base: string, rate: number | null, intervalHours: number | null, markPrice: unknown, next: unknown): void {
-  if (!base || rate === null || intervalHours === null || intervalHours <= 0) return;
-  out.push({ base, rate, intervalHours, markPrice: positive(markPrice), nextFundingTime: positive(next) });
+/** Exact decimal text of a rate: a decimal string as written, a JSON number written out without an exponent. */
+function decimalText(v: unknown): string | null {
+  if (typeof v === 'string') return /^-?\d+(?:\.\d+)?$/.test(v) ? v : null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  const m = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(String(v));
+  if (!m) return String(v);
+  const digits = m[2] + (m[3] ?? '');
+  const point = 1 + Number(m[4]);
+  if (point <= 0) return `${m[1]}0.${'0'.repeat(-point)}${digits}`;
+  if (point >= digits.length) return `${m[1]}${digits}${'0'.repeat(point - digits.length)}`;
+  return `${m[1]}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
+function push(out: VenueFundingRate[], base: string, contractId: string, rawRate: unknown, intervalHours: number | null, markPrice: unknown, next: unknown): void {
+  const rate = num(rawRate);
+  const rateText = decimalText(rawRate);
+  if (!base || rate === null || rateText === null || intervalHours === null || intervalHours <= 0) return;
+  out.push({ base, contractId, rate, rateText, intervalHours, markPrice: positive(markPrice), nextFundingTime: positive(next) });
 }
 
 /** Binance / Aster: premiumIndex (rate, mark) + fundingInfo (only symbols off the 8 h default on Binance). */
@@ -51,7 +70,7 @@ export function parseBinanceStyle(premiumIndex: unknown, fundingInfo: unknown): 
   const out: VenueFundingRate[] = [];
   for (const r of rows(premiumIndex)) {
     if (typeof r.symbol !== 'string' || !r.symbol.endsWith('USDT')) continue;
-    push(out, r.symbol.slice(0, -4), num(r.lastFundingRate), hours.get(r.symbol) ?? 8, r.markPrice, r.nextFundingTime);
+    push(out, r.symbol.slice(0, -4), r.symbol, r.lastFundingRate, hours.get(r.symbol) ?? 8, r.markPrice, r.nextFundingTime);
   }
   return out;
 }
@@ -65,7 +84,7 @@ export function parseOkx(json: unknown): VenueFundingRate[] {
     const current = num(r.fundingTime);
     const prev = num(r.prevFundingTime);
     const hours = current !== null && prev !== null && current > prev ? (current - prev) / 3_600_000 : null;
-    push(out, m[1], num(r.fundingRate), hours, null, r.fundingTime);
+    push(out, m[1], m[0], r.fundingRate, hours, null, r.fundingTime);
   }
   return out;
 }
@@ -75,7 +94,7 @@ export function parseBybit(json: unknown): VenueFundingRate[] {
   const out: VenueFundingRate[] = [];
   for (const r of rows((json as { result?: { list?: unknown } } | null)?.result?.list)) {
     if (typeof r.symbol !== 'string' || !r.symbol.endsWith('USDT')) continue;
-    push(out, r.symbol.slice(0, -4), num(r.fundingRate), positive(r.fundingIntervalHour), r.markPrice, r.nextFundingTime);
+    push(out, r.symbol.slice(0, -4), r.symbol, r.fundingRate, positive(r.fundingIntervalHour), r.markPrice, r.nextFundingTime);
   }
   return out;
 }
@@ -87,7 +106,7 @@ export function parseGate(json: unknown): VenueFundingRate[] {
     if (typeof r.name !== 'string' || !r.name.endsWith('_USDT') || r.in_delisting === true) continue;
     const interval = positive(r.funding_interval);
     const next = positive(r.funding_next_apply);
-    push(out, r.name.slice(0, -5), num(r.funding_rate), interval === null ? null : interval / 3600, r.mark_price, next === null ? null : next * 1000);
+    push(out, r.name.slice(0, -5), r.name, r.funding_rate, interval === null ? null : interval / 3600, r.mark_price, next === null ? null : next * 1000);
   }
   return out;
 }
@@ -101,7 +120,7 @@ export function parseHyperliquid(json: unknown): VenueFundingRate[] {
   universe.forEach((u, i) => {
     const ctx = ctxs[i];
     if (!ctx || typeof u.name !== 'string' || u.isDelisted === true) return;
-    push(out, u.name, num(ctx.funding), 1, ctx.markPx, null);
+    push(out, u.name, u.name, ctx.funding, 1, ctx.markPx, null);
   });
   return out;
 }
@@ -112,7 +131,7 @@ export function parseKraken(json: unknown): VenueFundingRate[] {
   for (const r of rows((json as { tickers?: unknown } | null)?.tickers)) {
     const m = typeof r.symbol === 'string' && r.tag === 'perpetual' ? /^PF_(.+)USD$/.exec(r.symbol) : null;
     if (!m || r.suspended === true) continue;
-    push(out, m[1] === 'XBT' ? 'BTC' : m[1], num(r.relativeFundingRate), 1, r.markPrice, null);
+    push(out, m[1] === 'XBT' ? 'BTC' : m[1], m[0], r.relativeFundingRate, 1, r.markPrice, null);
   }
   return out;
 }
@@ -123,7 +142,7 @@ export function parseLighter(json: unknown): VenueFundingRate[] {
   const out: VenueFundingRate[] = [];
   for (const r of rows((json as { funding_rates?: unknown } | null)?.funding_rates)) {
     if (r.exchange !== 'lighter' || typeof r.symbol !== 'string') continue;
-    push(out, r.symbol, num(r.rate), 8, null, null);
+    push(out, r.symbol, r.symbol, r.rate, 8, null, null);
   }
   return out;
 }

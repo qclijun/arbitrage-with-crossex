@@ -1,8 +1,8 @@
 # A排名工作台与只读机会API接线
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 05, 09, 10, 19
 
 ## Goal
@@ -25,3 +25,4 @@ Blocked by: 05, 09, 10, 19
 
 - 2026-10-27：06已确认Q1先只读交付及05选择A；补齐原07—17未完整承接的页面/API责任。仍等待06最终共同理解确认，不可认领实施。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
+- 2026-10-29：用户确认范围与接缝并claimed：真实官方历史适配器及合约标的/费率口径证明映射另开[22](22-history-adapters-and-contract-identity.md)，18只做A页、只读API、端口及index接线（来源为空时如实冷启动/未接线）；旧当前费率表保留为折叠次级视图；跨页以排名指纹`rankingId`（真实now评估，变化即回第1页并提示）；当前费率由后台轮询feeds.ts入内存，API只读内存。测试接缝：`GET /api/funding/opportunities`（app.inject）、`createFundingMarket`与feeds原生contractId、`FundingOpportunitiesPanel`（msw）。

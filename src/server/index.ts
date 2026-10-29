@@ -19,6 +19,7 @@ import { startLoop, type LoopDeps } from '../engine/loop';
 import { gateVenue } from '../engine/venueGate';
 import type { Clock, VenuePort } from '../engine/types';
 import { buildApp } from './app';
+import { createFundingServices } from './funding/services';
 import { readBorosAgentConfig } from './borosAgent';
 import { makeBorosApiOrderClient } from '../core/boros/borosApi';
 import type { BorosOrderClient } from '../core/boros/orders';
@@ -248,6 +249,10 @@ const telegramLink = createTelegramLink({
 
 const webDist = path.join(repoRoot, 'web', 'dist');
 
+// Funding opportunities: background history and market reads into memory.
+// No official history source or contract mapping is wired yet (ticket 22).
+const fundingServices = createFundingServices();
+
 const appDeps = {
   getClients,
   // The same cache the Boros agent wiring above reads markets through, so a
@@ -257,6 +262,8 @@ const appDeps = {
   // Created on first boot beside the .env.
   authToken: readOrCreateApiToken(path.dirname(envPath)),
   engine,
+  opportunities: fundingServices.opportunities,
+  funding: fundingServices.funding,
   // UPDATE_CHECK=0 lets an install opt out of the GitHub read entirely.
   install: readInstallInfo(repoRoot),
   updateCheck: { current: readLocalVersion(repoRoot), disabled: process.env.UPDATE_CHECK === '0' },
@@ -289,6 +296,7 @@ const appDeps = {
 };
 const app = buildApp(appDeps);
 app.addHook('onClose', async () => {
+  fundingServices.stop();
   await engineTransport.close();
   await loopDeps?.observation?.close();
 });
@@ -319,6 +327,7 @@ app
     // server died just gets its next tick. Started after listen so a port
     // conflict (second instance) can never run venue mutations first.
     if (loopDeps && engine) engine.wake = startLoop(loopDeps).wake;
+    fundingServices.start();
     void telegramLink.settled().then(() => telegramSync.start());
     const shown = host === '127.0.0.1' ? 'localhost' : host;
     console.log(`arb-tools server listening on http://${shown}:${port}`);
