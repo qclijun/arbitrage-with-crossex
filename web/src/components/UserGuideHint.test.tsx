@@ -67,6 +67,15 @@ describe('UserGuideHint', () => {
     expect(hint()).toBeNull();
   });
 
+  it.each([false, true])('silences an already mounted hint when another route opens the guide (visible=%s)', (visible) => {
+    render(<UserGuideHint enabled onOpen={vi.fn()} />);
+    if (visible) act(() => void vi.advanceTimersByTime(2_000));
+    act(() => markGuideHintDone());
+    expect(hint()).toBeNull();
+    act(() => void vi.advanceTimersByTime(2_000));
+    expect(hint()).toBeNull();
+  });
+
   it('opening the guide by any other route also silences it', () => {
     // The header button calls this directly — a user who found the guide on
     // their own must not then be told where it is.

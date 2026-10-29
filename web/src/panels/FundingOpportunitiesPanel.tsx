@@ -190,6 +190,14 @@ function Board() {
                 <span>Page {current} of {pages}</span>
                 <button type="button" aria-label="Next page" disabled={current >= pages} onClick={() => page(data.offset + data.limit)}>›</button>
               </div>
+              {!!data.contracts.rejected?.length && (
+                <details className="mt-2 text-amber-400">
+                  <summary>{data.contracts.rejected.length} CrossEx contracts could not be mapped</summary>
+                  <ul className="mt-1">
+                    {data.contracts.rejected.map((r, i) => <li key={`${r.symbol}/${i}`}>{r.symbol}: {r.reason}</li>)}
+                  </ul>
+                </details>
+              )}
               {data.contracts.unpaired.length > 0 && (
                 <details className={`mt-3 ${micro}`}>
                   <summary>{data.contracts.unpaired.length} contracts not paired</summary>

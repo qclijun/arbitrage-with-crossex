@@ -82,7 +82,9 @@ export interface FundingHistorySource {
 }
 
 /** A venue said "slow down" in any form (429, ban, insufficient weight): stop it for the round. */
-export class HistoryRateLimitError extends Error {}
+export class HistoryRateLimitError extends Error {
+  constructor(message = 'history-rate-limit', readonly retryAfterMs?: number) { super(message); }
+}
 
 class RoundStop extends Error {
   constructor(readonly reason: HistoryStopReason) {
@@ -204,6 +206,7 @@ async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call
     if (!context) return { leg, reason: 'schedule-unverified' };
     leg.listing = context.listing;
     leg.rules = context.rules;
+    if (!context.rules.length) return { leg, reason: 'schedule-unverified' };
     const ruleAt = (t: number) => context.rules.find((r) => r.from <= t && t < r.until);
     const ref = { venue: source.venue, api: source.api, contractId: key.contractId };
     for (const seg of segments(state.cutoff, source.maxDays ?? 365, context.listing?.at ?? null)) {

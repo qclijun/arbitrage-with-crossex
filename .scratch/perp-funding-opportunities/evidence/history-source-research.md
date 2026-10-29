@@ -38,3 +38,7 @@
 - 所有场所：每个 live 合约的精确上市/退市与历史周期**生效时间**、逐窗口真实保留起点、修订和冲突的权威语义；多数官方历史响应没有不可变事件 ID，需复合键及冲突隔离。
 - OKX：另查官方历史市场数据批量端点能否给超过三个月的逐结算实际率；不能把桶数据算作原始事件。Gate：批量端点时间范围/返回约束。Kraken：CSV schema、更新时间及是否存在可用于增量刷新的官方逐结算接口。Lighter：`fundings` 每条的结算终态与时间单位/上限行为。HL：响应截断行为与新币起始证据。
 - 09 在只读公开样本上实测每场所两种周期、一个新币及跨页窗口，记录请求/延迟/429；再核对 CrossEx live 合约数量。无法证明的组合保持 unknown；可按场所拆票，不降低 01 的完整性门槛。
+
+## 2026-10-30 补充取证
+
+[22公开实测记录](22-public-samples.md)补得[HL官方通用分页约定](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)：时间范围响应最多500 elements或distinct blocks，末时间作为下一startTime。上表“未见上限”为07当时的调研状态，以本补充为当前结论；它不证明上市日、历史周期生效时间或毫秒→整点经济映射。22保留这些生产能力UNKNOWN，以及Binance451/Bybit403和未观测Retry-After的公开校准限制。

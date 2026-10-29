@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fastifyStatic from '@fastify/static';
 import { fetchBorosMarkets, resolveBorosFetch, resolveCollateralPricesUsd, setClientTagContext } from '../core/boros/client';
-import { gateProxy, makeClientsIfConfigured, requireClients, type Clients } from '../core/clients';
+import { gateProxy, makeClientsIfConfigured, publicCrossEx, requireClients, type Clients } from '../core/clients';
 import { EngineTransport } from '../core/engine-transport';
 import { Store } from '../engine/db';
 import { isSqliteLockError } from '../engine/ledger/sqlite';
@@ -20,6 +20,9 @@ import { claimReader } from './claim-reads';
 import { gateVenue } from '../engine/venueGate';
 import type { Clock, VenuePort } from '../engine/types';
 import { buildApp } from './app';
+import { createOfficialFundingCatalog } from '../core/funding/official-catalog';
+import { createOfficialHistorySources } from '../core/funding/official-history';
+import { createOfficialPublicReader } from '../core/funding/official-public';
 import { createFundingServices } from './funding/services';
 import { readBorosAgentConfig } from './borosAgent';
 import { makeBorosApiOrderClient } from '../core/boros/borosApi';
@@ -251,8 +254,18 @@ const telegramLink = createTelegramLink({
 const webDist = path.join(repoRoot, 'web', 'dist');
 
 // Funding opportunities: background history and market reads into memory.
-// No official history source or contract mapping is wired yet (ticket 22).
-const fundingServices = createFundingServices();
+const fundingPublicRead = createOfficialPublicReader();
+const fundingCatalog = createOfficialFundingCatalog({
+  rules: async () => (await publicCrossEx().listCrossexRuleSymbols()).body,
+  read: fundingPublicRead,
+});
+const fundingServices = createFundingServices({
+  contracts: fundingCatalog.contracts,
+  sources: createOfficialHistorySources({
+    read: fundingPublicRead,
+    context: (venue, contractId) => fundingCatalog.historyContext(venue, contractId),
+  }),
+});
 
 const appDeps = {
   getClients,

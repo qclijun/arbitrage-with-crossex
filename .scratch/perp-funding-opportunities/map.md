@@ -3,7 +3,7 @@
 Label: wayfinder:map
 Status: open
 Updated: 2026-10-27 Asia/Taipei
-Latest implementation update: 2026-10-29 Asia/Taipei
+Latest implementation update: 2026-10-30 Asia/Taipei
 
 ## Destination
 
@@ -72,3 +72,4 @@ Latest implementation update: 2026-10-29 Asia/Taipei
 - 2026-10-29：用户签收[14](issues/14-durable-submission-and-resume.md)，已resolved；授权继续下一张可实施工单，[17当前认领与金额证据](issues/17-current-claims-and-attribution.md)由Codex claimed。
 - 2026-10-29：[17](issues/17-current-claims-and-attribution.md)已实现待签收：持久认领命令由正常engine重验后原子入账；用户显式选量及Boros证据，保留剩余未归属与切片金额UNKNOWN。见[17实施交接](evidence/17-implementation-handoff.md)。人工开仓仍默认关闭。
 - 2026-10-29：用户签收[17](issues/17-current-claims-and-attribution.md)，状态已resolved，授权将14签收与17实现一并本地提交。默认完整`yarn verify`（5369通过、8跳过）和Web production build通过；见[17实施交接](evidence/17-implementation-handoff.md)。未push或启用交易。
+- 2026-10-30：[22](issues/22-history-adapters-and-contract-identity.md)实现已交付并双轴复审：五源只读历史适配器、unsigned CrossEx/native产品映射及独立经济/口径证明、18/12共享生产接线、限流保护与公开探针。当前出口Binance451/Bybit403，未证能力继续UNKNOWN；五源公开校准未全部验收，22保留claimed，21依赖保留。完整门禁另修复既有用户指南提示计时竞态；最终验证/提交见[22交接](evidence/22-implementation-handoff.md)。人工开仓仍关闭。

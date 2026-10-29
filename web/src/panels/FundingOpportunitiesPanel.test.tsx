@@ -199,3 +199,12 @@ describe('FundingOpportunitiesPanel', () => {
     expect(within(detail()).getByRole('button', { name: 'Preview' })).toBeDisabled();
   });
 });
+
+it('shows mapping refusals explicitly so an incomplete contract list is not mistaken for the whole market', async () => {
+  const board = fundingBoard();
+  board.contracts.rejected = [{ symbol: 'GATE_FUTURE_BTC_USDT', reason: 'native-source-unwired' }];
+  serve(board);
+  renderWithClient(<FundingOpportunitiesPanel />);
+  expect(await screen.findByText(/1 CrossEx contracts could not be mapped/)).toBeInTheDocument();
+  expect(screen.getByText(/GATE_FUTURE_BTC_USDT/)).toHaveTextContent('native-source-unwired');
+});

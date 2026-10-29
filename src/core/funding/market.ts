@@ -9,17 +9,20 @@
 import { classifyGateError } from '../errors';
 import type { VenueFundingRate } from './feeds';
 import { legKey } from './history-cache';
+import type { FundingContractDiscovery, FundingMappingRejection } from './contract-identity';
 import type { CurrentFundingRate, LiveFundingContract } from './ranking';
 
 export interface FundingContractListing extends LiveFundingContract {
   /** The CrossEx symbol trading this contract; null when that mapping is unproven. */
   symbol: string | null;
+  /** Corroborating CrossEx convention and official native instrument evidence. */
+  mappingEvidence?: string;
 }
 
 export type FundingContractsView =
   | { state: 'unwired' }
   | { state: 'cold'; lastAttempt: { at: number; ok: false } | null }
-  | { state: 'ready'; at: number; listings: FundingContractListing[]; lastAttempt: { at: number; ok: boolean } };
+  | { state: 'ready'; at: number; listings: FundingContractListing[]; rejected?: FundingMappingRejection[]; lastAttempt: { at: number; ok: boolean } };
 
 export interface MarketFeedStatus {
   venue: string;
@@ -40,7 +43,7 @@ export interface FundingMarketView {
 
 export interface FundingMarketDeps {
   /** Ticket 22's proven contract mapping. Absent, the market is unwired and reads nothing. */
-  contracts?: () => Promise<FundingContractListing[]>;
+  contracts?: () => Promise<FundingContractListing[] | FundingContractDiscovery>;
   feeds: Record<string, () => Promise<VenueFundingRate[]>>;
   intervalMs?: number;
   now?: () => number;
@@ -62,11 +65,13 @@ export function createFundingMarket(deps: FundingMarketDeps) {
   let feeds: MarketFeedStatus[] = [];
   let inflight: Promise<void> | null = null;
 
-  async function readContracts(read: () => Promise<FundingContractListing[]>): Promise<void> {
+  async function readContracts(read: NonNullable<FundingMarketDeps['contracts']>): Promise<void> {
     try {
-      const listings = await read();
+      const result = await read();
+      const listings = Array.isArray(result) ? result : result.listings;
+      const rejected = Array.isArray(result) ? [] : result.rejected;
       const at = now();
-      contracts = { state: 'ready', at, listings, lastAttempt: { at, ok: true } };
+      contracts = { state: 'ready', at, listings, rejected, lastAttempt: { at, ok: true } };
     } catch {
       const lastAttempt = { at: now(), ok: false as const };
       contracts = contracts.state === 'ready' ? { ...contracts, lastAttempt } : { state: 'cold', lastAttempt };

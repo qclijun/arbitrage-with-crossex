@@ -4,6 +4,7 @@
  * shows. Pure. Execution limits are listed per row and never touch rank or
  * eligibility; costs are not here (tickets 11/13 wire them through a preview).
  */
+import type { FundingMappingRejection } from '../../core/funding/contract-identity';
 import { isSupportedCoin } from '../../core/coins';
 import { HISTORY_DAYS, type HistoryDays, type LegHistoryResult } from '../../core/funding/history';
 import { legKey, type FundingHistoryCache, type HistoryCacheView } from '../../core/funding/history-cache';
@@ -90,7 +91,7 @@ export interface FundingBoard extends Omit<RankingPage, 'rows' | 'fingerprint'> 
   options: { underlyings: string[]; venues: string[] };
   history: HistoryCacheView;
   contracts: { state: FundingMarketView['contracts']['state']; at: number | null; lastAttempt: { at: number; ok: boolean } | null;
-    count: number; unpaired: UnpairedContract[] };
+    count: number; unpaired: UnpairedContract[]; rejected?: FundingMappingRejection[] };
   feeds: MarketFeedStatus[];
   /** The new-open switch (ticket 19); null without an engine. Observation never opens anything. */
   admission: AdmissionState | null;
@@ -172,6 +173,7 @@ export function buildFundingBoard(input: {
       at: contracts.state === 'ready' ? contracts.at : null,
       lastAttempt: contracts.state === 'unwired' ? null : contracts.lastAttempt,
       count: listings.length,
+      rejected: contracts.state === 'ready' ? contracts.rejected ?? [] : [],
       unpaired,
     },
     feeds: market.feeds,

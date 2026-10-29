@@ -14,6 +14,7 @@ import { readJson, writeJson } from '../lib/storage';
 
 const FIRST_SEEN_KEY = 'crossex.firstSeenAt';
 const DISMISSED_KEY = 'crossex.guideHintDone';
+const DONE_EVENT = 'crossex:guide-hint-done';
 /** How long after first use the hint keeps offering itself. */
 export const HINT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 /** Let the terminal paint (and any first-run modal settle) before nudging. */
@@ -37,6 +38,7 @@ const isDone = (): boolean => readJson<boolean>(DISMISSED_KEY, false, (v) => v =
  * route (header button included) counts as "message received". */
 export function markGuideHintDone(): void {
   writeJson(DISMISSED_KEY, true);
+  window.dispatchEvent(new Event(DONE_EVENT));
 }
 
 export function UserGuideHint({ enabled, onOpen }: { enabled: boolean; onOpen: () => void }) {
@@ -45,8 +47,16 @@ export function UserGuideHint({ enabled, onOpen }: { enabled: boolean; onOpen: (
   useEffect(() => {
     if (!enabled) return;
     if (isDone() || Date.now() - firstSeenAt() > HINT_WINDOW_MS) return;
-    const t = setTimeout(() => setShow(true), APPEAR_DELAY_MS);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => { if (!isDone()) setShow(true); }, APPEAR_DELAY_MS);
+    const dismiss = () => {
+      clearTimeout(t);
+      setShow(false);
+    };
+    window.addEventListener(DONE_EVENT, dismiss);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener(DONE_EVENT, dismiss);
+    };
   }, [enabled]);
 
   if (!show) return null;
