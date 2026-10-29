@@ -34,3 +34,7 @@
 ## 16完成验收
 
 - 2026-10-29：[16](issues/16-slice-risk-applicability.md)用户签收，追加Answer并resolved。按切片数量限定Risk适用（5bb7d06＋788e03b）：仅已对账的浮动两腿配对数量解除Boros覆盖要求，其余风险不变；报告v2与Python连续缺口链一致。12不再受15/16阻塞（09/11/19/20已resolved），可开始；不启用交易。
+
+## 12完成验收
+
+- 2026-10-29：[12](issues/12-preview-evidence-and-admission.md)用户签收，追加Answer并resolved。服务端预览证据、原子接受与幂等（fbf71bd＋df5d796＋9e2479c）：engine自有杠杆，预览只读10秒、按可见精度绑定，接受重读重判后在准入事务内写意图/切片/deal，同id幂等、回执覆盖终态。13（还需18）及14可消费；生产端口待18接入，不启用交易。
