@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { FundingBoard } from '../api/fundingOpportunities';
 import { fundingBoard } from '../test/fundingBoard';
+import { fundingPreview } from '../test/fundingPreview';
 import { env, server } from '../test/server';
 import { FundingOpportunitiesPanel } from './FundingOpportunitiesPanel';
 
@@ -34,7 +35,7 @@ const table = () => screen.getByRole('table', { name: 'Directed funding pairs' }
 const detail = () => screen.getByRole('complementary', { name: 'Candidate detail' });
 
 describe('FundingOpportunitiesPanel', () => {
-  it('ranks every directed pair on the left and details the selected one on the right, with no way to open', async () => {
+  it('ranks every directed pair on the left and details the selected one on the right, opening only through its preview form', async () => {
     serve();
     renderWithClient(<FundingOpportunitiesPanel />);
     await screen.findByRole('table', { name: 'Directed funding pairs' });
@@ -62,9 +63,11 @@ describe('FundingOpportunitiesPanel', () => {
     expect(d).toHaveTextContent('Short 0.00125% / 1h');
     expect(d).toHaveTextContent(/read (\d\d-\d\d )?\d\d:\d\d:\d\d/);
     expect(d).toHaveTextContent('a hint only');
-    expect(d).toHaveTextContent('Costs and sizing: UNKNOWN');
+    expect(d).toHaveTextContent('Costs, sizing and admission are known only from a preview');
     expect(screen.getByText(/Manual opening is not enabled/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /open|preview|submit|confirm/i })).not.toBeInTheDocument();
+    // Opening goes only through the preview form of this exact pair; nothing is holdable before a preview.
+    expect(within(d).getByRole('group', { name: 'Open this pair' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hold to open' })).not.toBeInTheDocument();
   });
 
   it('tells unsupported from UNKNOWN in the detail, and names execution limits apart from history', async () => {
@@ -136,5 +139,33 @@ describe('FundingOpportunitiesPanel', () => {
     await screen.findByRole('table', { name: 'Directed funding pairs' });
     expect(within(table()).getAllByRole('row')[1]).toHaveTextContent('0.004%');
     expect(screen.getByText(/The contract list could not be read/)).toBeInTheDocument();
+  });
+
+  it('choosing another pair starts a fresh draft, and an unknown result on one pair blocks opening any other', async () => {
+    serve(fundingBoard({ admission: { open: true, generation: 1, reason: 'open', changedAt: 1, enabledVersion: '9.9.9' } }));
+    server.use(
+      http.post('/api/funding/preview', () => HttpResponse.json(env(fundingPreview(), { ts: fundingPreview().readAt }))),
+      http.post('/api/funding/intents', () => HttpResponse.error()),
+    );
+    renderWithClient(<FundingOpportunitiesPanel />);
+    await screen.findByRole('table', { name: 'Directed funding pairs' });
+    const d = () => detail();
+    fireEvent.change(within(d()).getByLabelText('Quantity (BTC)'), { target: { value: '0.01' } });
+    fireEvent.click(within(table()).getByRole('button', { name: /BYBIT.*BINANCE/ }));
+    expect(within(d()).getByLabelText('Quantity (BTC)')).toHaveValue('');
+    fireEvent.change(within(d()).getByLabelText('Quantity (BTC)'), { target: { value: '0.01' } });
+    fireEvent.click(within(d()).getByLabelText(/Maker: long/));
+    fireEvent.change(within(d()).getByLabelText('Short leverage'), { target: { value: '2' } });
+    fireEvent.change(within(d()).getByLabelText('Long leverage'), { target: { value: '2' } });
+    fireEvent.change(within(d()).getByLabelText('Hold days'), { target: { value: '7' } });
+    fireEvent.click(within(d()).getByRole('button', { name: 'Preview' }));
+    await within(d()).findByRole('region', { name: 'Preview' });
+    fireEvent.click(within(d()).getByLabelText(/I authorize converting/));
+    fireEvent.click(within(d()).getByLabelText('I accept the risks listed above.'));
+    fireEvent.pointerDown(within(d()).getByRole('button', { name: 'Hold to open' }));
+    expect(await within(d()).findByText(/Result unknown for intent/, undefined, { timeout: 3_000 })).toBeInTheDocument();
+    fireEvent.click(within(table()).getAllByRole('button', { name: /BINANCE.*BYBIT/ })[0]);
+    expect(within(d()).getByText(/has an unknown result: no new open from this page/)).toBeInTheDocument();
+    expect(within(d()).getByRole('button', { name: 'Preview' })).toBeDisabled();
   });
 });

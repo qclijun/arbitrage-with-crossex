@@ -18,9 +18,12 @@ export class ApiError extends Error {
   readonly retryable: boolean;
   readonly hint?: string;
   readonly httpStatus?: number;
+  /** The refusal's other top-level fields (e.g. a funding refusal's fresh `preview`). */
+  readonly details?: Record<string, unknown>;
 
-  constructor(err: ClassifiedError) {
+  constructor(err: ClassifiedError, details?: Record<string, unknown>) {
     super(err.message);
+    this.details = details;
     this.name = 'ApiError';
     this.category = err.category;
     this.label = err.label;
@@ -84,7 +87,8 @@ export async function fetchJson<T>(path: string, init: RequestInit = {}): Promis
       if (env.data !== null && typeof env.data === 'object') reads.set(env.data, env.meta);
       return env.data;
     }
-    throw new ApiError({ httpStatus: resp.status, ...env.error });
+    const { ok: _ok, error, ...details } = env as { ok: false; error: ClassifiedError } & Record<string, unknown>;
+    throw new ApiError({ httpStatus: resp.status, ...error }, Object.keys(details).length ? details : undefined);
   }
 
   // No recognizable envelope — synthesize a transport error.

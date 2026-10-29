@@ -1,5 +1,6 @@
 import type { BoardLegHistory, BoardRow, BoardWindow } from '../../api/fundingOpportunities';
 import { fmtTime, toDate } from '../../lib/fmt';
+import { FundingOrderForm } from './FundingOrderForm';
 import { coverageLabel, pct, pctExact, reasonText, windowValue } from './labels';
 
 const micro = 'text-[11px] text-ink-400';
@@ -33,7 +34,11 @@ function WindowRow({ w, underlying }: { w: BoardWindow; underlying: string }) {
  * The selected pair, both legs fixed as listed. Everything here is history
  * and current-rate evidence; costs, sizing and opening are not wired yet.
  */
-export function CandidateDetail({ row, days, snapshotId }: { row: BoardRow; days: number; snapshotId: string | null }) {
+export function CandidateDetail({ row, days, snapshotId, admissionOpen, blocked, onUnknown }: {
+  row: BoardRow; days: number; snapshotId: string | null; admissionOpen: boolean;
+  /** An acceptance on this page with an unknown result: no new open may start. */
+  blocked: string | null; onUnknown: (intentId: string) => void;
+}) {
   const selectedLegs = row.windows.find((w) => w.days === days)?.legs;
   return (
     <aside aria-label="Candidate detail" className="min-w-0 rounded border border-ink-800 p-3 text-[12px]">
@@ -91,13 +96,20 @@ export function CandidateDetail({ row, days, snapshotId }: { row: BoardRow; days
       </div>
 
       <div className={section}>
-        <h4 className="font-semibold text-ink-100">Costs and sizing: UNKNOWN</h4>
-        <p className={micro}>Fees, book impact, conversion and payback are not wired to this page yet; nothing here is a cost estimate.</p>
+        <h4 className="font-semibold text-ink-100">Open this pair</h4>
+        <p className={micro}>Costs, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.</p>
+        {snapshotId ? (
+          // A new pair or window is a new draft; nothing typed carries over.
+          <FundingOrderForm key={`${row.id}/${days}`} row={row} days={days} snapshotId={snapshotId} admissionOpen={admissionOpen}
+            blocked={blocked} onUnknown={onUnknown} />
+        ) : (
+          <p className={micro}>No history snapshot is published: nothing can be previewed.</p>
+        )}
       </div>
 
       <div className={section}>
         <p className={micro}>
-          Opening from this page is not available. Held positions and their risk:{' '}
+          Held positions and their risk:{' '}
           <button type="button" className={link} onClick={() => goTo('positions')}>Go to Positions</button> ·{' '}
           <button type="button" className={link} onClick={() => goTo('risk')}>Go to Risk</button>
         </p>

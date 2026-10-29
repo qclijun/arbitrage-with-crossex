@@ -18,9 +18,7 @@ function Notices({ board }: { board: FundingBoard }) {
   const failedFeeds = board.feeds.filter((f) => !f.ok);
   return (
     <div className="mb-3 flex flex-wrap gap-2">
-      <Chip sm tone="amber">
-        Manual opening is not enabled{board.admission?.open ? ' on this page yet' : ''} — this page only observes.
-      </Chip>
+      {!board.admission?.open && <Chip sm tone="amber">Manual opening is not enabled — previews can only be observed.</Chip>}
       {contracts.state === 'unwired' && <Chip sm tone="amber">No proven contract mapping is wired yet — no candidates can be formed.</Chip>}
       {contracts.state === 'cold' && (
         <Chip sm tone="amber">
@@ -94,12 +92,14 @@ function CurrentRates() {
 /**
  * Funding Spreads tab (ticket 18): every directed perp-vs-perp pair ranked by
  * settled funding history, with the selected pair's evidence alongside.
- * Read-only: nothing on this page places, previews or opens anything.
+ * Opening goes only through the selected pair's preview and the server's admission (tickets 12/13).
  */
 export function FundingOpportunitiesPanel() {
   const [params, setParams] = useState<BoardParams>({ days: 30, underlying: null, venue: null, positive: false, offset: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
+  // An acceptance whose result is unknown blocks every new open on this page (ticket 14 looks it up).
+  const [unknownIntent, setUnknownIntent] = useState<string | null>(null);
   const { data, isPending, isError, error } = useFundingOpportunities(params);
 
   // The server answered page one of a new ranking: follow it, and say so.
@@ -163,7 +163,10 @@ export function FundingOpportunitiesPanel() {
                 </details>
               )}
             </div>
-            {selected && <CandidateDetail row={selected} days={data.days} snapshotId={data.snapshotId} />}
+            {selected && (
+              <CandidateDetail row={selected} days={data.days} snapshotId={data.snapshotId} admissionOpen={!!data.admission?.open}
+                blocked={unknownIntent} onUnknown={setUnknownIntent} />
+            )}
           </div>
         </>
       )}

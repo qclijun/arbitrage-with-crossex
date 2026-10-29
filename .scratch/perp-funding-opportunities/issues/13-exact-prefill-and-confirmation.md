@@ -1,8 +1,8 @@
 # 精确两腿预填、编辑失效与风险确认
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Claude
 Blocked by: 03, 05, 12, 18
 
 ## Goal
@@ -26,3 +26,4 @@ Blocked by: 03, 05, 12, 18
 - 2026-10-27：03确认后预拆；等待05/06及12，不把当前预填能力冒充精确身份协议。
 - 2026-10-27：06候选定稿：消费18正式A页及12协议，把11金额/费用情景、精确参数和人工确认接入右侧连续详情；不开新独立交易捷径。观察阶段保持关闭，完整启用等待21及用户明确操作。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
+- 2026-10-29：用户确认范围与接缝并claimed：A页右侧详情内新建`FundingOrderForm`，复用HoldToConfirmButton(800ms)，只走12协议（`/funding/preview`→`/funding/intents`），不改PairTicket/ExecuteControl及四腿/三腿入口；13只做内存回执（确认时生成intentId、202/200回执与本页轮询、409附新预览即替换并清确认、网络错误显示结果未知且禁止新建、不自动重试），intentId持久化/丢响应查询/刷新恢复归14；持有天数必填无默认；准入关闭时可预览不可提交。测试接缝：web组件`FundingOrderForm`（msw），服务端不改。
