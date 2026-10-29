@@ -1,7 +1,7 @@
 # A排名工作台与只读机会API接线
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Claude
 Blocked by: 05, 09, 10, 19
 
@@ -21,9 +21,14 @@ Blocked by: 05, 09, 10, 19
 
 离线server/UI验证A布局、三场所六方向、同venue多合约、过滤分页、固定方向、缺失/零/负及stale。server只用app.inject、fake数据且阻止真实HTTP；浏览器用隔离fixture/stub环境，证明无真实交易API及页面触发外网采集。与19联合证明观察阶段伪造请求也不能新开/加仓，原四腿/三腿入口无语义偷换；不把按钮禁用当服务端证据。默认verify及web build通过，保存实际页面截图和提交/命令；只读阶段验收按[实施计划](../implementation-plan.md)，不自动开启交易。
 
+## Answer
+
+2026-10-29用户签收。实现ad58fb0＋2aed7e5：只读`GET /api/funding/opportunities`以真实now从09已发布缓存与后台市场轮询器内存（`core/funding/market.ts`）按10排名，请求零外网读取零写入；排名指纹`rankingId`变化即回第1页并提示。Funding Spreads页改为A工作台（左有向排名表、右连续详情，UNKNOWN/UNSUPPORTED/PARTIAL/STALE区分、当前报价及读取时间、执行限制、成本UNKNOWN、无开仓入口），旧当前费率表折叠且未展开不请求。生产接线缓存/刷新器/轮询器及12端口，来源为空如实显示未接线；真实官方历史适配器与合约身份映射由[22](22-history-adapters-and-contract-identity.md)承接。准入关闭时伪造preview/intents/`funding-two-leg`/旧客户端开仓均被拒。root 3534/8跳过、build通过，web默认并发`App.setupOnce`既有偶发失败归21。隔离stub实页截图三张。不启用交易。详见[18实施交接](../evidence/18-implementation-handoff.md)。
+
 ## Comments
 
 - 2026-10-27：06已确认Q1先只读交付及05选择A；补齐原07—17未完整承接的页面/API责任。仍等待06最终共同理解确认，不可认领实施。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
 - 2026-10-29：用户确认范围与接缝并claimed：真实官方历史适配器及合约标的/费率口径证明映射另开[22](22-history-adapters-and-contract-identity.md)，18只做A页、只读API、端口及index接线（来源为空时如实冷启动/未接线）；旧当前费率表保留为折叠次级视图；跨页以排名指纹`rankingId`（真实now评估，变化即回第1页并提示）；当前费率由后台轮询feeds.ts入内存，API只读内存。测试接缝：`GET /api/funding/opportunities`（app.inject）、`createFundingMarket`与feeds原生contractId、`FundingOpportunitiesPanel`（msw）。
 - 2026-10-29：实现ad58fb0＋审查修正（本次提交）：只读`GET /api/funding/opportunities`、后台市场轮询器、A工作台替换Funding Spreads页（旧表折叠）、生产接线（来源为空，如实未接线）。双轴审查修正空feed、UNSUPPORTED状态、小数精度、报价时间等。默认verify root全绿，web仅`App.setupOnce`既有偶发失败（归21），build通过；隔离stub实页截图三张。等待用户签收，不启用交易。详见[18实施交接](../evidence/18-implementation-handoff.md)。
+- 2026-10-29：用户签收，追加Answer并resolved。
