@@ -1,8 +1,8 @@
 # 五源公开历史接口限流与预算实测补验
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Codex
 Blocked by: 22
 
 ## Goal
@@ -27,7 +27,16 @@ Blocked by: 22
 - [22公开样本及校准限制](../evidence/22-public-samples.md)
 - [22实施交接](../evidence/22-implementation-handoff.md)
 - [07来源研究及补充](../evidence/history-source-research.md)
+- [23公开校准与剩余UNKNOWN](../evidence/23-public-calibration.md)
+- [23逐请求参数/响应头/正文哈希与原始归档](../evidence/23-public-samples-20261030/manifest.json)
 
 ## Comments
 
 - 2026-10-30：根据用户选择从22拆出；22按UNKNOWN签收实现，本票open、未认领。人工开仓仍关闭。
+- 2026-10-30：开始只读补验；独立串行探针使用现有出口，不主动触发限流、不自动重试；缺失证据继续UNKNOWN，完成取证不等于全部验收。
+
+## Answer（部分交付，未 resolved）
+
+2026-10-30完成9次低频公开采样并归档正文、请求参数、响应头、耗时和SHA-256：Aster/OKX/HL返回200；Binance仍451（地区资格拒绝）、Bybit仍403（CloudFront国家阻断）。Aster产品分钟权重1/2400可核验，历史缺头保持UNKNOWN；HL24/500条对应文档保守估算22/45，非实测扣账。五场所逐项结论、官方规则、实际collector配置及离线/实测分层见23证据。
+
+剩余验收：Binance/Bybit可用历史与头、真实Retry-After秒/日期、429/418与业务限流、Bybit剩余/重置、MBX高水位、HL扣账/恢复及共享IP负载均未证实，继续UNKNOWN。补齐需合规可访问的已授权公开样本/访问条件，以及自然限流记录或场所认可的隔离条件；不自行换出口、不耗尽额度。本次不再次拆票或默认按UNKNOWN签收，23保持claimed，21依赖保留，人工开仓仍关闭。
