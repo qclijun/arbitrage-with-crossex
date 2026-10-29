@@ -39,9 +39,14 @@ code allowed to mutate state or call venue-mutating endpoints.
   `engine.wake()`; they never place or cancel orders themselves. The strategy slice
   ledger (`engine/slices.ts`) follows the same split: fill-derived quantities are
   booked only by the engine after each tick, while user commands — slice creation,
-  attaching a deal, a claim, an evidenced recovery of an unexplained position — are
+  attaching a deal, an evidenced recovery of an unexplained position — are
   validated and written atomically by the route like any other intent. That
   recovery is ledger reconciliation, not crash recovery state.
+  Current-time ownership claims use durable preview/confirm commands
+  (`engine/slice-claims.ts`, `/api/slices/claims/*`). Routes only enqueue;
+  the normal loop reads fresh evidence and atomically applies at most one
+  command per pass. A claim changes current quantity ownership, never trades
+  or backfills slice cash flows; insufficient attribution remains UNKNOWN.
 - Leverage a deal owns (`PairRow.leverage`, `engine/leverage.ts`) is set by the engine,
   one leg per tick, before anything is placed; a refusal or an unconfirmed outcome
   ends the deal with nothing placed. The funding-opportunity admission

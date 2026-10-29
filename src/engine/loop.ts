@@ -13,6 +13,8 @@ import { fx, fxStr } from './fx';
 import { type EngineObservation, type ObservationContext, observeCall, recordObservation } from './observation';
 import { POC_REASON, decide, decideBeforeMakerPrices, project, sizeFor, type DecideCtx } from './decide';
 import type { Store } from './db';
+import type { ClaimEvidence, ClaimInput } from './claim-types';
+import { processSliceClaims } from './slice-claims';
 import {
   TUNING,
   type Action,
@@ -24,6 +26,7 @@ import {
 } from './types';
 
 export interface LoopDeps {
+  readClaimEvidence?: (input: ClaimInput) => Promise<ClaimEvidence>;
   /** Independent, default-off dependency optimization; rollout remains gated. */
   skipUnrelatedMakerWait?: boolean;
   /** Diagnostic clock only; production defaults to performance.now(). */
@@ -876,6 +879,9 @@ export function startLoop(deps: LoopDeps, opts?: { signal?: AbortSignal }): { wa
           }
         }
       }
+      // Ownership commands never trade. Failure is isolated from the deal
+      // phase above, including its normal hedge/reconcile work.
+      if (deps.readClaimEvidence) await processSliceClaims(deps.store, deps.readClaimEvidence, () => deps.clock.now());
     } catch (err) {
       console.error('[engine] loop pass failed', err);
     } finally {

@@ -14,6 +14,7 @@ import { fx, fxDiv, fxMul, fxStr, FX_ZERO } from './fx';
 import { claimExclusive, inSavepoint } from './ledger/sqlite';
 import { prepareLedger } from './ledger/version';
 import { SliceLedger } from './slices';
+import { SliceClaims } from './slice-claims';
 import type { AlertRow, LegLeverage, LegSpec, OrderRow, PairMode, PairRow } from './types';
 
 /** FNV-1a → base36 hash: compresses a whole client uuid into 7 chars so order
@@ -235,6 +236,7 @@ export class Store {
   readonly admission: AdmissionSwitch;
   /** Strategy slices and per-contract books (engine/slices.ts). */
   readonly slices: SliceLedger;
+  readonly claims: SliceClaims;
   /** Accepted funding-opportunity intents (engine/funding-intents.ts). */
   readonly fundingIntents: FundingIntents;
 
@@ -263,6 +265,7 @@ export class Store {
     }
     this.admission = new AdmissionSwitch(this.db, opts?.programVersion ?? null);
     this.slices = new SliceLedger(this.db, (level, pairId, message, now) => this.alert(level, pairId, message, now));
+    this.claims = new SliceClaims(this.db);
     this.fundingIntents = new FundingIntents(this.db);
   }
 

@@ -11,6 +11,7 @@ import { CoreError } from '../../core/errors';
 import { fx } from '../../engine/fx';
 import { reconcileContract } from '../../engine/slice-reconcile';
 import { SliceRefusal } from '../../engine/slices';
+import { UNKNOWN_ATTRIBUTION } from '../../engine/claim-types';
 import type { AppDeps } from '../app';
 import { recordUnreconciled } from '../dealGates';
 import { refuse } from '../errorReply';
@@ -47,7 +48,7 @@ export function slicesRoutes(deps: AppDeps) {
         return { contract, ...rec };
       });
       return reply.ok({
-        slices: s.slices.list().map((slice) => ({ ...slice, reducible: s.slices.reducible(slice.id) })),
+        slices: s.slices.list().map((slice) => ({ ...slice, reducible: s.slices.reducible(slice.id), attribution: UNKNOWN_ATTRIBUTION })),
         contracts,
       }, { observedAt: Date.now() });
     });

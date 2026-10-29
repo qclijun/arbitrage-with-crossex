@@ -203,6 +203,8 @@ export interface BorosMarketPosition {
    * response. Feeds the bucket health factor (equity / maintenance). */
   maintMargin?: string;
   hasRestingOrders?: boolean;
+  /** True only when the account feed supplied its full resting-order list. */
+  ordersComplete?: boolean;
 }
 
 /** A margin group: the cross account or one isolated position bucket. */
@@ -671,6 +673,7 @@ export async function fetchBorosCollaterals(
 
   const live = new Map<string, Record<string, unknown>>();
   if (strict && (infos.resumeToken || actives.resumeToken
+      || new Set(infos.results.map((r) => String(r.marketAcc).toLowerCase())).size !== infos.results.length
       || [...infos.results, ...actives.results].some((r) => {
         const acc = String(r.marketAcc ?? '').toLowerCase().replace(/^0x/, '');
         return !/^[0-9a-f]{52}$/.test(acc) || acc.slice(0, 40) !== address.slice(2).toLowerCase();
@@ -707,6 +710,7 @@ export async function fetchBorosCollaterals(
       positionInitialMargin: positionOnlyInitialMargin(p, marketById.get(Number(p.marketId)), nowSec),
       initialMargin: p.initialMargin as string | undefined,
       hasRestingOrders: Array.isArray(p.orders) && p.orders.length > 0,
+      ordersComplete: Array.isArray(p.orders),
     };
   };
 
@@ -723,8 +727,9 @@ export async function fetchBorosCollaterals(
       initialMargin: r.initialMargin as string | undefined,
       availableInitialMargin: r.availableInitialMargin as string | undefined,
       availableMaintMargin: r.availableMaintMargin as string | undefined,
-      positionsComplete: Array.isArray(r.positions) && r.positions.every((p: Record<string, unknown>) =>
-        typeof p.signedSize === 'string' && /^-?\d+$/.test(p.signedSize)),
+      positionsComplete: Array.isArray(r.positions)
+        && new Set(r.positions.map((p: Record<string, unknown>) => p.marketId)).size === r.positions.length
+        && r.positions.every((p: Record<string, unknown>) => typeof p.signedSize === 'string' && /^-?\d+$/.test(p.signedSize)),
       marketPositions: Array.isArray(r.positions)
         ? (r.positions as Array<Record<string, unknown>>).map((p) =>
             toPosition(String(r.marketAcc ?? ''), p),

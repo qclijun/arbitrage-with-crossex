@@ -1,7 +1,7 @@
 # 持久提交身份、丢响应查询与执行回显恢复
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Claude
 Blocked by: 03, 04, 12, 13, 20
 
@@ -21,8 +21,13 @@ Blocked by: 03, 04, 12, 13, 20
 
 离线UI/server集成TDD覆盖丢POST响应、双击/并发、同id异内容、本地TTL到期/存储失败、迟到请求、刷新时原票已DONE有dust、多个活票、部分成交+B拒单、unknown及停止成交竞态。证明同一确认最多一个deal、不会因页面恢复新增订单或重置期限；仅fake venue/app.inject且封锁HTTP，最终yarn verify与web production build。
 
+## Answer
+
+2026-10-29用户签收。实现e346a17，交接a76b9bf：提交前持久记录并读回验证；丢响应按原id查询，仅服务端证明迟到不可接受才释放；刷新、跨页及多票恢复真实回执，保留partial/dust、unknown和停止竞态。离线测试及默认完整`yarn verify`、web production build通过，详细证据见[14实施交接](../evidence/14-implementation-handoff.md)。不启用或部署交易。
+
 ## Comments
 
+- 2026-10-29：用户签收，追加Answer并resolved。
 - 2026-10-27：03确认后预拆，依赖04/06、12/13；不是本轮产品实现或实盘授权。
 - 2026-10-27：06-Q4/Q5已确认：持久身份遵守20迁移保全；关闭入口后已接受意图仍查询/恢复原执行，继续原maker及到期转换，不自动全票Stop。同id重试只返回原执行；未接受的迟到请求受19/12关闭代次约束。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。

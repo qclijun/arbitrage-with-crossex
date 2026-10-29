@@ -20,6 +20,8 @@ import { booksRoutes } from './routes/books';
 import { credentialsRoutes } from './routes/credentials';
 import { admissionRoutes } from './routes/admission';
 import { slicesRoutes } from './routes/slices';
+import { sliceClaimRoutes } from './routes/sliceClaims';
+import type { ClaimEvidence, ClaimInput } from '../engine/claim-types';
 import { dealsRoutes } from './routes/deals';
 import { disclaimerRoutes } from './routes/disclaimer';
 import { feesRoutes } from './routes/fees';
@@ -63,6 +65,7 @@ export interface AppDeps {
    * The route layer only writes intent rows / command levels; the reconcile loop
    * (started by the entry point, driven manually in tests) owns every venue
    * mutation. */
+  readClaimEvidence?: (input: ClaimInput) => Promise<ClaimEvidence>;
   engine?: {
     store: Store;
     venue: VenuePort;
@@ -261,6 +264,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     admissionRoutes,
     fundingIntentRoutes,
     slicesRoutes,
+    sliceClaimRoutes,
     rebalanceRoutes,
     transferRoutes,
     versionRoutes,

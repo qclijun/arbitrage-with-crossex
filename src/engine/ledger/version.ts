@@ -15,6 +15,7 @@
  * the code that release already shipped.
  */
 import type { DatabaseSync } from 'node:sqlite';
+import { CLAIM_SCHEMA } from './claim-schema';
 import { backupLedger, ledgerFingerprint, type BackupManifest } from './backup';
 import { LEGACY_SCHEMA, normalizeLegacyTables } from './legacy';
 import { writeLedgerMarker } from './marker';
@@ -102,6 +103,12 @@ export const LEDGER_STEPS: readonly LedgerStep[] = [
     to: 5,
     quiescent: false,
     apply: (db) => db.exec(FUNDING_INTENT_SCHEMA),
+  },
+  {
+    // Version 6 (ticket 17): durable current-time ownership commands.
+    to: 6,
+    quiescent: false,
+    apply: (db) => db.exec(CLAIM_SCHEMA),
   },
 ];
 

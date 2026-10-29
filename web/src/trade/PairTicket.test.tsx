@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionInput, DealRequest, PreviewResponse, PreviewResult, SymbolRule } from '../api/types';
 import { baseHandlers, BTC_BINANCE, ETH_GATE, previewFor, symbolHandlers } from '../test/fixtures';
 import { env, server } from '../test/server';
@@ -442,6 +442,16 @@ describe('PairTicket execution modes', () => {
 // ---------------------------------------------------------------------------
 
 describe('PairTicket idempotency across remount', () => {
+  // These cases prove identity, with two real 800ms confirmation gates.
+  // Drive only the gate's clock deterministically: network/debounce timers
+  // stay real, and neither the product duration nor the test timeout changes.
+  function hold(button: HTMLElement): void {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    try {
+      fireEvent.pointerDown(button);
+      act(() => { vi.advanceTimersByTime(800); });
+    } finally { vi.useRealTimers(); }
+  }
   // Regression for the real-component gap the previous fix missed: its tests
   // exercised ExecuteControl with hand-supplied STABLE intentKeys, but the
   // actual PairTicket put pairGroupId — a fresh uuid every mount — INTO its
@@ -476,7 +486,7 @@ describe('PairTicket idempotency across remount', () => {
     await waitFor(() => expect(screen.getByLabelText(/Maker price/)).toHaveValue('2497'), { timeout: 4000 });
     const btn1 = screen.getByRole('button', { name: 'Execute pair' });
     await waitFor(() => expect(btn1).toBeEnabled(), { timeout: 4000 });
-    fireEvent.pointerDown(btn1); // hold-to-confirm (default 800ms)
+    hold(btn1);
     await waitFor(() => expect(dealCalls).toHaveLength(1), { timeout: 2_000 });
 
     // Full unmount + fresh mount (what the Single/Pair toggle and a reload do),
@@ -487,7 +497,7 @@ describe('PairTicket idempotency across remount', () => {
     await waitFor(() => expect(screen.getByLabelText(/Maker price/)).toHaveValue('2497'), { timeout: 4000 });
     const btn2 = screen.getByRole('button', { name: 'Execute pair' });
     await waitFor(() => expect(btn2).toBeEnabled(), { timeout: 4000 });
-    fireEvent.pointerDown(btn2);
+    hold(btn2);
     await waitFor(() => expect(dealCalls).toHaveLength(2), { timeout: 2_000 });
 
     // Same intent → the persisted id is recovered and resent; the server
@@ -526,7 +536,7 @@ describe('PairTicket idempotency across remount', () => {
     await waitFor(() => expect(screen.getByLabelText(/Maker price/)).toHaveValue('2497'), { timeout: 4000 });
     const btn = screen.getByRole('button', { name: 'Execute pair' });
     await waitFor(() => expect(btn).toBeEnabled(), { timeout: 4000 });
-    fireEvent.pointerDown(btn);
+    hold(btn);
     await waitFor(() => expect(dealCalls).toHaveLength(1), { timeout: 2_000 });
 
     // Same digits, different unit — the toggle keeps "1000" in the box.
@@ -537,7 +547,7 @@ describe('PairTicket idempotency across remount', () => {
 
     const btn2 = screen.getByRole('button', { name: 'Execute pair' });
     await waitFor(() => expect(btn2).toBeEnabled(), { timeout: 4000 });
-    fireEvent.pointerDown(btn2);
+    hold(btn2);
     await waitFor(() => expect(dealCalls).toHaveLength(2), { timeout: 2_000 });
 
     // A different order ⇒ a different id, so the server cannot dedupe it into

@@ -16,6 +16,7 @@ import { isSqliteLockError } from '../engine/ledger/sqlite';
 import { LedgerRefusal } from '../engine/ledger/version';
 import { EngineObservation } from '../engine/observation';
 import { startLoop, type LoopDeps } from '../engine/loop';
+import { claimReader } from './claim-reads';
 import { gateVenue } from '../engine/venueGate';
 import type { Clock, VenuePort } from '../engine/types';
 import { buildApp } from './app';
@@ -294,7 +295,10 @@ const appDeps = {
     },
   },
 };
-const app = buildApp(appDeps);
+// Routes and the sole writer consult the same fresh, read-only evidence port.
+const readClaimEvidence = claimReader(getClients, () => engine?.clock.now() ?? Date.now());
+if (loopDeps) loopDeps.readClaimEvidence = readClaimEvidence;
+const app = buildApp({ ...appDeps, readClaimEvidence });
 app.addHook('onClose', async () => {
   fundingServices.stop();
   await engineTransport.close();

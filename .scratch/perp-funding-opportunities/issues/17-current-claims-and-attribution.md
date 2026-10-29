@@ -1,8 +1,8 @@
 # 当前时点认领与可证明收益归因
 
 Type: task
-Status: open
-Assignee: none
+Status: resolved
+Assignee: Codex
 Blocked by: 04, 05, 15, 16, 18
 
 ## Goal
@@ -23,6 +23,13 @@ Blocked by: 04, 05, 15, 16, 18
 
 ## Comments
 
+- 2026-10-29：用户签收14并授权实现下一张可实施工单；04/05/15/16/18已resolved，Codex claimed。本票只认领当前有证据数量，不启用或部署交易。
+- 2026-10-29：已实现，待签收。当前证据预览→持久确认意图→唯一engine重验/原子记账；部分量、剩余未归属及as-of可见，资金费/费用/实际收益/资本分母不足统一UNKNOWN。Boros按已连接owner、子账户、物理bucket、市场、来源/方向、到期和单位取证；非base单位不做未经证明的换算。认领不改变准入开关、历史差异或交易权限。见[17实施交接](../evidence/17-implementation-handoff.md)。
+
 - 2026-10-27：04决定后预拆，等待05/06及数量、Risk基础，当前不可认领实施。
 - 2026-10-27：06候选定稿：消费18正式页面及15/16证据接入Positions/Risk和当前认领；保留用户显式选量与as-of，不倒填。关闭人工开仓不等于自动认领旧仓，也不豁免本票证据；21验证完整交互与诚实UNKNOWN。
 - 2026-10-27：用户最终确认06共同理解，06已resolved并解除本票对应阻塞；其余依赖及验收要求不变，不自动认领、启用或部署。
+
+## Answer
+
+2026-10-29：用户签收17，状态改为resolved，并授权本地提交。已实现当前可证数量的部分认领、持久确认与刷新恢复，由唯一engine重验后原子记账；保留剩余未归属、历史差异及收益UNKNOWN边界，不发交易或启用人工开仓。默认完整`yarn verify`通过（服务端3584通过、8跳过；Web1785通过），Web production build通过。实现、兼容边界及验证证据见[17实施交接](../evidence/17-implementation-handoff.md)。

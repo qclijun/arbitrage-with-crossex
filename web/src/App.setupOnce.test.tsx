@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import App from './App';
+import { qk } from './api/queries';
 import type { OpenOrder, TradesResponse, VenueFees } from './api/types';
 import { SETUP_SHOWN_KEY } from './panels/setup/setupState';
 import {
@@ -31,12 +32,35 @@ function mockUpdatedApp() {
   );
 }
 
+async function renderInitializedApp() {
+  const view = renderWithClient(<App />);
+  // The auto-open effect waits for these real queries. Flush their completion
+  // before asserting the dialog, rather than timing network startup via a DOM
+  // query's one-second retry window. The test's normal timeout still applies.
+  const settle = async (keys: ReadonlyArray<readonly string[]>) => act(async () => {
+    const cache = view.queryClient.getQueryCache();
+    const ready = () => keys
+      .every((queryKey) => cache.find({ queryKey, exact: true })?.state.status === 'success');
+    if (!ready()) await new Promise<void>((resolve) => {
+      const unsubscribe = cache.subscribe(() => {
+        if (ready()) { unsubscribe(); resolve(); }
+      });
+    });
+    // Query observers publish cache changes on the next timer turn.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  // The terminal (and its Telegram observer) mounts after credentials resolve.
+  await settle([qk.credentials, qk.borosAgent, qk.disclaimer]);
+  await settle([qk.telegram]);
+  return view;
+}
+
 describe('settings after an update', () => {
   it('opens settings once', async () => {
     mockUpdatedApp();
-    renderWithClient(<App />);
+    await renderInitializedApp();
 
-    const drawer = await screen.findByRole('dialog', { name: 'Settings' });
+    const drawer = screen.getByRole('dialog', { name: 'Settings' });
     const row = (name: string) => within(drawer).getByRole('region', { name });
     expect(within(row('Telegram alerts')).getByRole('button', { name: 'Collapse' })).toBeInTheDocument();
     expect(within(row('Boros wallet')).getByRole('button', { name: 'Expand' })).toBeInTheDocument();
@@ -46,12 +70,12 @@ describe('settings after an update', () => {
   it('only once', async () => {
     const user = userEvent.setup();
     mockUpdatedApp();
-    const first = renderWithClient(<App />);
-    const drawer = await screen.findByRole('dialog', { name: 'Settings' });
+    const first = await renderInitializedApp();
+    const drawer = screen.getByRole('dialog', { name: 'Settings' });
     await user.click(within(drawer).getByRole('button', { name: 'close' }));
     first.unmount();
 
-    renderWithClient(<App />);
+    await renderInitializedApp();
     expect(await screen.findByRole('button', { name: 'Finish setup 2/3' })).toBeInTheDocument();
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();

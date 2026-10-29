@@ -1,15 +1,16 @@
 /**
  * The POSITIONS home: the ASSET-GROUPED tracking view. One card per
- * underlying asset (ETH, BTC, …) — no strategies, no enrollment, no
- * rollover lifecycle:
+ * underlying asset (ETH, BTC, …):
  *
  *   1. Hedge status: what's missing, per venue, for a perfect hedge — and
  *      per-leg exclusions for positions that aren't part of the farm.
  *   2. Lifetime PnL + capital since a user-chosen start date, from the
  *      venues' own records (open positions live, closed ones from history).
  *
- * Durable state is ONLY `crossex.assetView.v1` (start date + exclusions);
- * every number is a pure function of the venue feeds.
+ * Account totals remain venue aggregates. View prefs use
+ * `crossex.assetView.v1`; the separate current-ownership entry uses the server
+ * slice ledger and never reallocates those historical totals. It stays
+ * available even while account history is loading or unavailable.
  */
 import { useMemo, useState } from 'react';
 import { AccountsAlert } from '../accounts/AccountsUi';
@@ -27,9 +28,21 @@ import { isSameAddress, useActiveWallet, useTrackedAddress } from '../trackedAdd
 import { assetIsActive, deriveAsset, SECONDS_IN_YEAR } from './assetModel';
 import { legSinceParam, loadPrefs, savePrefs, type AssetViewPrefs } from './assetPrefsStore';
 import { AssetCard } from './AssetCard';
+import { StrategyOwnership } from './StrategyOwnership';
 
 
 export function AssetsHome() {
+  const { address } = useTrackedAddress();
+  const viewOnly = useActiveWallet().viewOnly;
+  const [showOwnership, setShowOwnership] = useState(false);
+  return <section>
+    <button type="button" className="my-2 text-xs" onClick={() => setShowOwnership(!showOwnership)}>Strategy ownership</button>
+    {showOwnership && <StrategyOwnership address={address} disabled={viewOnly} />}
+    <AssetsHomeContent />
+  </section>;
+}
+
+function AssetsHomeContent() {
   const { address } = useTrackedAddress();
   const viewOnly = useActiveWallet().viewOnly;
   const loggedInRoot = useBorosAgent().data?.root ?? null;

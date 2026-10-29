@@ -19,7 +19,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { fx, fxStr } from './fx';
 import { inSavepoint } from './ledger/sqlite';
-import { ACCOUNT, bookDealFills, bookPendingFills, insertMovement, normContract, type Alert } from './slice-booking';
+import { ACCOUNT, bookDealFills, bookPendingFills, filledOn, insertMovement, normContract, type Alert } from './slice-booking';
 import {
   bookOf, contractStateOf, getSlice, inFlight, legsOn, listSlices, movementsOf, oppositeHolder, pendingReduceOn,
   reducibleOf, trackedContracts, type ContractBook, type Movement, type SliceSide, type SliceView,
@@ -62,6 +62,9 @@ export class SliceLedger {
     legs: Array<{ leg: string; contract: string; side: SliceSide }>;
     /** Signed actual net per contract, read fresh, for contracts not yet tracked. */
     observed: Record<string, string>;
+    /** A current claim's fresh baseline already includes every recorded
+     * pre-existing fill, including deals created in this same millisecond. */
+    baselineIncludesRecordedFills?: boolean;
   }): void {
     const contracts = input.legs.map((l) => normContract(l.contract));
     if (!input.id || !input.legs.length || new Set(contracts).size !== contracts.length ||
@@ -77,6 +80,7 @@ export class SliceLedger {
         if (!bookOf(this.db, contract)) {
           const seen = input.observed[contract] ?? input.observed[l.contract];
           if (seen === undefined) throw no('baseline-missing', `no fresh position reading for ${contract}`);
+          if (input.baselineIncludesRecordedFills) this.anchorRecordedFills(contract);
           this.db.prepare('INSERT INTO contract_book (account, contract, explained, baseline_at, flag) VALUES (?,?,?,?,NULL)')
             .run(ACCOUNT, contract, fxStr(fx(seen)), input.now);
         }
@@ -211,6 +215,19 @@ export class SliceLedger {
   private refuseOpposite(contract: string, side: SliceSide): void {
     const holder = oppositeHolder(this.db, contract, side);
     if (holder) throw no('opposite-slice', `${contract} is held the other way by slice ${holder}; slices on one net position must point the same way`);
+  }
+
+  private anchorRecordedFills(contract: string): void {
+    const rows = this.db.prepare('SELECT id, a_contract, b_contract FROM pair WHERE upper(a_contract) = ? OR upper(b_contract) = ?')
+      .all(contract, contract) as { id: string; a_contract: string; b_contract: string | null }[];
+    for (const row of rows) for (const leg of ['A', 'B'] as const) {
+      if ((leg === 'A' ? row.a_contract : row.b_contract)?.toUpperCase() !== contract) continue;
+      const filled = filledOn(this.db, row.id, leg);
+      const prior = this.db.prepare('SELECT booked FROM fill_booking WHERE deal_id = ? AND deal_leg = ?').get(row.id, leg) as { booked: string } | undefined;
+      if (filled === null || filled < fx(prior?.booked ?? '0')) throw no('not-reconciled', 'recorded fills are unreadable or shrank; reconcile before claiming');
+      this.db.prepare('INSERT INTO fill_booking (deal_id, deal_leg, booked) VALUES (?,?,?) ON CONFLICT (deal_id, deal_leg) DO UPDATE SET booked = excluded.booked')
+        .run(row.id, leg, fxStr(filled));
+    }
   }
 
   private setQty(sliceId: string, leg: string, qty: bigint): void {

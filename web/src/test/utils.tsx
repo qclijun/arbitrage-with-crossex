@@ -16,7 +16,7 @@ export function renderWithClient(ui: ReactElement) {
       mutations: { retry: false },
     },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <TradeFlowProvider>
@@ -25,4 +25,5 @@ export function renderWithClient(ui: ReactElement) {
       </ToastProvider>
     </QueryClientProvider>,
   );
+  return { ...view, queryClient };
 }
