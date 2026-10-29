@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { deal, order } from '../helpers/slice-fixture';
-import { fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, type FundingWorld } from '../helpers/funding-intent-fixture';
+import { fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, USDT_LONG, type FundingWorld } from '../helpers/funding-intent-fixture';
 
 let w: FundingWorld;
 afterEach(async () => {
@@ -30,7 +30,7 @@ describe('funding preview', () => {
       makerPrice: '2499.9', timeoutSec: 300, onExpiry: 'convert-to-taker', currency: 'USDT',
       legs: { long: { role: 'maker', side: 'BUY', leverage: '5' }, short: { role: 'hedge', side: 'SELL', leverage: '3' } },
       fees: { short: { maker: '0.0002', taker: '0.0005' }, long: { maker: '0.0001', taker: '0.00045' } },
-      fx: expect.stringContaining('USDC/USDT 0.9998'), borrow: 'not-applicable',
+      fx: 'known:USDC/USDT', borrow: 'not-applicable',
     });
     expect(data.content.warnings).toEqual(expect.arrayContaining(['maker-expiry-converts-remainder-to-taker', `leverage-change:${LONG_SYMBOL}:10->5`]));
     expect(data.content.amounts.normalOneTime).toMatch(/^-?\d+(\.\d{1,2})?$/);
@@ -118,6 +118,31 @@ describe('funding preview', () => {
 
     w.state.positions = [{ symbol: LONG_SYMBOL, positionQty: '0.25' }, { symbol: SHORT_SYMBOL, positionQty: '-0.2' }];
     expect(codes(await w.preview())).toContain('contract-unreconciled');
+  });
+
+  it('needs no FX for a same-quote pair, and a USDC/USDT one only from a current, timed book', async () => {
+    w = fundingWorld();
+    w.state.fail.add('spot');
+    const same = await w.preview({ long: { venue: 'BINANCE', contractId: 'ETHUSDT', symbol: USDT_LONG } });
+    expect(same.body.data.content.fx).toBe('none');
+    expect(same.body.data.blockers.map((b: { code: string }) => b.code)).not.toContain('fx-unknown');
+
+    w.state.fail.delete('spot');
+    w.state.spotAt = w.clock.now() - 10_001;
+    expect(codes(await w.preview())).toContain('fx-unknown');
+    w.state.spotAt = null;
+    expect(codes(await w.preview())).toContain('fx-unknown');
+  });
+
+  it('charges an existing liability as known carry, and blocks one it cannot price', async () => {
+    w = fundingWorld();
+    w.state.account.assets = [{ coin: 'USDT', liability: '1000', exchangeType: 'CROSSEX' }, { coin: 'USDC', liability: '0' }];
+    w.state.interest = [{ coin: 'USDT', exchangeType: 'CROSSEX', hourInterestRate: '0.00001', time: '0' }];
+    const res = await w.preview();
+    expect(res.body.data.content.borrow).toBe('known:USDT');
+    expect(res.body.data.scenario.carry).toMatchObject({ item: 'borrow', rate: '0.00024', amount: { status: 'known', value: '0.24' } });
+    w.state.interest = [];
+    expect(codes(await w.preview())).toContain('borrow-unknown');
   });
 
   it.each([

@@ -69,6 +69,19 @@ describe('engine-owned leverage', () => {
     expect(report(lost).reason).toMatch(/leverage.*A.*reads back 10/);
   });
 
+  it('names a leg the venue left at neither the old nor the target value', async () => {
+    const w = world();
+    w.venue.nextLeverage.push('unknown-lost');
+    w.venue.setLeverage = async (contract, leverage) => {
+      w.venue.leverageCalls.push({ contract, leverage });
+      w.venue.leverage.set(contract, '7');
+      return { kind: 'unknown', message: 'sim: partial' };
+    };
+    await w.step(3);
+    expect(w.venue.createCalls).toEqual([]);
+    expect(report(w).reason).toMatch(/reads back 7, not 3; left changed 10 → 7, not restored/);
+  });
+
   it('a leverage it cannot read ends the deal without any mutation', async () => {
     const w = world();
     w.venue.leverageReadsFail = true;

@@ -11,6 +11,7 @@ import { CoreError } from '../../core/errors';
 import { exact, sign } from '../../core/funding/exact';
 import { HISTORY_DAYS, type HistoryDays } from '../../core/funding/history';
 import type { Side } from '../../core/funding/scenario';
+import { parseSymbol } from '../../core/numbers';
 
 export interface RequestLeg { venue: string; contractId: string; symbol: string }
 
@@ -33,8 +34,11 @@ export interface PreviewRequest {
 export const TIMEOUT_DEFAULT_S = 300;
 export const TIMEOUT_MIN_S = 30;
 export const TIMEOUT_MAX_S = 3_600;
-/** Every amount is shown in the margin currency. */
-export const CURRENCY = 'USDT';
+/** Amounts are shown in the legs' shared quote; a USDT/USDC mix in USDT. */
+export function currencyOf(r: Pick<PreviewRequest, 'short' | 'long'>): string {
+  const [a, b] = [parseSymbol(r.short.symbol).quote, parseSymbol(r.long.symbol).quote];
+  return a === b ? a : 'USDT';
+}
 
 const bad = (message: string): never => {
   throw new CoreError(message, 'validation');

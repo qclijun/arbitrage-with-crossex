@@ -35,7 +35,7 @@ const contractOf = (pair: PairRow, leg: LegLeverage['leg']) => (leg === 'A' ? pa
 
 function failureReason(pair: PairRow, legs: LegLeverage[], failed: LegLeverage): string {
   const changed = legs
-    .filter((l) => l.state === 'set' && l.previous !== null && !same(l.previous, l.target))
+    .filter((l) => l.state === 'set' && l.previous !== null && !sameLeverage(l.previous, l.target))
     .map((l) => `leg ${l.leg} (${contractOf(pair, l.leg)}) leverage was changed ${l.previous} → ${l.target} and is not restored`);
   return [
     `leverage not confirmed on leg ${failed.leg} (${contractOf(pair, failed.leg)}): ${failed.detail}; nothing was placed`,
@@ -43,7 +43,8 @@ function failureReason(pair: PairRow, legs: LegLeverage[], failed: LegLeverage):
   ].join('. ');
 }
 
-function same(a: string, b: string): boolean {
+/** Leverage values are compared as decimals: '5' and '5.00' are the same. */
+export function sameLeverage(a: string, b: string): boolean {
   try {
     return fx(a) === fx(b);
   } catch {
@@ -64,14 +65,15 @@ export async function performSetLeverage(deps: LoopDeps, pair: PairRow, leg: Leg
   const current = await deps.venue.readLeverage(contract, deps.evidence);
   if (current === null) return fail('the current leverage could not be read');
   const previous = entry.previous ?? current;
-  if (same(current, target)) return update({ state: 'set', previous });
+  if (sameLeverage(current, target)) return update({ state: 'set', previous });
   // Write-ahead: the value before our change survives a crash mid-call.
   if (entry.previous === null) update({ previous });
 
   const outcome = await deps.venue.setLeverage(contract, target, deps.evidence);
   if (outcome.kind === 'reject') return fail(`refused: ${outcome.label} ${outcome.message}`);
   const back = await deps.venue.readLeverage(contract, deps.evidence);
-  if (back !== null && same(back, target)) return update({ state: 'set' });
-  const seen = back === null ? 'cannot be read back' : `reads back ${back}, not ${target}`;
+  if (back !== null && sameLeverage(back, target)) return update({ state: 'set' });
+  const moved = back !== null && !sameLeverage(back, previous) ? `; left changed ${previous} → ${back}, not restored` : '';
+  const seen = back === null ? 'cannot be read back' : `reads back ${back}, not ${target}${moved}`;
   return fail(outcome.kind === 'ok' ? `accepted but ${seen}` : `outcome unknown (${outcome.message}); ${seen}`);
 }

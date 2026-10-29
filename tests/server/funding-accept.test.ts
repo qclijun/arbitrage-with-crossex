@@ -98,6 +98,13 @@ describe('funding acceptance', () => {
     nothingHappened(w);
   });
 
+  it('accepts across a tick of the FX book: only the FX status is confirmed, its amount effect at display precision', async () => {
+    w = fundingWorld();
+    const preview = await w.preview();
+    w.state.spot = { bid: '0.99981', ask: '1.00019' };
+    expect((await w.accept(confirm(preview))).status).toBe(202);
+  });
+
   it('returns a new preview, without accepting, when what was confirmed changed', async () => {
     w = fundingWorld();
     const preview = await w.preview();

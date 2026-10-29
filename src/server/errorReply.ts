@@ -55,6 +55,7 @@ interface Refusal {
   label?: string;
 }
 
-export function refuse(reply: FastifyReply, { code, category, message, retryable, label }: Refusal): FastifyReply {
-  return reply.code(code).send({ ok: false, error: { category, ...(label ? { label } : {}), message, retryable } });
+/** `extra` rides beside `error` (e.g. a fresh preview to confirm instead). */
+export function refuse(reply: FastifyReply, { code, category, message, retryable, label }: Refusal, extra?: Record<string, unknown>): FastifyReply {
+  return reply.code(code).send({ ok: false, error: { category, ...(label ? { label } : {}), message, retryable }, ...extra });
 }

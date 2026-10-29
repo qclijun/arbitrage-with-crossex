@@ -27,6 +27,8 @@ import type {
 } from './types';
 
 /** Venue labels that constitute a DEFINITE business rejection of a create. */
+const LEVERAGE_LABELS = /LEVERAGE|RISK_LIMIT/i;
+const BAD_REQUEST_LABELS = /INVALID_PARAM|BAD_REQUEST|CONTRACT_NOT_FOUND|SYMBOL/i;
 const DEFINITE_REJECT = [
   /POST_ONLY|POC_|IMMEDIATE/i,
   /BALANCE|MARGIN|INSUFFICIENT_(BALANCE|MARGIN|AVAILABLE|FUND)|NOT_ENOUGH/i,
@@ -34,8 +36,8 @@ const DEFINITE_REJECT = [
   /MAX_MARKET_SIZE|MAX_LIMIT_SIZE|SIZE_TOO_LARGE|TOO_LARGE/i,
   /SIGNIFICANT_FIGURES|PRICE/i,
   /REDUCE_ONLY/i,
-  /LEVERAGE|RISK_LIMIT/i,
-  /INVALID_PARAM|BAD_REQUEST|CONTRACT_NOT_FOUND|SYMBOL/i,
+  LEVERAGE_LABELS,
+  BAD_REQUEST_LABELS,
 ];
 
 /** Labels meaning "no further fills can occur" on a CANCEL (success-equivalent). */
@@ -46,9 +48,10 @@ const CANCEL_GONE = /ORDER_NOT_FOUND|ORDER_CLOSED|ORDER_FINISHED|CLIENT_ID_NOT_F
  * (quarantining healthy pairs). They classify as read errors instead, so the
  * loop keeps probing and the resolution ladder's history sweep finds the truth. */
 const READ_GONE = /ORDER_NOT_FOUND|CLIENT_ID_NOT_FOUND/i;
-/** Labels that make a leverage change a DEFINITE refusal; anything else is
- * unknown and left to the engine's read-back. */
-const LEVERAGE_REJECT = /LEVERAGE|RISK_LIMIT|POSITION|MARGIN|INVALID_PARAM|BAD_REQUEST|CONTRACT_NOT_FOUND|SYMBOL/i;
+/** The create allowlist's leverage and bad-request entries: the labels that
+ * make a leverage change a DEFINITE refusal. Anything else is unknown and
+ * left to the engine's read-back. */
+const LEVERAGE_REJECT = [LEVERAGE_LABELS, BAD_REQUEST_LABELS];
 
 interface GateErr {
   response?: { status?: number; data?: { label?: string; message?: string } };
@@ -206,7 +209,7 @@ export function gateVenue(getClients: () => Clients,
           return { kind: 'ok' };
         } catch (err) {
           const label = labelOf(err);
-          if (label && LEVERAGE_REJECT.test(label)) {
+          if (label && LEVERAGE_REJECT.some((re) => re.test(label))) {
             return { kind: 'reject', label, message: (err as GateErr).response?.data?.message ?? label };
           }
           return { kind: 'unknown', message: (err as Error).message ?? String(err) };

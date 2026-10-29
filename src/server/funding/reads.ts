@@ -21,8 +21,9 @@ export interface FundingReads {
   interestRates(): Promise<CrossexInterestRate[]>;
   positions(): Promise<unknown>;
   openOrders(): Promise<unknown>;
-  /** Gate spot book top for a pair such as USDC_USDT. */
-  spotTop(pair: string): Promise<{ bid: string; ask: string }>;
+  /** Gate spot book top for a pair such as USDC_USDT, with the venue's own
+   * time for it (ms); null when the venue gave none. */
+  spotTop(pair: string): Promise<{ bid: string; ask: string; at: number | null }>;
 }
 
 export function gateFundingReads(getClients: () => Clients): FundingReads {
@@ -42,7 +43,8 @@ export function gateFundingReads(getClients: () => Clients): FundingReads {
       const bid = body.bids?.[0]?.[0];
       const ask = body.asks?.[0]?.[0];
       if (!bid || !ask) throw new Error(`${pair} book is one-sided`);
-      return { bid, ask };
+      const at = Number(body.current);
+      return { bid, ask, at: Number.isSafeInteger(at) && at > 0 ? at : null };
     },
   };
 }

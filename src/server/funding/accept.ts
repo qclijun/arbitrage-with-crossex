@@ -32,12 +32,14 @@ const INTENT_ID = /^[a-zA-Z0-9-]{6,36}$/;
 
 export function parseAcceptBody(body: unknown): AcceptBody {
   const b = (body ?? {}) as Record<string, unknown>;
-  if (typeof b.intentId !== 'string' || !INTENT_ID.test(b.intentId)) throw new CoreError('intentId must be 6-36 chars of [a-zA-Z0-9-]', 'validation');
-  if (typeof b.previewId !== 'string' || typeof b.contentHash !== 'string') throw new CoreError('previewId and contentHash are required', 'validation');
+  const bad = (message: string) => new CoreError(message, 'validation');
+  if (typeof b.intentId !== 'string' || !INTENT_ID.test(b.intentId)) throw bad('intentId must be 6-36 chars of [a-zA-Z0-9-]');
+  if (typeof b.previewId !== 'string' || typeof b.contentHash !== 'string') throw bad('previewId and contentHash are required');
   if (typeof b.authorizeConversion !== 'boolean' || typeof b.acknowledgeRisks !== 'boolean') {
-    throw new CoreError('authorizeConversion and acknowledgeRisks must be true or false', 'validation');
+    throw bad('authorizeConversion and acknowledgeRisks must be true or false');
   }
-  return { intentId: b.intentId, previewId: b.previewId, contentHash: b.contentHash, authorizeConversion: b.authorizeConversion, acknowledgeRisks: b.acknowledgeRisks };
+  const { intentId, previewId, contentHash, authorizeConversion, acknowledgeRisks } = b;
+  return { intentId, previewId, contentHash, authorizeConversion, acknowledgeRisks };
 }
 
 /** Everything but the id: a retry with the same id must carry exactly this. */
@@ -49,8 +51,13 @@ export type WriteOutcome =
   | { kind: 'preview-consumed' }
   | { kind: 'conflict'; deals: string[] };
 
+/** Where a funding deal and its slice came from, as both record it. */
+function origin(preview: Preview, intentId: string) {
+  const { snapshotId, windowDays } = preview.request;
+  return { intentId, candidateId: preview.judgement.content.candidateId, snapshotId, windowDays };
+}
+
 function dealRow(id: string, plan: DealPlan, preview: Preview, intentId: string, now: number): PairRow {
-  const { request } = preview;
   return {
     id, mode: 'OPENING', a: plan.a, b: plan.b, targetQty: plan.qty, limitPrice: plan.price,
     pricePolicy: 'fixed', autoPricePolicy: 'touch', deadlineAt: now + plan.timeoutSec * 1000,
@@ -59,7 +66,7 @@ function dealRow(id: string, plan: DealPlan, preview: Preview, intentId: string,
     // MARKET IOC clips and hedge, as confirmed: no price band is claimed.
     maxClip: null, clipBandBp: null, haltReason: null, reportJson: null, createdAt: now,
     purpose: 'funding-two-leg',
-    purposeContext: JSON.stringify({ intentId, candidateId: preview.judgement.content.candidateId, snapshotId: request.snapshotId, windowDays: request.windowDays }),
+    purposeContext: JSON.stringify(origin(preview, intentId)),
     leverage: [
       { leg: 'A', target: plan.leverage.a, state: 'pending', previous: null, detail: null },
       { leg: 'B', target: plan.leverage.b, state: 'pending', previous: null, detail: null },
@@ -78,8 +85,7 @@ export function writeIntent(store: Store, preview: Preview, plan: DealPlan, body
     const sliceId = `fs-${body.intentId}`;
     const { request } = preview;
     store.slices.create({
-      id: sliceId, kind: 'funding-two-leg', now, observed: plan.observed,
-      source: { intentId: body.intentId, candidateId: preview.judgement.content.candidateId, snapshotId: request.snapshotId, windowDays: request.windowDays },
+      id: sliceId, kind: 'funding-two-leg', now, observed: plan.observed, source: origin(preview, body.intentId),
       legs: [{ leg: 'short', contract: request.short.symbol, side: 'short' }, { leg: 'long', contract: request.long.symbol, side: 'long' }],
     });
     store.createPair(dealRow(dealId, plan, preview, body.intentId, now));
@@ -103,7 +109,8 @@ export function receipt(store: Store, intent: FundingIntentRow) {
     acceptedAt: intent.acceptedAt, content: intent.content,
     deal: {
       mode: pair.mode, deadlineAt: pair.deadlineAt, targetQty: pair.targetQty, aFilled: p.aFilled, bFilled: p.bFilled,
-      unhedged: p.unhedged, haltReason: pair.haltReason, report: pair.reportJson ? JSON.parse(pair.reportJson) : null, leverage: pair.leverage ?? null,
+      unhedged: p.unhedged, haltReason: pair.haltReason, leverage: pair.leverage ?? null,
+      report: pair.reportJson ? JSON.parse(pair.reportJson) : null,
     },
   };
 }

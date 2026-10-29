@@ -15,6 +15,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { CoreError } from '../../core/errors';
 import type { Store } from '../../engine/db';
+import type { FundingIntentRow } from '../../engine/funding-intents';
 import { reconcileContract } from '../../engine/slice-reconcile';
 import { SliceRefusal } from '../../engine/slices';
 import type { AppDeps } from '../app';
@@ -40,7 +41,8 @@ export function fundingIntentRoutes(deps: AppDeps) {
       if (!deps.engine) throw new CoreError('the engine is not running', 'not-configured');
       if (!deps.funding) throw new CoreError('funding history is not available on this install', 'not-configured');
       const { history, legOf, reads } = deps.funding;
-      return { store: deps.engine.store, now: () => deps.engine!.clock.now(), ports: { history, legOf, reads: reads ?? gateFundingReads(deps.getClients) } };
+      const ports = { history, legOf, reads: reads ?? gateFundingReads(deps.getClients) };
+      return { store: deps.engine.store, now: () => deps.engine!.clock.now(), ports };
     };
 
     const preview = async (request: PreviewRequest): Promise<Preview> => {
@@ -49,61 +51,89 @@ export function fundingIntentRoutes(deps: AppDeps) {
       const evidence = await gatherEvidence(ports, request, now);
       // Admission is judged as of the round, at the generation it began under.
       const admission = store.admission.read();
-      const judgement = judge(request, evidence, ledgerView(store), admission.generation === generation ? admission : { ...admission, open: false, reason: 'closed' });
+      const asOfRound = admission.generation === generation ? admission : { ...admission, open: false, reason: 'closed' as const };
+      const judgement = judge(request, evidence, ledgerView(store), asOfRound);
       return previews.mint(request, judgement, evidence.readAt, generation, now());
     };
 
-    const again = async (reply: FastifyReply, label: string, message: string, request: PreviewRequest, next?: Preview) =>
-      reply.code(409).send({ ok: false, error: { category: 'validation', label, message, retryable: true }, preview: previewView(next ?? await preview(request)) });
+    /** 409, nothing written: a request the current state refuses. */
+    const no = (reply: FastifyReply, label: string, message: string, extra?: Record<string, unknown>) =>
+      refuse(reply, { code: 409, category: 'validation', label, message, retryable: extra !== undefined }, extra);
+
+    /** 409 with a fresh preview of the same request, to confirm instead. */
+    const refuseWithNewPreview = async (reply: FastifyReply, label: string, message: string, request: PreviewRequest, next?: Preview) =>
+      no(reply, label, message, { preview: previewView(next ?? await preview(request)) });
 
     app.post('/funding/preview', async (req, reply) => reply.ok(previewView(await preview(parsePreviewRequest(req.body)))));
 
     app.post('/funding/intents', async (req, reply) => {
       const body: AcceptBody = parseAcceptBody(req.body);
       const { store, now } = ready();
-      const answerExisting = (intent: NonNullable<ReturnType<Store['fundingIntents']['get']>>) =>
-        intent.fingerprint === fingerprintOf(body)
-          ? reply.code(200).send({ ok: true, data: { ...receipt(store, intent), duplicate: true } })
-          : refuse(reply, { code: 409, category: 'validation', label: 'intent-conflict', retryable: false,
-            message: `intent ${body.intentId} was already accepted with different content; nothing was changed` });
+      const answerExisting = (intent: FundingIntentRow) => intent.fingerprint === fingerprintOf(body)
+        ? reply.ok({ ...receipt(store, intent), duplicate: true })
+        : no(reply, 'intent-conflict', `intent ${body.intentId} was already accepted with different content; nothing was changed`);
+      const consumed = () => no(reply, 'preview-consumed', 'this preview was already accepted under another intent');
       const existing = store.fundingIntents.get(body.intentId);
       if (existing) return answerExisting(existing);
 
+      // Checks that need no evidence come first; none of them reads a venue.
       const confirmed = previews.get(body.previewId);
-      if (!confirmed) return refuse(reply, { code: 409, category: 'validation', label: 'preview-unknown', retryable: false, message: 'this preview is unknown or was forgotten; preview again' });
-      if (!body.authorizeConversion) return refuse(reply, { code: 409, category: 'validation', label: 'conversion-unauthorized', retryable: false, message: 'the maker expiry converts the unfilled remainder to taker; it must be authorized' });
-      if (!body.acknowledgeRisks) return refuse(reply, { code: 409, category: 'validation', label: 'risks-unacknowledged', retryable: false, message: 'the listed risks must be acknowledged' });
-      if (body.contentHash !== confirmed.contentHash) return refuse(reply, { code: 409, category: 'validation', label: 'preview-mismatch', retryable: false, message: 'the confirmed content is not this preview' });
-      if (confirmed.judgement.blockers.length) return refuse(reply, { code: 409, category: 'validation', label: 'preview-blocked', retryable: false, message: 'this preview was not acceptable' });
-      if (store.fundingIntents.byPreview(confirmed.id)) return refuse(reply, { code: 409, category: 'validation', label: 'preview-consumed', retryable: false, message: 'this preview was already accepted under another intent' });
-      if (now() >= confirmed.expiresAt) return again(reply, 'preview-expired', 'the preview expired; confirm the new one', confirmed.request);
+      if (!confirmed) return no(reply, 'preview-unknown', 'this preview is unknown or was forgotten; preview again');
+      if (!body.authorizeConversion) {
+        return no(reply, 'conversion-unauthorized', 'the maker expiry converts the unfilled remainder to taker; it must be authorized');
+      }
+      if (!body.acknowledgeRisks) return no(reply, 'risks-unacknowledged', 'the listed risks must be acknowledged');
+      if (body.contentHash !== confirmed.contentHash) return no(reply, 'preview-mismatch', 'the confirmed content is not this preview');
+      if (confirmed.judgement.blockers.length) return no(reply, 'preview-blocked', 'this preview was not acceptable');
+      if (store.fundingIntents.byPreview(confirmed.id)) return consumed();
+      if (now() >= confirmed.expiresAt) {
+        return refuseWithNewPreview(reply, 'preview-expired', 'the preview expired; confirm the new one', confirmed.request);
+      }
 
+      // Every piece of evidence again, judged the same way.
       const fresh = await preview(confirmed.request);
       const at = now();
-      if (at >= confirmed.expiresAt || at >= fresh.readAt + PREVIEW_TTL_MS) return again(reply, 'preview-expired', 'the preview expired while its evidence was re-read; confirm the new one', confirmed.request, fresh);
-      if (fresh.judgement.blockers.length) return again(reply, 'admission-refused', fresh.judgement.blockers.map((b) => b.message).join('; '), confirmed.request, fresh);
-      if (fresh.contentHash !== confirmed.contentHash) return again(reply, 'preview-changed', 'what you confirmed has changed; confirm the new preview', confirmed.request, fresh);
+      if (at >= confirmed.expiresAt || at >= fresh.readAt + PREVIEW_TTL_MS) {
+        return refuseWithNewPreview(reply, 'preview-expired', 'the preview expired while its evidence was re-read; confirm the new one',
+          confirmed.request, fresh);
+      }
+      if (fresh.judgement.blockers.length) {
+        const why = fresh.judgement.blockers.map((b) => b.message).join('; ');
+        return refuseWithNewPreview(reply, 'admission-refused', why, confirmed.request, fresh);
+      }
+      if (fresh.contentHash !== confirmed.contentHash) {
+        const why = 'what you confirmed has changed; confirm the new preview';
+        return refuseWithNewPreview(reply, 'preview-changed', why, confirmed.request, fresh);
+      }
 
       let written;
       try {
         written = writeIntent(store, confirmed, fresh.judgement.plan!, body, at);
       } catch (err) {
         if (!(err instanceof SliceRefusal)) throw err;
-        return refuse(reply, { code: 409, category: 'validation', label: `slice-${err.code}`, retryable: false, message: `${err.message}; nothing was created` });
+        return no(reply, `slice-${err.code}`, `${err.message}; nothing was created`);
       }
-      if (!written.ok) return refuse(reply, { code: 409, category: 'validation', label: 'admission-closed', retryable: false, message: `new funding opens are not admitted now (${written.state.reason}); nothing was created` });
+      if (!written.ok) {
+        return no(reply, 'admission-closed', `new funding opens are not admitted now (${written.state.reason}); nothing was created`);
+      }
       const outcome = written.value;
       if (outcome.kind === 'existing') return answerExisting(outcome.intent);
-      if (outcome.kind === 'preview-consumed') return refuse(reply, { code: 409, category: 'validation', label: 'preview-consumed', retryable: false, message: 'this preview was already accepted under another intent' });
-      if (outcome.kind === 'conflict') return refuse(reply, { code: 409, category: 'validation', label: 'active-deal', retryable: false, message: `an unfinished deal started on these contracts meanwhile (${outcome.deals.join(', ')}); nothing was created` });
+      if (outcome.kind === 'preview-consumed') return consumed();
+      if (outcome.kind === 'conflict') {
+        const deals = outcome.deals.join(', ');
+        return no(reply, 'active-deal', `an unfinished deal started on these contracts meanwhile (${deals}); nothing was created`);
+      }
       deps.engine!.wake?.();
-      return reply.code(202).send({ ok: true, data: receipt(store, outcome.intent) });
+      return reply.code(202).ok(receipt(store, outcome.intent));
     });
 
     app.get('/funding/intents/:id', async (req, reply) => {
       const { store } = ready();
       const intent = store.fundingIntents.get((req.params as { id: string }).id);
-      if (!intent) return refuse(reply, { code: 404, category: 'validation', label: 'intent-unknown', retryable: false, message: 'no intent with this id was accepted by this ledger' });
+      if (!intent) {
+        return refuse(reply, { code: 404, category: 'validation', label: 'intent-unknown', retryable: false,
+          message: 'no intent with this id was accepted by this ledger' });
+      }
       return reply.ok(receipt(store, intent));
     });
   };

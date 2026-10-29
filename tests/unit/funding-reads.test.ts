@@ -12,13 +12,13 @@ describe('gateFundingReads', () => {
         listCrossexRuleSymbols: async (opts: unknown) => { asked.push(opts); return { body: [{ symbol: 'A' }] }; },
         getCrossexPositionsLeverage: async (opts: unknown) => { asked.push(opts); return { body: { A: '5' } }; },
       },
-      spot: { listOrderBook: async (pair: string) => ({ body: pair === 'USDC_USDT' ? { bids: [['0.9998', '1']], asks: [['1.0002', '1']] } : { bids: [], asks: [['1', '1']] } }) },
+      spot: { listOrderBook: async (pair: string) => ({ body: pair === 'USDC_USDT' ? { current: 1_700_000_000_000, bids: [['0.9998', '1']], asks: [['1.0002', '1']] } : { bids: [], asks: [['1', '1']] } }) },
     } as unknown as Clients;
     const reads = gateFundingReads(() => clients);
     expect(await reads.rules(['A', 'B'])).toEqual([{ symbol: 'A' }]);
     expect(await reads.leverage(['A', 'B'])).toEqual({ A: '5' });
     expect(asked).toEqual([{ symbols: 'A,B' }, { symbols: 'A,B' }]);
-    expect(await reads.spotTop('USDC_USDT')).toEqual({ bid: '0.9998', ask: '1.0002' });
+    expect(await reads.spotTop('USDC_USDT')).toEqual({ bid: '0.9998', ask: '1.0002', at: 1_700_000_000_000 });
     await expect(reads.spotTop('X_Y')).rejects.toThrow(/one-sided/);
   });
 });

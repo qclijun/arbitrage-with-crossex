@@ -45,6 +45,8 @@ import { tradesRoutes } from './routes/trades';
 import { credentialIdentity } from './readScope';
 import { riskEvidenceRoutes } from './routes/riskEvidence';
 import { riskReportRoutes } from './routes/riskReport';
+import type { FundingPorts } from './funding/evidence';
+import type { FundingReads } from './funding/reads';
 import type { BotClient } from './telegram/botClient';
 import type { TelegramLink } from './telegram/link';
 import type { TelegramStatus } from './telegram/status';
@@ -71,7 +73,7 @@ export interface AppDeps {
    * the CrossEx-symbol → venue-contract mapping it was ranked on. Absent, the
    * preview and acceptance routes refuse (503) — never a plain-pair fallback.
    * `reads` defaults to fresh Gate reads (server/funding/reads.ts). */
-  funding?: Pick<import('./funding/evidence').FundingPorts, 'history' | 'legOf'> & { reads?: import('./funding/reads').FundingReads };
+  funding?: Pick<FundingPorts, 'history' | 'legOf'> & { reads?: FundingReads };
   /** Enables PUT /api/credentials (validate → rewrite .env → hot-swap the client). */
   credentials?: {
     envPath: string;

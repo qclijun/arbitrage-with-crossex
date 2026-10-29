@@ -8,11 +8,12 @@
 import type { CrossexAccount, CrossexInterestRate, Symbol as RuleSymbol } from 'gate-api';
 import { readCostEvidence, type LegCostEvidence } from '../../core/funding/cost-evidence';
 import type { HistoryAdmission, HistoryLegKey, HistoryPairRequest } from '../../core/funding/history-cache';
+import { decimal, div, exact, sign } from '../../core/funding/exact';
 import type { FxRate, Side } from '../../core/funding/scenario';
 import { parseSymbol } from '../../core/numbers';
 import { signedPositions } from '../livePositions';
 import type { FundingReads } from './reads';
-import { CURRENCY, type PreviewRequest } from './request';
+import { currencyOf, type PreviewRequest } from './request';
 
 /** What the funding admission needs beyond the venue reads. */
 export interface FundingPorts {
@@ -44,28 +45,27 @@ export interface FundingEvidence {
 const orNull = <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
 
 const FX_PAIR = 'USDC_USDT';
+/** The FX book must carry its own time, within this of the round's start. */
+const FX_MAX_AGE_MS = 10_000;
 
 async function readFx(reads: FundingReads, req: PreviewRequest, readAt: number): Promise<FxRate[] | null> {
+  const currency = currencyOf(req);
   const quotes = new Set([req.short.symbol, req.long.symbol].map((s) => parseSymbol(s).quote));
-  if ([...quotes].every((q) => q === CURRENCY)) return [];
-  if (![...quotes].every((q) => q === CURRENCY || q === 'USDC')) return null;
+  if ([...quotes].every((q) => q === currency)) return [];
+  if (![...quotes].every((q) => q === currency || q === 'USDC')) return null;
   try {
     const top = await reads.spotTop(FX_PAIR);
+    const [bid, ask] = [exact(top.bid), exact(top.ask)];
+    if (top.at === null || Math.abs(readAt - top.at) > FX_MAX_AGE_MS || !bid || !ask || sign(bid) <= 0 || sign(ask) <= 0) return null;
     const source = `Gate spot ${FX_PAIR} book top`;
     // Selling USDC earns the bid; buying it back pays the ask.
     return [
-      { from: 'USDC', to: CURRENCY, rate: top.bid, source: `${source} (bid)`, at: readAt, basis: 'real' },
-      { from: CURRENCY, to: 'USDC', rate: invert(top.ask), source: `${source} (1/ask)`, at: readAt, basis: 'real' },
+      { from: 'USDC', to: currency, rate: decimal(bid), source: `${source} (bid)`, at: top.at, basis: 'real' },
+      { from: currency, to: 'USDC', rate: decimal(div({ n: 1n, d: 1n }, ask)), source: `${source} (1/ask)`, at: top.at, basis: 'real' },
     ];
   } catch {
     return null;
   }
-}
-
-/** 1/x to 18 decimals; an unusable price yields an invalid rate the scenario rejects. */
-function invert(price: string): string {
-  const n = Number(price);
-  return Number.isFinite(n) && n > 0 ? (1 / n).toFixed(18) : 'invalid';
 }
 
 export async function gatherEvidence(ports: FundingPorts, req: PreviewRequest, now: () => number): Promise<FundingEvidence> {
@@ -82,7 +82,8 @@ export async function gatherEvidence(ports: FundingPorts, req: PreviewRequest, n
     orNull(reads.rules(symbols)),
     orNull(reads.leverageMax(symbols)),
     orNull(reads.leverage(symbols)),
-    readCostEvidence({ now: () => readAt, listFees: () => reads.fees(), fetchBook: reads.book }, { short: req.short.symbol, long: req.long.symbol }),
+    readCostEvidence({ now: () => readAt, listFees: () => reads.fees(), fetchBook: reads.book },
+      { short: req.short.symbol, long: req.long.symbol }),
     orNull(reads.account()),
     orNull(reads.interestRates()),
     orNull(reads.positions().then(signedPositions)),

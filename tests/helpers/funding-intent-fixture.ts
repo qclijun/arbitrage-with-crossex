@@ -14,25 +14,30 @@ import { A_CONTRACT, B_CONTRACT, FakeVenue, VirtualClock } from '../unit/engine-
 import { HOST, makeTestApp } from '../server/helpers/gate-nock';
 
 export { A_CONTRACT as LONG_SYMBOL, B_CONTRACT as SHORT_SYMBOL };
+/** A USDT-quoted long leg, for a same-quote pair. */
+export const USDT_LONG = 'BINANCE_FUTURE_ETH_USDT';
 
 const top = (bid: number, ask: number, size = 10) => ({ book: { bids: [[bid, size]] as Array<[number, number]>, asks: [[ask, size]] as Array<[number, number]>, ts: 0 }, failure: null });
 
 /** Mutable venue-side reality the read port serves; `fail` makes a read throw. */
 export function readState() {
   return {
-    rules: [A_CONTRACT, B_CONTRACT].map((symbol) => ({ symbol, state: 'live', businessType: 'FUTURE', lotSize: '0.001', minSize: '0.001', minNotional: '5', tickSize: '0.01', maxMarketSize: '100', maxLimitSize: '100' })),
-    leverageMax: new Map([[A_CONTRACT, 50], [B_CONTRACT, 20]]),
+    rules: [A_CONTRACT, B_CONTRACT, USDT_LONG].map((symbol) => ({ symbol, state: 'live', businessType: 'FUTURE', lotSize: '0.001', minSize: '0.001', minNotional: '5', tickSize: '0.01', maxMarketSize: '100', maxLimitSize: '100' })),
+    leverageMax: new Map([[A_CONTRACT, 50], [B_CONTRACT, 20], [USDT_LONG, 50]]),
     leverage: { [A_CONTRACT]: '10', [B_CONTRACT]: '3' } as Record<string, unknown>,
     fees: [
       { exchangeType: 'HYPERLIQUID', futureMakerFee: '0.0001', futureTakerFee: '0.00045' },
       { exchangeType: 'OKX', futureMakerFee: '0.0002', futureTakerFee: '0.0005' },
+      { exchangeType: 'BINANCE', futureMakerFee: '0.0002', futureTakerFee: '0.0005' },
     ],
-    books: { [A_CONTRACT]: top(2499.9, 2500.1), [B_CONTRACT]: top(2501.9, 2502.1) } as Record<string, ReturnType<typeof top> | { book: null; failure: { category: string } }>,
+    books: { [A_CONTRACT]: top(2499.9, 2500.1), [B_CONTRACT]: top(2501.9, 2502.1), [USDT_LONG]: top(2499.9, 2500.1) } as Record<string, ReturnType<typeof top> | { book: null; failure: { category: string } }>,
     account: { availableMargin: '10000', positionMode: 'SINGLE', assets: [{ coin: 'USDT', liability: '0' }, { coin: 'USDC', liability: '0' }] } as Record<string, unknown>,
     interest: [] as unknown[],
     positions: [] as Array<{ symbol: string; positionQty: string }>,
     openOrders: [] as Array<{ symbol: string }>,
     spot: { bid: '0.9998', ask: '1.0002' },
+    /** The FX book's own time; defaults to the read moment. */
+    spotAt: undefined as number | null | undefined,
     fail: new Set<string>(),
     /** Virtual ms each read round takes (advanced on the clock before it answers). */
     readMs: 0,
@@ -63,7 +68,7 @@ export function fakeReads(s: ReadState, clock: VirtualClock): FundingReads & { c
     openOrders: r('openOrders', () => s.openOrders),
     spotTop: async () => {
       if (s.fail.has('spot')) throw new Error('spot read failed');
-      return s.spot;
+      return { ...s.spot, at: s.spotAt === undefined ? clock.now() : s.spotAt };
     },
   };
   return port;
@@ -86,6 +91,7 @@ export function historyPort(clock: VirtualClock, opts: { admitted: boolean } = {
 export const LEGS: Record<string, { venue: string; contractId: string }> = {
   [A_CONTRACT]: { venue: 'HYPERLIQUID', contractId: 'ETH' },
   [B_CONTRACT]: { venue: 'OKX', contractId: 'ETH-USDT-SWAP' },
+  [USDT_LONG]: { venue: 'BINANCE', contractId: 'ETHUSDT' },
 };
 
 export function request(over: Record<string, unknown> = {}) {
