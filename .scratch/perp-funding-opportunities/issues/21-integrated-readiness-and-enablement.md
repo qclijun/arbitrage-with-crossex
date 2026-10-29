@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: none
-Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23
+Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
 
 ## Goal
 
@@ -23,7 +23,15 @@ Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23
 
 所有矩阵行有结果、可复查证据和精确实现提交，不留以UNKNOWN冒充通过的必要项；无支持的场所/合约仍只观察或UNKNOWN，不要求以实盘交易证明。正式A页实际检查保留四腿/三腿入口及完整交互，默认完整gate与相关Python通过。验证结束保持新开关默认关闭，不改实盘服务、账户或凭据；完整交接说明已知支持范围、关闭方式、在途行为及不可回退边界。
 
+## 23交付后保留的能力限制
+
+- 真实Retry-After/429/418/业务限流及恢复、Bybit端点remaining/reset、MBX高水位冷却、HL扣账仍未公开实测；缺头/未观测继续UNKNOWN，官方规则与离线fixture均不替代这些观测。
+- 共享IP、其他进程/主机负载及当下余量无法由文档或单实例预算推导；本地reader冷却只在当前实例内存生效，未实现跨实例、重启持久化或全主机会话协调。
+- 本次不证明全年分页、历史周期/上市/HL结算映射、完整来源能力或开仓准入。人工开仓保持关闭；后续如需提升这些能力须单独取得对应证据。
+
 ## Comments
+
+- 2026-10-30（最终文档校准）：23已按原Scope允许未观测UNKNOWN的验收范围resolved，不再作为未交付依赖。见[官方/CCXT规范](../evidence/23-documented-rate-limits.md)、[策略修正](../evidence/23-documented-calibration.md)与[完成交接](../evidence/23-completion-handoff.md)。JA访问成功、规则查证、冷却回归和完整门禁已交付；本票所列能力限制继续保留，不因23 resolved或HTTP200变为PASS，不启用开仓。
 
 - 2026-10-30（后续JA补验）：用户授权使用Clash Verge JA分组后，Binance/Bybit共6次公开请求均200，且按源端口证明本次新连接chains包含JA，见[JA真实证据](../evidence/23-ja-verification.md)。首次451/403仅针对当时出口，当前JA访问缺口已补；真实限流、剩余/reset、冷却/扣账与共享IP负载仍UNKNOWN，23保持claimed，本票依赖不解除，不改变生产代理或开仓许可。
 

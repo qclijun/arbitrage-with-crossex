@@ -1,5 +1,7 @@
 # 23：用户授权 JA 分组后的 Binance / Bybit 补验
 
+后续[规范校准与冷却修正](23-documented-calibration.md)及完整门禁已完成，23当前resolved。下文claimed/尚未提交为本次JA阶段结束时记录，保留历史；最新状态见[完成交接](23-completion-handoff.md)，未观测的能力限制仍保留在21。
+
 2026-10-30，用户明确要求“使用Clash Verge网络代理的JA分组，验证”。本轮仅为验证进程设置 `GATE_PROXY=http://127.0.0.1:7899`；未修改 `.env`、Clash文件、全局选择、JA节点或生产服务。既有 mixed listener `gologin-jms-c18s4` 在7899端口绑定 `proxy: JA`，JA当前选中 `c18s4.portablesubmarines.com:443`。不是将普通7897规则入口假定为JA。
 
 **验证通过：本轮6次公开请求全部HTTP200，两个场所均有正常历史正文。** 初次未指定JA的451/403记录保留为当时结果，不再视为当前JA出口的访问结论；当前成功不证明所有出口、全年分页或限流容量。

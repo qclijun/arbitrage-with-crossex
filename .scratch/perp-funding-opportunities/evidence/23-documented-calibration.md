@@ -21,8 +21,8 @@ collector收到 `HistoryRateLimitError` 后停止该场所当轮，不按普通�
 
 沿用23原有 `createOfficialPublicReader` / history source公共seam；新增Bybit文本403、Binance/Aster缺头418、未来ban截止（418/429/200业务错误）、Binance无提示429、显式秒数/日期优先及地区403负例。红测分别暴露原来的普通403错误、60s短冷却和未读取ban截止；每个行为修改后对应定向测试转绿。未使用离线fixture冒充真实限流样本。
 
-红/绿日志：`/tmp/issue23-docs-{red-bybit,green-bybit,red-ban,green-ban,red-deadline,green-deadline,red-funding-quota,green-funding-quota}.log`。最终定向3文件37项通过（`/tmp/issue23-docs-focused.log`）。默认完整verify及Web构建正在运行，最终退出状态待交接补记；未调低测试并发或改门禁。
+红/绿日志：`/tmp/issue23-docs-{red-bybit,green-bybit,red-ban,green-ban,red-deadline,green-deadline,red-funding-quota,green-funding-quota}.log`。最终定向3文件37项通过（`/tmp/issue23-docs-focused.log`）。默认完整verify退出0：后端177文件、3625通过/8跳过，前端117文件、1788通过；含根/Web类型检查及全树预算。Web构建退出0（现有bundle体积警告）；未调低测试并发或改门禁。完整日志 `/tmp/issue23-docs-{verify,web-build,typecheck}.log`。
 
 ## 完成判定
 
-原Acceptance要求五源结论与来源/样本可追溯、离线/实测分开、实现修改加回归并通过完整门禁、21保留真实限制。它没有要求为了补所有响应头而耗尽IP，也没有要求将实时余量改为已知。上述资料与修复在门禁/复审通过后可完成23；真实429/418、未返回头、实际扣账/冷却、共享IP/其他进程负载及跨实例/重启协调继续明确留在21，不能推导完整来源能力或启用开仓。此前claimed历史保留，不伪造补验或抹掉未知。
+原Acceptance要求五源结论与来源/样本可追溯、离线/实测分开、实现修改加回归并通过完整门禁、21保留真实限制。它没有要求为了补所有响应头而耗尽IP，也没有要求将实时余量改为已知。上述资料与修复已通过门禁及[双轴复审](23-completion-review.md)，23完成并resolved；真实429/418、未返回头、实际扣账/冷却、共享IP/其他进程负载及跨实例/重启协调继续明确留在21，不能推导完整来源能力或启用开仓。此前claimed历史保留，不伪造补验或抹掉未知。

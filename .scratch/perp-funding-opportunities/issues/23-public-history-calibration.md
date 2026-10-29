@@ -1,7 +1,7 @@
 # 五源公开历史接口限流与预算实测补验
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Codex
 Blocked by: 22
 
@@ -32,6 +32,7 @@ Blocked by: 22
 - [23双轴复审](../evidence/23-review.md) / [实施交接与验证](../evidence/23-implementation-handoff.md)
 - [用户授权JA后的Binance/Bybit成功补验及实际连接证明](../evidence/23-ja-verification.md)
 - [五源官方规则与CCXT能力边界](../evidence/23-documented-rate-limits.md) / [文档对照及冷却修正](../evidence/23-documented-calibration.md)
+- [最终双轴复审](../evidence/23-completion-review.md) / [完成交接](../evidence/23-completion-handoff.md)
 
 ## Comments
 
@@ -44,7 +45,7 @@ Blocked by: 22
 
 剩余验收：Binance/Bybit可用历史与头、真实Retry-After秒/日期、429/418与业务限流、Bybit剩余/重置、MBX高水位、HL扣账/恢复及共享IP负载均未证实，继续UNKNOWN。补齐需合规可访问的已授权公开样本/访问条件，以及自然限流记录或场所认可的隔离条件；不自行换出口、不耗尽额度。本次不再次拆票或默认按UNKNOWN签收，23保持claimed，21依赖保留，人工开仓仍关闭。
 
-## JA授权补验（当前结论）
+## JA授权补验（阶段记录）
 
 2026-10-30用户明确授权使用Clash Verge的JA分组验证。通过既有7899专用listener，6次公开请求全部HTTP200：Binance历史1条及产品分钟权重151/2400；Bybit历史1条/200条及retCode=0。另两次请求按TCP源端口匹配本次新连接，实际chains包含JA。原451/403保留为首次出口结果，当前JA出口的公开历史访问缺口已补，不再以其阻塞当前访问。请求参数、响应头、正文哈希及连接证据见JA补验；未修改Clash、JA节点、.env或生产服务。
 
@@ -52,4 +53,10 @@ Blocked by: 22
 
 ## 官方文档 / CCXT补验
 
-用户补充要求从官方或CCXT文档获取规则后，已完成五源一手规范与CCXT Manual核对。文档已确定静态配额/计数维度/已公布封禁范围；不能由文档得到的实时余量、未承诺响应头与真实恢复样本继续UNKNOWN。已修正Bybit特定403至少10min、Binance/Aster未知期限418按3d上界保守阻断、未来ban截止与提示优先、Binance无恢复提示的429/-1003按5min兜底；均有离线回归，门禁与复审待最终补记。原Scope允许未观察行为保留UNKNOWN，不要求主动诱发全部限流；此前更严的结单前提不再沿用。
+用户补充要求从官方或CCXT文档获取规则后，已完成五源一手规范与CCXT Manual核对。文档已确定静态配额/计数维度/已公布封禁范围；不能由文档得到的实时余量、未承诺响应头与真实恢复样本继续UNKNOWN。已修正Bybit特定403至少10min、Binance/Aster未知期限418按3d上界保守阻断、未来ban截止与提示优先、Binance无恢复提示的429/-1003按5min兜底；均有离线回归，完整门禁和双轴复审通过。原Scope允许未观察行为保留UNKNOWN，不要求主动诱发全部限流；此前更严的结单前提不再沿用。
+
+## Answer（最终：resolved，保留能力限制）
+
+2026-10-30按原Acceptance完成：五源初次9份公开响应及JA后续6份响应均有参数/头/耗时/哈希和原始归档，JA新连接可归属本轮；五源官方及CCXT规则引用齐全，规范、保守策略与实测分开；实现提交a91f2c6补足冷却保护，定向37项、默认完整verify（后端3625通过/8跳过，前端1788通过）及Web构建退出0；双轴复审0缺陷。
+
+历史claimed记录描述当时阶段，由本结论覆盖。真实限流/冷却/扣账、未返回remaining/reset、共享IP及其他进程负载、reader跨实例/重启的冷却状态继续明确保留在21，未当作PASS；没有为获取样本主动耗尽IP。23交付不证明完整来源能力、历史周期/上市或交易准入，不改变生产代理、不启用开仓。
