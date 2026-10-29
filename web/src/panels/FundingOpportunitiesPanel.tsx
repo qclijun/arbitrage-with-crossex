@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { HISTORY_DAYS } from '../../../src/core/funding/history';
-import type { FundingReceipt } from '../api/fundingIntents';
 import { useFundingOpportunities, type BoardParams, type FundingBoard } from '../api/fundingOpportunities';
 import { Chip } from '../components/Chip';
 import { QueryError } from '../components/QueryError';
@@ -8,6 +7,8 @@ import { TableSkeleton } from '../components/Skeleton';
 import { fmtTime, toDate } from '../lib/fmt';
 import { CandidateDetail } from './funding/CandidateDetail';
 import { CandidateTable } from './funding/CandidateTable';
+import { dealSummary } from './funding/FundingReceiptView';
+import { FundingSubmissionsProvider, useFundingSubmissions } from './funding/FundingSubmissions';
 import { UNPAIRED } from './funding/labels';
 import { FundingSpreadsPanel } from './FundingSpreadsPanel';
 
@@ -90,19 +91,50 @@ function CurrentRates() {
   );
 }
 
+/** Every intent this page has sent, whichever pair is selected. */
+function SentIntents() {
+  const { all } = useFundingSubmissions();
+  if (!all.length) return null;
+  return (
+    <ul aria-label="Sent intents" className={`mb-3 ${micro}`}>
+      {all.map(({ record, state }) => (
+        <li key={record.body.intentId} className="num">
+          {record.body.intentId} · {candidateLabel(record.candidateId)} ·{' '}
+          {state.kind === 'accepted' ? dealSummary(state.receipt) : 'result not known yet'}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** "BTC short BINANCE BTCUSDT → long BYBIT BTCUSDT" from a candidate id, or the id itself. */
+function candidateLabel(id: string): string {
+  try {
+    const [u, sv, sc, lv, lc] = JSON.parse(id) as string[];
+    return `${u} short ${sv} ${sc} → long ${lv} ${lc}`;
+  } catch {
+    return id;
+  }
+}
+
 /**
  * Funding Spreads tab (ticket 18): every directed perp-vs-perp pair ranked by
  * settled funding history, with the selected pair's evidence alongside.
- * Opening goes only through the selected pair's preview and the server's admission (tickets 12/13).
+ * Opening goes only through the selected pair's preview and the server's
+ * admission (tickets 12/13); sent intents are restored and resolved by id (ticket 14).
  */
 export function FundingOpportunitiesPanel() {
+  return (
+    <FundingSubmissionsProvider>
+      <Board />
+    </FundingSubmissionsProvider>
+  );
+}
+
+function Board() {
   const [params, setParams] = useState<BoardParams>({ days: 30, underlying: null, venue: null, positive: false, offset: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
-  // An acceptance whose result is unknown blocks every new open on this page (ticket 14 looks it up).
-  const [unknownIntent, setUnknownIntent] = useState<string | null>(null);
-  // Acceptances made on this page, by pair, so returning to a pair shows its receipt (ticket 14 restores across reloads).
-  const [accepted, setAccepted] = useState<Record<string, FundingReceipt>>({});
   const { data, isPending, isError, error } = useFundingOpportunities(params);
 
   // The server answered page one of a new ranking: follow it, and say so.
@@ -134,6 +166,7 @@ export function FundingOpportunitiesPanel() {
         Short leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as
         zero. History-eligible is not permission to open, and no costs are included.
       </p>
+      <SentIntents />
       <Filters board={data} params={params} set={filter} />
       {isPending && <TableSkeleton rows={8} cols={5} />}
       {isError && !data && <QueryError title="Couldn't load funding opportunities" error={error} />}
@@ -167,9 +200,7 @@ export function FundingOpportunitiesPanel() {
               )}
             </div>
             {selected && (
-              <CandidateDetail row={selected} days={data.days} snapshotId={data.snapshotId} admissionOpen={!!data.admission?.open}
-                blocked={unknownIntent} accepted={accepted[selected.id] ?? null}
-                onAccepted={(receipt) => setAccepted((all) => ({ ...all, [selected.id]: receipt }))} onUnknown={setUnknownIntent} />
+              <CandidateDetail row={selected} days={data.days} snapshotId={data.snapshotId} admissionOpen={!!data.admission?.open} />
             )}
           </div>
         </>

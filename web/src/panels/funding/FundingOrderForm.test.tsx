@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { boardRow } from '../../test/fundingBoard';
-import { fill, renderForm, ROW, servePreviews, type } from '../../test/fundingOrderForm';
+import { fill, renderForm, ROW, seedSubmission, servePreviews, type } from '../../test/fundingOrderForm';
 import { fundingPreview, fundingReceipt } from '../../test/fundingPreview';
 import { env, server } from '../../test/server';
 import { FundingOrderForm } from './FundingOrderForm';
+import { FundingSubmissionsProvider } from './FundingSubmissions';
 
 describe('FundingOrderForm', () => {
   it('prefills the exact two legs and previews the typed decimals unchanged; nothing is chosen for the user', async () => {
@@ -228,33 +229,37 @@ describe('FundingOrderForm', () => {
     expect(screen.getByRole('button', { name: 'Hold to open' })).toBeEnabled();
   });
 
-  it('a lost acceptance is "result unknown": nothing is retried and nothing new can start', async () => {
+  it('a lost acceptance has no known result: nothing is retried, it is looked up by its id instead', async () => {
     servePreviews(fundingPreview());
     let posts = 0;
+    const lookups: string[] = [];
     server.use(http.post('/api/funding/intents', () => {
       posts += 1;
       return HttpResponse.error();
+    }), http.get('/api/funding/intents/:id', ({ params }) => {
+      lookups.push(String(params.id));
+      return HttpResponse.json({ ok: false, error: { category: 'validation', label: 'intent-unknown', message: 'no intent', retryable: false },
+        lateAcceptance: { possible: true, until: fundingPreview().expiresAt } }, { status: 404 });
     }));
-    const onUnknown = vi.fn();
-    renderForm({ onUnknown });
+    renderForm();
     fill();
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     await screen.findByRole('region', { name: 'Preview' });
     fireEvent.click(screen.getByLabelText(/I authorize converting/));
     fireEvent.click(screen.getByLabelText('I accept the risks listed above.'));
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to open' }));
-    expect(await screen.findByText(/Result unknown for intent/)).toBeInTheDocument();
+    expect(await screen.findByText(/no known result yet/)).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 300));
     expect(posts).toBe(1);
-    expect(onUnknown).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/));
-    expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();
-    expect(screen.getByLabelText('Quantity (BTC)')).toBeDisabled();
+    expect(lookups[0]).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('another pair\'s unknown result blocks a new open here too', async () => {
-    servePreviews(fundingPreview());
-    renderForm({ blocked: 'intent-elsewhere' });
-    expect(screen.getByText(/Intent intent-elsewhere has an unknown result/)).toBeInTheDocument();
+  it('another pair\'s intent with no known result blocks a new open here too', async () => {
+    seedSubmission('intent-elsewhere', 'other-pair');
+    server.use(http.get('/api/funding/intents/:id', () => HttpResponse.json({ ok: false,
+      error: { category: 'validation', label: 'intent-unknown', message: 'no intent', retryable: false } }, { status: 404 })));
+    renderForm();
+    expect(await screen.findByText(/Intent intent-elsewhere has no known result yet/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();
   });
 
@@ -262,7 +267,9 @@ describe('FundingOrderForm', () => {
     const bodies = servePreviews(fundingPreview());
     const client = new QueryClient();
     const ui = (snapshotId: string) => (
-      <QueryClientProvider client={client}><FundingOrderForm row={ROW} days={30} snapshotId={snapshotId} admissionOpen holdMs={20} /></QueryClientProvider>
+      <QueryClientProvider client={client}>
+        <FundingSubmissionsProvider><FundingOrderForm row={ROW} days={30} snapshotId={snapshotId} admissionOpen holdMs={20} /></FundingSubmissionsProvider>
+      </QueryClientProvider>
     );
     const { rerender } = render(ui('snap-1'));
     fill();

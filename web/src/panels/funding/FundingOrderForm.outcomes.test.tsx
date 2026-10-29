@@ -38,12 +38,13 @@ describe('FundingOrderForm outcomes', () => {
   it('a 5xx acceptance may have been accepted: result unknown, never a refusal', async () => {
     servePreviews(fundingPreview());
     server.use(http.post('/api/funding/intents', () => HttpResponse.json({ ok: false, error: { category: 'unknown', message: 'internal server error',
-      retryable: false } }, { status: 500 })));
+      retryable: false } }, { status: 500 })), http.get('/api/funding/intents/:id', () => HttpResponse.json({ ok: false,
+      error: { category: 'validation', label: 'intent-unknown', message: 'no intent', retryable: false } }, { status: 404 })));
     renderForm();
     fill();
     await previewAndHold();
-    expect(await screen.findByText(/Result unknown for intent/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();
+    expect(await screen.findByText(/no known result yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
   });
 
   it('a definitive refusal without a new preview returns to the draft, saying why', async () => {
@@ -112,20 +113,24 @@ describe('FundingOrderForm outcomes', () => {
     expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('reports an acceptance upward and, given one, shows its receipt instead of a new draft', async () => {
+  it('after a reload the recorded intent shows its receipt instead of a new draft, with no new send', async () => {
     servePreviews(fundingPreview());
+    let posts = 0;
     server.use(
-      http.post('/api/funding/intents', async ({ request }) => HttpResponse.json(env(fundingReceipt(((await request.json()) as any).intentId)), { status: 202 })),
+      http.post('/api/funding/intents', async ({ request }) => {
+        posts += 1;
+        return HttpResponse.json(env(fundingReceipt(((await request.json()) as any).intentId)), { status: 202 });
+      }),
       http.get('/api/funding/intents/:id', ({ params }) => HttpResponse.json(env(fundingReceipt(String(params.id))))),
     );
-    const onAccepted = vi.fn();
-    const { unmount } = renderForm({ onAccepted });
+    const { unmount } = renderForm();
     fill();
     await previewAndHold();
-    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Accepted as intent/)).toBeInTheDocument();
     unmount();
-    renderForm({ accepted: onAccepted.mock.calls[0][0] });
-    expect(screen.getByText(/Accepted as intent/)).toBeInTheDocument();
+    renderForm();
+    expect(await screen.findByText(/Accepted as intent/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
+    expect(posts).toBe(1);
   });
 });

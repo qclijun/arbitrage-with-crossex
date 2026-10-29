@@ -39,6 +39,11 @@ export class PreviewRegistry {
   }
 }
 
+/** Whether a request carrying a preview may still be accepted (ticket 14's lookup). */
+export type LateAcceptance =
+  | { possible: true; until: number }
+  | { possible: false; reason: 'preview-unknown' | 'preview-consumed' | 'preview-expired' };
+
 /** The wire form of a preview: acceptable only without blockers. */
 export function previewView(p: Preview) {
   const acceptable = p.judgement.blockers.length === 0;

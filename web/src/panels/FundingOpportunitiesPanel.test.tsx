@@ -5,7 +5,8 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { FundingBoard } from '../api/fundingOpportunities';
 import { fundingBoard } from '../test/fundingBoard';
-import { fundingPreview } from '../test/fundingPreview';
+import { fundingPreview, fundingReceipt } from '../test/fundingPreview';
+import { seedSubmission } from '../test/fundingOrderForm';
 import { env, server } from '../test/server';
 import { FundingOpportunitiesPanel } from './FundingOpportunitiesPanel';
 
@@ -146,6 +147,9 @@ describe('FundingOpportunitiesPanel', () => {
     server.use(
       http.post('/api/funding/preview', () => HttpResponse.json(env(fundingPreview(), { ts: fundingPreview().readAt }))),
       http.post('/api/funding/intents', () => HttpResponse.error()),
+      http.get('/api/funding/intents/:id', () => HttpResponse.json({ ok: false,
+        error: { category: 'validation', label: 'intent-unknown', message: 'no intent', retryable: false } }, { status: 404 })),
+      http.get('/api/funding/intents', () => HttpResponse.json(env([]))),
     );
     renderWithClient(<FundingOpportunitiesPanel />);
     await screen.findByRole('table', { name: 'Directed funding pairs' });
@@ -163,9 +167,35 @@ describe('FundingOpportunitiesPanel', () => {
     fireEvent.click(within(d()).getByLabelText(/I authorize converting/));
     fireEvent.click(within(d()).getByLabelText('I accept the risks listed above.'));
     fireEvent.pointerDown(within(d()).getByRole('button', { name: 'Hold to open' }));
-    expect(await within(d()).findByText(/Result unknown for intent/, undefined, { timeout: 3_000 })).toBeInTheDocument();
+    expect(await within(d()).findByText(/no known result yet/, undefined, { timeout: 3_000 })).toBeInTheDocument();
     fireEvent.click(within(table()).getAllByRole('button', { name: /BINANCE.*BYBIT/ })[0]);
-    expect(within(d()).getByText(/has an unknown result: no new open from this page/)).toBeInTheDocument();
+    expect(within(d()).getByText(/has no known result yet: no new open from this page/)).toBeInTheDocument();
     expect(within(d()).getByRole('button', { name: 'Preview' })).toBeDisabled();
+  });
+
+  it('restores every sent intent after a reload: each pair shows its own, and one unknown result blocks a new open anywhere', async () => {
+    serve(fundingBoard({ admission: { open: true, generation: 1, reason: 'open', changedAt: 1, enabledVersion: '9.9.9' } }));
+    const board = fundingBoard();
+    const [first, second] = board.rows;
+    seedSubmission('intent-1', first.id, 1);
+    seedSubmission('intent-2', second.id, 2);
+    server.use(
+      http.get('/api/funding/intents/:id', ({ params }) => (params.id === 'intent-1'
+        ? HttpResponse.json({ ok: false, error: { category: 'validation', label: 'intent-unknown', message: 'no intent', retryable: false } }, { status: 404 })
+        : HttpResponse.json(env(fundingReceipt('intent-2', { mode: 'OPENING', aFilled: '0.002' }))))),
+      http.get('/api/funding/intents', () => HttpResponse.json(env([]))),
+    );
+    renderWithClient(<FundingOpportunitiesPanel />);
+    await screen.findByRole('table', { name: 'Directed funding pairs' });
+    const sent = await screen.findByRole('list', { name: 'Sent intents' });
+    await waitFor(() => expect(sent).toHaveTextContent(/intent-2 .* OPENING · maker 0.002/));
+    expect(sent).toHaveTextContent(/intent-1 .* result not known yet/);
+    expect(within(detail()).getByText(/Intent intent-1 has no known result yet: not accepted so far/)).toBeInTheDocument();
+    fireEvent.click(within(table()).getByRole('button', { name: /BYBIT.*BINANCE/ }));
+    expect(await within(detail()).findByText(/Accepted as intent intent-2/)).toBeInTheDocument();
+    expect(within(detail()).queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
+    fireEvent.click(within(table()).getByRole('button', { name: /ETHUSDT/ }));
+    expect(within(detail()).getByText(/Intent intent-1 has no known result yet: no new open/)).toBeInTheDocument();
+    expect(within(detail()).getByRole('button', { name: 'Preview' })).toBeDisabled();
   });
 });

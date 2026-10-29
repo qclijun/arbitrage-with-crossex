@@ -10,6 +10,7 @@ import { CoreError } from '../../core/errors';
 import type { Admitted } from '../../engine/admission';
 import type { Store } from '../../engine/db';
 import { project } from '../../engine/decide';
+import { fx, fxMax, fxStr, FX_ZERO } from '../../engine/fx';
 import type { FundingIntentRow } from '../../engine/funding-intents';
 import type { PairRow } from '../../engine/types';
 import { activeDealsOn } from '../manualConflicts';
@@ -100,17 +101,27 @@ export function writeIntent(store: Store, preview: Preview, plan: DealPlan, body
 }
 
 /** The durable receipt: the intent as confirmed and its deal as it stands now,
- * finished or not. */
+ * finished or not. Fills are the recorded venue totals; reserved quantity is
+ * only in flight, and every order is listed as recorded, an unclassifiable
+ * venue status verbatim (ticket 14). */
 export function receipt(store: Store, intent: FundingIntentRow) {
   const pair = store.getPair(intent.dealId)!;
-  const p = project(pair, store.listOrders(pair.id));
+  const orders = store.listOrders(pair.id);
+  const p = project(pair, orders);
   return {
     intentId: intent.id, dealId: intent.dealId, sliceId: intent.sliceId, candidateId: intent.candidateId,
     acceptedAt: intent.acceptedAt, content: intent.content,
     deal: {
       mode: pair.mode, deadlineAt: pair.deadlineAt, targetQty: pair.targetQty, aFilled: p.aFilled, bFilled: p.bFilled,
+      // Reserved is in flight, not filled: what is unfilled or unhedged now is counted from fills alone.
+      aReserved: p.aReserved, bReserved: p.bReserved,
+      aUnfilled: fxStr(fxMax(FX_ZERO, fx(pair.targetQty) - fx(p.aFilled))), filledGap: fxStr(fx(p.aFilled) - fx(p.bFilled)),
       unhedged: p.unhedged, haltReason: pair.haltReason, leverage: pair.leverage ?? null,
       report: pair.reportJson ? JSON.parse(pair.reportJson) : null,
+      orders: orders.map((o) => ({
+        clientId: o.clientId, leg: o.leg, kind: o.kind, side: o.side, qty: o.qty, cumQty: o.cumQty, state: o.state,
+        closeReason: o.closeReason, quarantinedStatus: o.quarantinedStatus, venueReason: o.venueReason,
+      })),
     },
   };
 }

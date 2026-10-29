@@ -1,8 +1,10 @@
 import type { HistoryDays } from '../../../../src/core/funding/history';
-import type { FundingReceipt } from '../../api/fundingIntents';
+import { useCandidateIntents } from '../../api/fundingIntents';
 import type { BoardLegHistory, BoardRow, BoardWindow } from '../../api/fundingOpportunities';
 import { fmtTime, toDate } from '../../lib/fmt';
 import { FundingOrderForm } from './FundingOrderForm';
+import { dealSummary } from './FundingReceiptView';
+import { useFundingSubmissions } from './FundingSubmissions';
 import { coverageLabel, pct, pctExact, reasonText, windowValue } from './labels';
 
 const micro = 'text-[11px] text-ink-400';
@@ -33,17 +35,36 @@ function WindowRow({ w, underlying }: { w: BoardWindow; underlying: string }) {
 }
 
 /**
+ * The ledger's accepted intents for this pair that this browser has no record
+ * of (another browser, cleared storage): shown by exact id, claimed by nothing,
+ * and no reason to open or refuse a new one (ticket 14).
+ */
+function LedgerIntents({ candidateId }: { candidateId: string }) {
+  const { data, isError } = useCandidateIntents(candidateId);
+  const known = new Set(useFundingSubmissions().forCandidate(candidateId).map((s) => s.record.body.intentId));
+  const others = (data ?? []).filter((r) => !known.has(r.intentId));
+  if (isError) return <p className={`mt-2 ${micro}`}>The ledger's earlier opens of this pair could not be read.</p>;
+  if (!others.length) return null;
+  return (
+    <div className="mt-2">
+      <p className={micro}>Opens of this pair recorded in the ledger:</p>
+      <ul aria-label="Recorded opens" className={micro}>
+        {others.map((r) => (
+          <li key={r.intentId} className="num">
+            {r.intentId} · {dealSummary(r)} of {r.deal.targetQty} · {fmtTime(toDate(r.acceptedAt))}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * The selected pair, both legs fixed as listed: its history and current-rate
  * evidence, and the form that opens exactly this pair through a preview.
  */
-export function CandidateDetail({ row, days, snapshotId, admissionOpen, blocked, accepted, onAccepted, onUnknown }: {
+export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
   row: BoardRow; days: HistoryDays; snapshotId: string | null; admissionOpen: boolean;
-  /** An acceptance on this page with an unknown result: no new open may start. */
-  blocked: string | null;
-  /** This pair's acceptance on this page, if any. */
-  accepted: FundingReceipt | null;
-  onAccepted: (receipt: FundingReceipt) => void;
-  onUnknown: (intentId: string) => void;
 }) {
   const selectedLegs = row.windows.find((w) => w.days === days)?.legs;
   return (
@@ -106,11 +127,11 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen, blocked,
         <p className={micro}>Costs, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.</p>
         {snapshotId ? (
           // A new pair or window is a new draft; nothing typed carries over.
-          <FundingOrderForm key={`${row.id}/${days}`} row={row} days={days} snapshotId={snapshotId} admissionOpen={admissionOpen}
-            blocked={blocked} accepted={accepted} onAccepted={onAccepted} onUnknown={onUnknown} />
+          <FundingOrderForm key={`${row.id}/${days}`} row={row} days={days} snapshotId={snapshotId} admissionOpen={admissionOpen} />
         ) : (
           <p className={micro}>No history snapshot is published: nothing can be previewed.</p>
         )}
+        <LedgerIntents candidateId={row.id} />
       </div>
 
       <div className={section}>

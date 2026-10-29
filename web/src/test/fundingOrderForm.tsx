@@ -5,6 +5,8 @@ import { http, HttpResponse } from 'msw';
 import type { ComponentProps } from 'react';
 import type { FundingPreview } from '../api/fundingIntents';
 import { FundingOrderForm } from '../panels/funding/FundingOrderForm';
+import { FundingSubmissionsProvider } from '../panels/funding/FundingSubmissions';
+import { loadSubmissions, saveSubmission } from '../panels/funding/submissions';
 import { boardRow } from './fundingBoard';
 import { env, server } from './server';
 
@@ -14,7 +16,9 @@ export function renderForm(props: Partial<ComponentProps<typeof FundingOrderForm
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <FundingOrderForm row={ROW} days={30} snapshotId="snap-1" admissionOpen holdMs={20} {...props} />
+      <FundingSubmissionsProvider>
+        <FundingOrderForm row={ROW} days={30} snapshotId="snap-1" admissionOpen holdMs={20} {...props} />
+      </FundingSubmissionsProvider>
     </QueryClientProvider>,
   );
 }
@@ -47,4 +51,16 @@ export async function previewAndHold() {
   fireEvent.click(screen.getByLabelText(/I authorize converting/));
   fireEvent.click(screen.getByLabelText('I accept the risks listed above.'));
   fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to open' }));
+}
+
+/** A sent intent as this browser recorded it before a reload. */
+export function seedSubmission(intentId: string, candidateId: string, savedAt = Date.now()) {
+  const body = { intentId, previewId: `p-${intentId}`, contentHash: 'h'.repeat(64), authorizeConversion: true, acknowledgeRisks: true };
+  if (!saveSubmission({ candidateId, body, savedAt })) throw new Error('seed failed');
+}
+
+/** The recorded intents by id, or the store's error. */
+export function storedSubmissions() {
+  const loaded = loadSubmissions();
+  return loaded.ok ? loaded.records : loaded.error;
 }

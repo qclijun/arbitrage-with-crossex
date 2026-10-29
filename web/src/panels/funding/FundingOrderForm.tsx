@@ -1,8 +1,8 @@
 import type { HistoryDays } from '../../../../src/core/funding/history';
-import type { FundingReceipt } from '../../api/fundingIntents';
 import type { BoardRow } from '../../api/fundingOpportunities';
 import { HoldToConfirmButton } from '../../components/HoldToConfirmButton';
-import { FundingReceiptView } from './FundingReceiptView';
+import { SubmissionCard } from './FundingReceiptView';
+import { useFundingSubmissions } from './FundingSubmissions';
 import { decimalSign } from './labels';
 import { TIMEOUT_RANGE, type OrderDraft } from './orderDraft';
 import { PreviewSummary, warningText } from './PreviewSummary';
@@ -27,24 +27,24 @@ function Field({ label, value, error, disabled, onChange, placeholder }: {
 /**
  * Open this exact pair (ticket 13): the user types every number, previews
  * through ticket 12, confirms what the server bound, and holds to accept.
- * The server re-checks everything; this form never decides admission.
+ * The server re-checks everything; this form never decides admission. An
+ * intent sent for this pair is shown, by its id, in place of a new draft (ticket 14).
  */
-export function FundingOrderForm({ row, days, snapshotId, admissionOpen, blocked = null, accepted = null, onAccepted, onUnknown, holdMs, now = Date.now }: {
-  row: BoardRow; days: HistoryDays; snapshotId: string; admissionOpen: boolean;
-  /** An earlier acceptance on this page whose result is unknown: nothing new may start. */
-  blocked?: string | null;
-  /** This pair's acceptance on this page, shown instead of a new draft. */
-  accepted?: FundingReceipt | null;
-  onAccepted?: (receipt: FundingReceipt) => void;
-  onUnknown?: (intentId: string) => void; holdMs?: number; now?: () => number;
+export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs, acceptTimeoutMs, now = Date.now }: {
+  row: BoardRow; days: HistoryDays; snapshotId: string; admissionOpen: boolean; holdMs?: number; acceptTimeoutMs?: number; now?: () => number;
 }) {
-  const order = useFundingOrder({ row, days, snapshotId, now, accepted, onAccepted, onUnknown });
+  const order = useFundingOrder({ row, days, snapshotId, now, acceptTimeoutMs });
+  const submissions = useFundingSubmissions();
   const { draft, errors, stage } = order;
-  if (stage.kind === 'accepted') return <FundingReceiptView accepted={stage.receipt} />;
+  const blocked = submissions.blocked;
+  const sent = submissions.forCandidate(row.id);
+  if (sent.length) {
+    return <div>{sent.map((s) => <SubmissionCard key={s.record.body.intentId} submission={s} onDismiss={submissions.dismiss} />)}</div>;
+  }
   if (!row.short.symbol || !row.long.symbol) {
     return <p className={micro}>This pair cannot be opened: a leg has no proven CrossEx symbol.</p>;
   }
-  const frozen = order.locked || !!blocked;
+  const frozen = order.locked;
   const setField = <K extends keyof OrderDraft>(k: K) => (v: OrderDraft[K]) => order.edit(k, v);
   const preview = stage.kind === 'preview' || stage.kind === 'sending' ? stage.preview : null;
   const historySign = decimalSign(row.windows.find((w) => w.days === days)?.netTotal);
@@ -81,6 +81,7 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, blocked
       {preview && (
         <>
           {stage.kind === 'preview' && stage.notice && <p role="alert" className="mt-2 text-amber-300">{stage.notice} — confirm the new preview.</p>}
+          {stage.kind === 'preview' && stage.error && <p role="alert" className="mt-2 text-rose-300">{stage.error}</p>}
           <PreviewSummary preview={preview} />
           {(negativeHistory || preview.content.warnings.includes('scenario-not-positive')) && (
             <p role="alert" className="mt-2 font-semibold text-amber-300">
@@ -105,12 +106,8 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, blocked
           </HoldToConfirmButton>
         </>
       )}
-      {stage.kind === 'unknown' && (
-        <p role="alert" className="mt-2 text-rose-300">
-          Result unknown for intent {stage.intentId}: it may have been accepted. Do not open again; nothing was retried. ({stage.message})
-        </p>
-      )}
-      {blocked && stage.kind !== 'unknown' && <p role="alert" className="mt-2 text-rose-300">Intent {blocked} has an unknown result: no new open from this page.</p>}
+      {blocked && <p role="alert" className="mt-2 text-rose-300">{blocked}</p>}
+      {submissions.notices.filter((n) => n.candidateId === row.id).map((n) => <p key={n.text} role="status" className="mt-2 text-amber-300/90">{n.text}</p>)}
     </div>
   );
 }

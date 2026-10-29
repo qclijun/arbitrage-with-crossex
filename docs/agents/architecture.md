@@ -53,7 +53,11 @@ code allowed to mutate state or call venue-mutating endpoints.
   `core/funding/market.ts`, both filled by background pollers
   (`server/funding/services.ts`), so a browser request never reaches a venue.
   Its order form (`web/src/panels/funding/`) opens a pair only through that
-  preview and acceptance; it never posts `/deals`.
+  preview and acceptance; it never posts `/deals`. Each acceptance is recorded in
+  localStorage, one key per intent, before its one send (`panels/funding/submissions.ts`;
+  not sent if the record fails) and resolved only by its id (`FundingSubmissions.tsx`): a lost answer
+  stays unknown, blocking new opens, until `GET /api/funding/intents/:id?previewId=`
+  returns the receipt or proves the preview can never be accepted.
 
 ### Layers
 

@@ -3,7 +3,9 @@
  *
  *   POST /api/funding/preview      fresh read-only evidence → content to confirm
  *   POST /api/funding/intents      accept a confirmed, still-valid preview
- *   GET  /api/funding/intents/:id  the durable receipt, finished deals included
+ *   GET  /api/funding/intents/:id  the durable receipt, finished deals included;
+ *                                  not found, whether a late request may still land
+ *   GET  /api/funding/intents?candidateId=  that candidate's receipts (ticket 14)
  *
  * Nothing here touches a venue but to read. Acceptance re-reads every piece
  * of evidence, must find the same content the user confirmed, and lands
@@ -24,7 +26,7 @@ import { fingerprintOf, parseAcceptBody, receipt, writeIntent, type AcceptBody }
 import { gatherEvidence, type FundingPorts } from '../funding/evidence';
 import type { LedgerView } from '../funding/gates';
 import { judge } from '../funding/judge';
-import { PREVIEW_TTL_MS, PreviewRegistry, previewView, type Preview } from '../funding/previews';
+import { PREVIEW_TTL_MS, PreviewRegistry, previewView, type LateAcceptance, type Preview } from '../funding/previews';
 import { gateFundingReads } from '../funding/reads';
 import { parsePreviewRequest, type PreviewRequest } from '../funding/request';
 import { activeDealsOn } from '../manualConflicts';
@@ -123,16 +125,43 @@ export function fundingIntentRoutes(deps: AppDeps) {
         const deals = outcome.deals.join(', ');
         return no(reply, 'active-deal', `an unfinished deal started on these contracts meanwhile (${deals}); nothing was created`);
       }
+      // Every refusal above came before the write; nothing after it may answer 4xx,
+      // since the page releases an intent on a 4xx (ticket 14).
       deps.engine!.wake?.();
       return reply.code(202).ok(receipt(store, outcome.intent));
     });
 
-    app.get('/funding/intents/:id', async (req, reply) => {
+    /**
+     * Whether a request carrying this preview may still be accepted (ticket 14).
+     * Acceptance writes synchronously only while `now < expiresAt`, so once the
+     * server's clock reaches it, or the preview is consumed or unknown to this
+     * process, no late request can ever be accepted with it.
+     */
+    const lateAcceptance = (store: Store, previewId: string, now: number): LateAcceptance => {
+      const p = previews.get(previewId);
+      if (!p) return { possible: false, reason: 'preview-unknown' };
+      if (store.fundingIntents.byPreview(p.id)) return { possible: false, reason: 'preview-consumed' };
+      if (now >= p.expiresAt) return { possible: false, reason: 'preview-expired' };
+      return { possible: true, until: p.expiresAt };
+    };
+
+    // A candidate's accepted intents by exact id (ticket 14): what a page without
+    // its own record can show; it claims nothing and admits nothing.
+    app.get('/funding/intents', async (req, reply) => {
       const { store } = ready();
+      const { candidateId } = req.query as { candidateId?: unknown };
+      if (typeof candidateId !== 'string' || !candidateId) throw new CoreError('candidateId is required', 'validation');
+      return reply.ok(store.fundingIntents.byCandidate(candidateId).map((intent) => receipt(store, intent)));
+    });
+
+    app.get('/funding/intents/:id', async (req, reply) => {
+      const { store, now } = ready();
       const intent = store.fundingIntents.get((req.params as { id: string }).id);
       if (!intent) {
+        const { previewId } = req.query as { previewId?: unknown };
+        const extra = typeof previewId === 'string' ? { lateAcceptance: lateAcceptance(store, previewId, now()) } : undefined;
         return refuse(reply, { code: 404, category: 'validation', label: 'intent-unknown', retryable: false,
-          message: 'no intent with this id was accepted by this ledger' });
+          message: 'no intent with this id was accepted by this ledger' }, extra);
       }
       return reply.ok(receipt(store, intent));
     });

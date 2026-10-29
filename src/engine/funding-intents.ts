@@ -41,6 +41,13 @@ export class FundingIntents {
     return toRow(this.db.prepare('SELECT * FROM funding_intent WHERE preview_id = ?').get(previewId) as unknown as DbRow | undefined);
   }
 
+  /** Every intent accepted for this candidate, newest first. */
+  byCandidate(candidateId: string): FundingIntentRow[] {
+    const rows = this.db.prepare('SELECT * FROM funding_intent WHERE candidate_id = ? ORDER BY accepted_at DESC, id DESC')
+      .all(candidateId) as unknown as DbRow[];
+    return rows.map((r) => toRow(r)!);
+  }
+
   /** Throws on a second row for the same intent id, preview or deal. */
   insert(row: FundingIntentRow): void {
     this.db.prepare(

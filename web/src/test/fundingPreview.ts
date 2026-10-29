@@ -32,7 +32,7 @@ export function fundingReceipt(intentId: string, over: Partial<FundingReceipt['d
   return {
     intentId, dealId: `fund-${intentId}`, sliceId: `slice-${intentId}`, candidateId: preview.content.candidateId, acceptedAt: AT + 3_000,
     content: preview.content,
-    deal: { mode: 'OPENING', deadlineAt: AT + 303_000, targetQty: '0.01', aFilled: '0', bFilled: '0', unhedged: '0',
-      haltReason: null, leverage: null, report: null, ...over },
+    deal: { mode: 'OPENING', deadlineAt: AT + 303_000, targetQty: '0.01', aFilled: '0', bFilled: '0', aReserved: '0', bReserved: '0',
+      aUnfilled: '0.01', filledGap: '0', unhedged: '0', haltReason: null, leverage: null, report: null, orders: [], ...over },
   };
 }
