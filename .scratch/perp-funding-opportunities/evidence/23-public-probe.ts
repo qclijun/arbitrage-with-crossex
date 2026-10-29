@@ -17,7 +17,7 @@ const url = (base: string, params: Record<string, string | number>) => {
 
 async function main() {
   const output = process.argv[2];
-  if (!output) throw new Error('usage: yarn tsx .scratch/perp-funding-opportunities/evidence/23-public-probe.ts NEW_DIRECTORY');
+  if (!output) throw new Error('usage: yarn tsx .scratch/perp-funding-opportunities/evidence/23-public-probe.ts NEW_DIRECTORY [BINANCE,BYBIT]');
   // Refuse overwrites so an independent rerun cannot replace prior evidence.
   mkdirSync(output, { recursive: false });
   const cutoff = Math.floor(Date.now() / 3_600_000) * 3_600_000;
@@ -36,17 +36,21 @@ async function main() {
     ['BYBIT', [1, 200].map((limit) => ({ name: `history-${limit}`, url: url('https://api.bybit.com/v5/market/funding/history', { category: 'linear', symbol: 'BTCUSDT', startTime: start, endTime: cutoff, limit }) }))],
     ['HYPERLIQUID', [1, 365].map((days) => ({ name: `history-${days}d`, url: 'https://api.hyperliquid.xyz/info', body: { type: 'fundingHistory', coin: 'BTC', startTime: cutoff - days * 86_400_000, endTime: cutoff } }))],
   ];
+  const venues = process.argv[3]?.split(',');
+  if (venues?.some((venue) => !plan.some(([name]) => name === venue))) throw new Error('unknown venue');
+  const selected = plan.filter(([venue]) => !venues || venues.includes(venue));
   const samples: object[] = [];
   const manifest = {
     startedAt: new Date().toISOString(), cutoff, spacingMs: 1500, timeoutMs: 5000,
-    maxRequests: 11, retries: 0,
-    transport: 'Existing bookRequestOptions; no egress/config changes. Response set-cookie omitted; no account/auth headers.',
+    maxRequests: selected.reduce((sum, [, requests]) => sum + requests.length, 0), retries: 0,
+    venues: selected.map(([venue]) => venue),
+    transport: 'Existing bookRequestOptions (honors process GATE_PROXY); no persistent egress/config changes. Response set-cookie omitted; no account/auth headers.',
     samples,
   };
   const save = () => writeFileSync(join(output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   save();
   let previousEnd = 0;
-  for (const [venue, requests] of plan) {
+  for (const [venue, requests] of selected) {
     let minuteLimit: number | null = null;
     for (const request of requests) {
       await pause(Math.max(0, previousEnd + 1500 - Date.now()));

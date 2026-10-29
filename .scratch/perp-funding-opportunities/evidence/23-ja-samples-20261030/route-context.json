@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-29T17:45:22Z",
+  "listener": [
+    {
+      "name": "gologin-jms-c18s4",
+      "type": "mixed",
+      "port": 7899,
+      "proxy": "JA"
+    }
+  ],
+  "JASelected": "JMS-<redacted>@c18s4.portablesubmarines.com:443",
+  "groupAlive": true,
+  "selectedType": "Vless",
+  "persistentConfigChangedByProbe": false
+}

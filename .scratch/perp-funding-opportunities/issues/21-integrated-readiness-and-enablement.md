@@ -25,6 +25,8 @@ Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23
 
 ## Comments
 
+- 2026-10-30（后续JA补验）：用户授权使用Clash Verge JA分组后，Binance/Bybit共6次公开请求均200，且按源端口证明本次新连接chains包含JA，见[JA真实证据](../evidence/23-ja-verification.md)。首次451/403仅针对当时出口，当前JA访问缺口已补；真实限流、剩余/reset、冷却/扣账与共享IP负载仍UNKNOWN，23保持claimed，本票依赖不解除，不改变生产代理或开仓许可。
+
 - 2026-10-30：23已补9次公开请求及[原始归档/逐场所结论](../evidence/23-public-calibration.md)，Aster/OKX/HL成功不代表完整能力；Binance451、Bybit403仍限制取证，真实Retry-After/429/418、Bybit余额/reset、MBX高水位、HL扣账/恢复与共享IP负载继续UNKNOWN。23保持claimed、未resolved，本票继续依赖23，不将剩余项静默删除或转为启用许可。
 
 - 2026-10-27：06-Q6用户已确认，补齐跨票最终验收责任。本票依赖全部正式实现，仍由06阻塞；不能作为本轮已完成产品的证明。

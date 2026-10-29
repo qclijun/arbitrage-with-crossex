@@ -1,0 +1,94 @@
+{
+  "startedAt": "2026-10-29T17:44:02Z",
+  "explicitProxy": "http://127.0.0.1:7899",
+  "configurationMutations": false,
+  "maxRequests": 2,
+  "retries": 0,
+  "samples": [
+    {
+      "venue": "BINANCE",
+      "method": "GET",
+      "url": "https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&startTime=1792688400000&endTime=1793293200000&limit=1",
+      "status": 200,
+      "elapsedMs": 767,
+      "sourcePort": 39235,
+      "headers": {
+        "date": "Thu, 29 Oct 2026 17:44:03 GMT",
+        "content-type": "application/json;charset=UTF-8",
+        "content-length": "127",
+        "connection": "keep-alive",
+        "server": "nginx",
+        "vary": "Accept-Encoding",
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "access-control-allow-credentials": "true",
+        "access-control-allow-headers": "*,clienttype,Content-Type,lang,x-ui-request-trace,bnc-uuid",
+        "content-security-policy": "default-src 'self'",
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "expires": "0",
+        "pragma": "no-cache",
+        "strict-transport-security": "max-age=31536000; includeSubdomains",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "x-xss-protection": "1; mode=block"
+      },
+      "connections": [
+        {
+          "id": "6e2bc75b-6b9f-4637-8479-54343b4d9357",
+          "host": "fapi.binance.com",
+          "sourcePort": "39235",
+          "inboundPort": "7899",
+          "inboundName": "gologin-jms-c18s4",
+          "chains": [
+            "JMS-<redacted>@c18s4.portablesubmarines.com:443",
+            "JA"
+          ],
+          "start": "2026-10-30T01:44:02.753868053+08:00"
+        }
+      ],
+      "bodyFile": "binance-route-history.body.gz",
+      "bodyBytes": 127,
+      "bodySha256": "37c18e947c2971efe12d8aa071ea956fb328551948ee6e54fcbf387424f77593"
+    },
+    {
+      "venue": "BYBIT",
+      "method": "GET",
+      "url": "https://api.bybit.com/v5/market/funding/history?category=linear&symbol=BTCUSDT&startTime=1792688400000&endTime=1793293200000&limit=1",
+      "status": 200,
+      "elapsedMs": 961,
+      "sourcePort": 40055,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "content-length": "191",
+        "connection": "keep-alive",
+        "date": "Thu, 29 Oct 2026 17:44:05 GMT",
+        "x-cld-src": "Loc-A",
+        "ret_code": "0",
+        "traceid": "598209bc8b8dee0615259417d0cd030a",
+        "timenow": "1793295845379",
+        "server": "Openresty",
+        "x-cache": "Miss from cloudfront",
+        "via": "1.1 b41d4129fc0d7a51460c73e1e1c601a2.cloudfront.net (CloudFront)",
+        "x-amz-cf-pop": "KIX82-P2",
+        "x-amz-cf-id": "zX-ohXx4sGYRyEu2F_5IH20F72eJLSAABvMpLlt9357FyAYZAZk3-Q=="
+      },
+      "connections": [
+        {
+          "id": "f52ac462-1044-43a1-8baa-2ce06aced704",
+          "host": "api.bybit.com",
+          "sourcePort": "40055",
+          "inboundPort": "7899",
+          "inboundName": "gologin-jms-c18s4",
+          "chains": [
+            "JMS-<redacted>@c18s4.portablesubmarines.com:443",
+            "JA"
+          ],
+          "start": "2026-10-30T01:44:05.051348345+08:00"
+        }
+      ],
+      "bodyFile": "bybit-route-history.body.gz",
+      "bodyBytes": 191,
+      "bodySha256": "029d29d173d1685d27067dfccc27e028ebcd7ac076907a9e87883aa6095205e8"
+    }
+  ]
+}

@@ -66,13 +66,27 @@ export function createOfficialPublicReader(opts: { now?: () => number; sample?: 
     }
     opts.sample?.({ venue, url, status: response.status, elapsedMs: now() - at, headers, estimatedWeight: actualWeight, weights });
     const code = data?.retCode ?? data?.code;
+    const message = typeof data === 'string' ? data : [data?.retMsg, data?.msg, data?.error].filter((v) => typeof v === 'string').join(' ');
+    const bybitIpLimit = venue === 'BYBIT' && response.status === 403 && /access too frequent/i.test(message);
     const limited = response.status === 429 || response.status === 418 || code === 10006 || code === 10429
-      || code === -1003 || code === '50011' || code === '50040';
+      || code === -1003 || code === '50011' || code === '50040' || bybitIpLimit;
     const delay = retryAfterMs(headers['retry-after'], now());
     const reset = Number(headers['x-bapi-limit-reset-timestamp']);
     if (limited || delay !== null || headers['x-bapi-limit-status'] === '0') {
-      const cooldown = Math.max(delay ?? 0, Number.isSafeInteger(reset) ? reset - now() : 0,
-        limited || headers['x-bapi-limit-status'] === '0' ? 60_000 : 0);
+      const binanceFamily = venue === 'BINANCE' || venue === 'ASTER';
+      const ban = binanceFamily && (response.status === 418 || code === -1003) ? message.match(/\bbanned until\s+(\d+)\b/i) : null;
+      const bannedUntil = Number(ban?.[1]);
+      const serverDelay = Math.max(delay ?? 0, Number.isSafeInteger(reset) ? reset - now() : 0,
+        Number.isSafeInteger(bannedUntil) ? bannedUntil - now() : 0);
+      // Missing ban telemetry is not evidence of a short ban. Use the documented
+      // maximum for Binance/Aster 418s, not a promise that every ban lasts 3 days.
+      let fallback = 60_000;
+      if (response.status === 418 && binanceFamily) fallback = 3 * 86_400_000;
+      else if (venue === 'BINANCE' && (response.status === 429 || code === -1003)) fallback = 300_000;
+      const exhausted = limited || headers['x-bapi-limit-status'] === '0';
+      let minimum = exhausted ? 60_000 : 0;
+      if (exhausted && serverDelay <= 0) minimum = fallback;
+      const cooldown = Math.max(serverDelay, minimum, bybitIpLimit ? 600_000 : 0);
       state.blockedUntil = Math.max(state.blockedUntil, now() + cooldown);
       if (limited) throw new HistoryRateLimitError('official-rate-limit', cooldown);
     }
