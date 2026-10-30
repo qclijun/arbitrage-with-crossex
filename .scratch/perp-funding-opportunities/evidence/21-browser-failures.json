@@ -1,0 +1,276 @@
+[
+  {
+    "fixture": "http://127.0.0.1:41973",
+    "steps": [
+      {
+        "name": "21-browser-observation",
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\nManual opening is not enabled — previews can only be observed.\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:01\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)\nSettings\nTerminal setup\n✓\nGate API key\nSYNTHETIC · works\n!\nBoros wallet\nnot set up\n\nInstall Rabby or MetaMask, then reload.\n\n!\nTelegram alerts\nnot set up\nSet up\nAbout\nVersion 9.9.9-fixture\nGitHub\nsource checkout"
+      },
+      {
+        "name": "21-browser-filtered",
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\nManual opening is not enabled — previews can only be observed.\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n1 of 2 pairs · 1 ranked · as of 10-01 08:02:01\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)\nSettings\nTerminal setup\n✓\nGate API key\nSYNTHETIC · works\n!\nBoros wallet\nnot set up\n\nInstall Rabby or MetaMask, then reload.\n\n!\nTelegram alerts\nnot set up\nSet up\nAbout\nVersion 9.9.9-fixture\nGitHub\nsource checkout"
+      },
+      {
+        "name": "21-browser-preview",
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:02\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nYou typed 0.15 ETH · Final quantity 0.15 ETH\n\nLeg\tSymbol\tSide\tRole\tLeverage\tFees maker / taker\nshort\tOKX_FUTURE_ETH_USDT\tSELL\thedge\t3x\t0.0002 / 0.0005\nlong\tHYPERLIQUID_FUTURE_ETH_USDC\tBUY\tmaker\t5x\t0.0001 / 0.00045\n\nMaker price 2499.9 · maker waits 300 s after acceptance, then the unfilled remainder converts to taker.\n\nFX known:USDC/USDT · borrow not-applicable · amounts in USDT\n\nScenario\tOne-time costs\tHold 30 d result\tPayback\nMaker fills, hedge taker\t0.63 USDT\t6.13 USDT\t2.8 d\nMaker remainder converts to taker\t0.77 USDT\t5.99 USDT\t3.4 d\n\nDaily net funding 0.23 USDT. Scenarios use the current book and fees; they are not a cost cap or a promise. The conversion row assumes the whole maker leg converts.\n\nAt the maker deadline, the unfilled maker remainder converts to taker.\nTaker orders are MARKET IOC: no price or total-cost cap.\nOne leg is exposed until the other is hedged; a residual can remain.\nTrading permission is inferred from signed reads; a key without it fails only at the first order.\nRisk exempts only the reconciled floating quantity from Boros cover; other risks stay.\nLeverage on HYPERLIQUID_FUTURE_ETH_USDC changes from 10x to 5x before any order.\nI authorize converting the unfilled maker remainder to taker after 300 s.\nI accept the risks listed above.\n\nPreview expired — preview again.\n\nHold to open\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)"
+      }
+    ],
+    "blockedExternalRequests": [
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com"
+    ],
+    "result": "failed",
+    "error": "AssertionError [ERR_ASSERTION]: hold button must be enabled",
+    "failureText": "New here?\n\nThe 📖 User guide up there explains what the Opportunities assumptions mean and how to open a pair well. Worth five minutes before your first real order.\n\nOpen the guide\nNot now\nArbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:02\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nYou typed 0.15 ETH · Final quantity 0.15 ETH\n\nLeg\tSymbol\tSide\tRole\tLeverage\tFees maker / taker\nshort\tOKX_FUTURE_ETH_USDT\tSELL\thedge\t3x\t0.0002 / 0.0005\nlong\tHYPERLIQUID_FUTURE_ETH_USDC\tBUY\tmaker\t5x\t0.0001 / 0.00045\n\nMaker price 2499.9 · maker waits 300 s after acceptance, then the unfilled remainder converts to taker.\n\nFX known:USDC/USDT · borrow not-applicable · amounts in USDT\n\nScenario\tOne-time costs\tHold 30 d result\tPayback\nMaker fills, hedge taker\t0.63 USDT\t6.13 USDT\t2.8 d\nMaker remainder converts to taker\t0.77 USDT\t5.99 USDT\t3.4 d\n\nDaily net funding 0.23 USDT. Scenarios use the current book and fees; they are not a cost cap or a promise. The conversion row assumes the whole maker leg converts.\n\nAt the maker deadline, the unfilled maker remainder converts to taker.\nTaker orders are MARKET IOC: no price or total-cost cap.\nOne leg is exposed until the other is hedged; a residual can remain.\nTrading permission is inferred from signed reads; a key without it fails only at the first order.\nRisk exempts only the reconciled floating quantity from Boros cover; other risks stay.\nLeverage on HYPERLIQUID_FUTURE_ETH_USDC changes from 10x to 5x before any order.\nI authorize converting the unfilled maker remainder to taker after 300 s.\nI accept the risks listed above.\n\nPreview expired — preview again.\n\nHold to open\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)",
+    "sourcePath": "21-browser-runs/2026-10-29T18-54-52-154Z/evidence.json",
+    "rawRecordSha256": "3bfd4f3d39fd8732b7029354474288e8b60a50de28a1e6199469abf4ed8d9af0"
+  },
+  {
+    "fixture": "http://127.0.0.1:45677",
+    "steps": [
+      {
+        "name": "21-browser-observation",
+        "wallAt": "2026-10-29T18:59:38.521Z",
+        "pageNow": 1790812922651,
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\nManual opening is not enabled — previews can only be observed.\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:02\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)\nSettings\nTerminal setup\n✓\nGate API key\nSYNTHETIC · works\n!\nBoros wallet\nnot set up\n\nInstall Rabby or MetaMask, then reload.\n\n!\nTelegram alerts\nnot set up\nSet up\nAbout\nVersion 9.9.9-fixture\nGitHub\nsource checkout"
+      },
+      {
+        "name": "21-browser-filtered",
+        "wallAt": "2026-10-29T18:59:38.923Z",
+        "pageNow": 1790812923053,
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\nManual opening is not enabled — previews can only be observed.\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n1 of 2 pairs · 1 ranked · as of 10-01 08:02:02\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)\nSettings\nTerminal setup\n✓\nGate API key\nSYNTHETIC · works\n!\nBoros wallet\nnot set up\n\nInstall Rabby or MetaMask, then reload.\n\n!\nTelegram alerts\nnot set up\nSet up\nAbout\nVersion 9.9.9-fixture\nGitHub\nsource checkout"
+      },
+      {
+        "name": "21-browser-preview",
+        "wallAt": "2026-10-29T18:59:40.474Z",
+        "pageNow": 1790812924602,
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:03\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nYou typed 0.15 ETH · Final quantity 0.15 ETH\n\nLeg\tSymbol\tSide\tRole\tLeverage\tFees maker / taker\nshort\tOKX_FUTURE_ETH_USDT\tSELL\thedge\t3x\t0.0002 / 0.0005\nlong\tHYPERLIQUID_FUTURE_ETH_USDC\tBUY\tmaker\t5x\t0.0001 / 0.00045\n\nMaker price 2499.9 · maker waits 300 s after acceptance, then the unfilled remainder converts to taker.\n\nFX known:USDC/USDT · borrow not-applicable · amounts in USDT\n\nScenario\tOne-time costs\tHold 30 d result\tPayback\nMaker fills, hedge taker\t0.63 USDT\t6.13 USDT\t2.8 d\nMaker remainder converts to taker\t0.77 USDT\t5.99 USDT\t3.4 d\n\nDaily net funding 0.23 USDT. Scenarios use the current book and fees; they are not a cost cap or a promise. The conversion row assumes the whole maker leg converts.\n\nAt the maker deadline, the unfilled maker remainder converts to taker.\nTaker orders are MARKET IOC: no price or total-cost cap.\nOne leg is exposed until the other is hedged; a residual can remain.\nTrading permission is inferred from signed reads; a key without it fails only at the first order.\nRisk exempts only the reconciled floating quantity from Boros cover; other risks stay.\nLeverage on HYPERLIQUID_FUTURE_ETH_USDC changes from 10x to 5x before any order.\nI authorize converting the unfilled maker remainder to taker after 300 s.\nI accept the risks listed above.\n\nValid for 10 s.\n\nHold to open\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)"
+      },
+      {
+        "name": "21-browser-reconfirm",
+        "wallAt": "2026-10-29T18:59:42.423Z",
+        "pageNow": 1790812926551,
+        "text": "New here?\n\nThe 📖 User guide up there explains what the Opportunities assumptions mean and how to open a pair well. Worth five minutes before your first real order.\n\nOpen the guide\nNot now\nArbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n2s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:03\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nwhat you confirmed has changed; confirm the new preview — confirm the new preview.\n\nYou typed 0.15 ETH · Final quantity 0.15 ETH\n\nLeg\tSymbol\tSide\tRole\tLeverage\tFees maker / taker\nshort\tOKX_FUTURE_ETH_USDT\tSELL\thedge\t3x\t0.0002 / 0.0005\nlong\tHYPERLIQUID_FUTURE_ETH_USDC\tBUY\tmaker\t5x\t0.0002 / 0.00045\n\nMaker price 2499.9 · maker waits 300 s after acceptance, then the unfilled remainder converts to taker.\n\nFX known:USDC/USDT · borrow not-applicable · amounts in USDT\n\nScenario\tOne-time costs\tHold 30 d result\tPayback\nMaker fills, hedge taker\t0.66 USDT\t6.09 USDT\t2.9 d\nMaker remainder converts to taker\t0.77 USDT\t5.99 USDT\t3.4 d\n\nDaily net funding 0.23 USDT. Scenarios use the current book and fees; they are not a cost cap or a promise. The conversion row assumes the whole maker leg converts.\n\nAt the maker deadline, the unfilled maker remainder converts to taker.\nTaker orders are MARKET IOC: no price or total-cost cap.\nOne leg is exposed until the other is hedged; a residual can remain.\nTrading permission is inferred from signed reads; a key without it fails only at the first order.\nRisk exempts only the reconciled floating quantity from Boros cover; other risks stay.\nLeverage on HYPERLIQUID_FUTURE_ETH_USDC changes from 10x to 5x before any order.\nI authorize converting the unfilled maker remainder to taker after 300 s.\nI accept the risks listed above.\n\nValid for 10 s.\n\nHold to open\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)"
+      }
+    ],
+    "blockedExternalRequests": [
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com"
+    ],
+    "result": "failed",
+    "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n3 !== 2\n",
+    "failureText": "New here?\n\nThe 📖 User guide up there explains what the Opportunities assumptions mean and how to open a pair well. Worth five minutes before your first real order.\n\nOpen the guide\nNot now\nArbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n3s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n25ca19ce-c521-42e8-abfa-34c1b0f98a65 · ETH short OKX ETH-USDT-SWAP → long HYPERLIQUID ETH · OPENING · maker 0 / hedge 0\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:02:03\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nAccepted as intent 25ca19ce-c521-42e8-abfa-34c1b0f98a65 · deal fi-25ca19ce-c521-42e8-abfa-34c1b0f98a65\n\nMode\tOPENING\nTarget\t0.15\nMaker leg filled\t0\nHedge leg filled\t0\nMaker leg unfilled\t0.15\nFilled, not hedged\t0\nIn flight, not filled\tmaker 0 · hedge 0\nMaker deadline\t10-01 08:07:07\n\nRunning: fills can still change.\n\nAccepted is not filled, and DONE is not proof of a full fill: compare both legs above. Nothing here adds or unwinds orders; the engine keeps hedging what filled.\n\nOpen the deal view\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)",
+    "failureControls": {
+      "buttons": [
+        {
+          "text": "",
+          "disabled": false
+        },
+        {
+          "text": "Open the guide",
+          "disabled": false
+        },
+        {
+          "text": "Not now",
+          "disabled": false
+        },
+        {
+          "text": "Healthy\nGate\n$0\n/ $10,000",
+          "disabled": false
+        },
+        {
+          "text": "Finish setup\n1/3",
+          "disabled": false
+        },
+        {
+          "text": "3s ago",
+          "disabled": false
+        },
+        {
+          "text": "",
+          "disabled": false
+        },
+        {
+          "text": "Opportunities",
+          "disabled": false
+        },
+        {
+          "text": "Positions",
+          "disabled": false
+        },
+        {
+          "text": "Funding Spreads",
+          "disabled": false
+        },
+        {
+          "text": "Liquidity",
+          "disabled": false
+        },
+        {
+          "text": "Collateral",
+          "disabled": false
+        },
+        {
+          "text": "Risk",
+          "disabled": false
+        },
+        {
+          "text": "Accounts",
+          "disabled": false
+        },
+        {
+          "text": "Open Orders",
+          "disabled": false
+        },
+        {
+          "text": "Trades",
+          "disabled": false
+        },
+        {
+          "text": "Fees",
+          "disabled": false
+        },
+        {
+          "text": "Order ticket",
+          "disabled": false
+        },
+        {
+          "text": "User guide",
+          "disabled": false
+        },
+        {
+          "text": "7d",
+          "disabled": false
+        },
+        {
+          "text": "30d",
+          "disabled": false
+        },
+        {
+          "text": "90d",
+          "disabled": false
+        },
+        {
+          "text": "180d",
+          "disabled": false
+        },
+        {
+          "text": "365d",
+          "disabled": false
+        },
+        {
+          "text": "O\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH",
+          "disabled": false
+        },
+        {
+          "text": "H\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP",
+          "disabled": false
+        },
+        {
+          "text": "‹",
+          "disabled": true
+        },
+        {
+          "text": "›",
+          "disabled": true
+        },
+        {
+          "text": "Open the deal view",
+          "disabled": false
+        },
+        {
+          "text": "Go to Positions",
+          "disabled": false
+        },
+        {
+          "text": "Go to Risk",
+          "disabled": false
+        }
+      ],
+      "inputs": [
+        {
+          "label": null,
+          "value": "on",
+          "checked": false,
+          "disabled": false
+        }
+      ]
+    },
+    "sourcePath": "21-browser-runs/2026-10-29T18-59-33-998Z/evidence.json",
+    "rawRecordSha256": "1d3afe59ef80f268f6e92e43bf9a74bc4ba1f6a576f6e9be949125668c342ce8"
+  },
+  {
+    "fixture": "http://127.0.0.1:46015",
+    "steps": [
+      {
+        "name": "21-browser-observation",
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\nManual opening is not enabled — previews can only be observed.\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n\n2ETH\t\nH\nHYPERLIQUID\n→\nO\nOKX\nETH / ETH-USDT-SWAP\n\t-21.90%\t-21.90%\t\nRanked\n2 of 2 pairs · 2 ranked · as of 10-01 08:06:38\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)\nSettings\nTerminal setup\n✓\nGate API key\nSYNTHETIC · works\n!\nBoros wallet\nnot set up\n\nInstall Rabby or MetaMask, then reload.\n\n!\nTelegram alerts\nnot set up\nSet up\nAbout\nVersion 9.9.9-fixture\nGitHub\nsource checkout"
+      },
+      {
+        "name": "21-browser-filtered",
+        "text": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nPerp funding opportunities — every directed pair, ranked by settled history\n\nShort leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open, and no costs are included.\n\n7d\n30d\n90d\n180d\n365d\nCoin\nAll coins\nETH\nVenue\nAny venue\nHYPERLIQUID\nOKX\nPositive spread only\nManual opening is not enabled — previews can only be observed.\n# / Coin\tShort → Long\t30d APR\t7d APR\tStatus\n1ETH\t\nO\nOKX\n→\nH\nHYPERLIQUID\nETH-USDT-SWAP / ETH\n\t21.90%\t21.90%\t\nRanked\n1 of 2 pairs · 1 ranked · as of 10-01 08:06:39\n‹\nPage 1 of 1\n›\nETH\n\nShort OKX ETH-USDT-SWAP→Long HYPERLIQUID ETH\n\nDirection is fixed: the short leg receives a positive spread. Snapshot snap-1.\n\nWindow\tNet total\tNet APR\tShort total · APR\tLong total · APR\tCoverage\tWhy not ranked\n7d\t0.42%\t21.90%\t0.63% · 32.85%\t0.21% · 10.95%\tcomplete\t—\n30d\t1.80%\t21.90%\t2.70% · 32.85%\t0.90% · 10.95%\tcomplete\t—\n90d\t5.40%\t21.90%\t8.10% · 32.85%\t2.70% · 10.95%\tcomplete\t—\n180d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t5.40% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n365d\tUNSUPPORTED\tUNSUPPORTED\tUNSUPPORTED\t10.95% · 10.95%\tUNSUPPORTED\thistory is UNSUPPORTED for this window; short: the source cannot serve this window\n\nVerified 10-01 08:01:00 (short) / 10-01 08:01:00 (long)\n\nCurrent period\n\nShort 0.03% / 8h read 10-01 08:02:00\n\nLong 0.01% / 8h read 10-01 08:02:00\n\nNet 21.90% APR at each leg's own interval\n\nExecution limits\n\nNone known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.\n\nOpen this pair\n\nCosts, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n\nQuantity (ETH)\nShort leverage\nLong leverage\nMaker price\nMaker timeout (s)\nHold days\n\nMaker timeout 30–3600 s (300 default). Hold days only shape the scenarios below.\n\nMaker leg (the other leg hedges as taker)\nshort OKX ETH-USDT-SWAP\nlong HYPERLIQUID ETH\nPreview\n\nHeld positions and their risk: Go to Positions · Go to Risk\n\nCurrent rates (unranked, for reference only)\nSettings\nTerminal setup\n✓\nGate API key\nSYNTHETIC · works\n!\nBoros wallet\nnot set up\n\nInstall Rabby or MetaMask, then reload.\n\n!\nTelegram alerts\nnot set up\nSet up\nAbout\nVersion 9.9.9-fixture\nGitHub\nsource checkout"
+      }
+    ],
+    "blockedExternalRequests": [
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://storage.googleapis.com"
+    ],
+    "result": "failed",
+    "error": "AssertionError [ERR_ASSERTION]: visible button missing: Preview",
+    "failureText": "Arbitrage\nwith CrossEx\nHealthy\nGate\n$0\n/ $10,000\nFinish setup\n1/3\n0s ago\nOpportunities\nPositions\nFunding Spreads\nLiquidity\nCollateral\nRisk\nAccounts\nOpen Orders\nTrades\nFees\nOrder ticket\nUser guide\nNotional per leg\n$\n10,000\n$10k\n$100k\n$500k\nCustom…\nPerp entry\n2 market orders\nLimit + hedge\nPerp exit cost\nClose positions\nRoll over\n0s ago\nshowing 2 of 2\nFilters\nE\nETH\nH\nHyperliquid\nSHORT\nG\nGate\nLONG\n3 legs\nI have existing perp position\nmatures 2026-11-27\n8.3%\nAPR\n(50d)\nMore details\nCapital\n~$1,571\nReturn\n$18\nNotional\n$10k (5.26 ETH)\nOpen this strategy\nE\nETH\nH\nHyperliquid\nSHORT\nB\nBinance\nLONG\n4 legs\nI have existing perp position\nmatures 2025-08-08\n7.0%\nAPR\n(30d)\nMore details\nCapital\n~$1,512\nReturn\n$9\nNotional\n$10k\nOpen this strategy",
+    "sourcePath": "21-browser-runs/initial-discovery/evidence.json",
+    "rawRecordSha256": "fda9da95e221321f869024e44ea19ba4b72e9299e1a01190fd7dd6898dea1a58"
+  },
+  {
+    "run": ".scratch/perp-funding-opportunities/evidence/21-browser-runs/2026-10-30T00-11-12-398Z/",
+    "fixture": "http://127.0.0.1:35969",
+    "steps": [],
+    "blockedExternalRequests": [],
+    "authChecks": [
+      {
+        "path": "/api/credentials",
+        "token": "missing",
+        "status": 200
+      }
+    ],
+    "result": "failed",
+    "error": "AssertionError [ERR_ASSERTION]: /api/credentials must require the fixture token\n\n200 !== 401\n",
+    "server": {
+      "now": 1790812920380,
+      "admission": {
+        "generation": 0,
+        "changedAt": null,
+        "enabledVersion": null,
+        "open": false,
+        "reason": "never-enabled"
+      },
+      "deals": [],
+      "createCalls": [],
+      "calls": [],
+      "blocked": []
+    }
+  }
+]

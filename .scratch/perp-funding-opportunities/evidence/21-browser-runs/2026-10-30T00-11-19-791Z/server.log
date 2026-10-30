@@ -1,0 +1,3 @@
+yarn run v1.22.22
+$ /home/jerel/workspace/GitHub/arbitrage-with-crossex-perp-funding-opportunities-docs/node_modules/.bin/tsx .scratch/perp-funding-opportunities/evidence/21-browser-server.ts
+{"origin":"http://127.0.0.1:42347"}

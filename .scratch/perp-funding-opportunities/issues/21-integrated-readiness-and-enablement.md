@@ -1,8 +1,8 @@
 # 整体验收、停用回退证据与人工启用准入
 
 Type: task
-Status: open
-Assignee: none
+Status: claimed
+Assignee: Codex
 Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
 
 ## Goal
@@ -30,6 +30,8 @@ Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
 - 本次不证明全年分页、历史周期/上市/HL结算映射、完整来源能力或开仓准入。人工开仓保持关闭；后续如需提升这些能力须单独取得对应证据。
 
 ## Comments
+
+- 2026-10-30：用户签收23并要求继续下一张；当前仅本票open，所有列示依赖均resolved，现认领21。按矩阵补最终集成/隔离浏览器/升级回退证据，运行完整门禁；保持开仓关闭，不部署、重启或交易。
 
 - 2026-10-30（最终文档校准）：23已按原Scope允许未观测UNKNOWN的验收范围resolved，不再作为未交付依赖。见[官方/CCXT规范](../evidence/23-documented-rate-limits.md)、[策略修正](../evidence/23-documented-calibration.md)与[完成交接](../evidence/23-completion-handoff.md)。JA访问成功、规则查证、冷却回归和完整门禁已交付；本票所列能力限制继续保留，不因23 resolved或HTTP200变为PASS，不启用开仓。
 

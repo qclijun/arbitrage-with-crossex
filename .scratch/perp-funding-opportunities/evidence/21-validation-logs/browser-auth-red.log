@@ -1,0 +1,19 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: /api/credentials must require the fixture token
+
+200 !== 401
+
+    at file:///home/jerel/workspace/GitHub/arbitrage-with-crossex-perp-funding-opportunities-docs/.scratch/perp-funding-opportunities/evidence/21-browser-check.mjs:62:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 200,
+  expected: 401,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.21.0

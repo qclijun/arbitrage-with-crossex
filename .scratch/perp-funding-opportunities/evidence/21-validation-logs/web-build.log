@@ -1,0 +1,22 @@
+yarn run v1.22.22
+$ tsc --noEmit && vite build
+vite v5.4.21 building for production...
+transforming...
+✓ 3626 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                             9.56 kB │ gzip:   7.01 kB
+dist/assets/inter-latin-Dx4kXJAl.woff2     48.26 kB
+dist/assets/index-ftoBAFQi.css             69.81 kB │ gzip:  12.25 kB
+dist/assets/ccip-BO1y8izz.js                4.73 kB │ gzip:   2.04 kB
+dist/assets/borosAgentApi-DEHmhPGx.js       9.61 kB │ gzip:   3.51 kB
+dist/assets/secp256k1-CBR-QOD7.js          27.83 kB │ gzip:  10.82 kB
+dist/assets/UserGuideModal-D6Erxnf8.js    161.56 kB │ gzip:  49.13 kB
+dist/assets/index-Cvt7OidY.js           1,109.04 kB │ gzip: 335.51 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 24.48s
+Done in 79.12s.

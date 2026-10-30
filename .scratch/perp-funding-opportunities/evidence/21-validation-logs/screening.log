@@ -1,0 +1,103 @@
+test_a_day_missing_one_settlement_is_unknown_not_zero (test_funding_screening.RulesTest.test_a_day_missing_one_settlement_is_unknown_not_zero) ... ok
+test_basis_uses_unit_prices (test_funding_screening.RulesTest.test_basis_uses_unit_prices) ... ok
+test_book_metrics (test_funding_screening.RulesTest.test_book_metrics) ... ok
+test_cost_and_capacity_pass_and_cost (test_funding_screening.RulesTest.test_cost_and_capacity_pass_and_cost) ... ok
+test_current_spread_must_be_positive_and_above_the_line (test_funding_screening.RulesTest.test_current_spread_must_be_positive_and_above_the_line) ... ok
+test_daily_sums_need_every_day (test_funding_screening.RulesTest.test_daily_sums_need_every_day) ... ok
+test_failures_and_unknowns (test_funding_screening.RulesTest.test_failures_and_unknowns) ... ok
+test_interval_cut_and_current_spike_veto (test_funding_screening.RulesTest.test_interval_cut_and_current_spike_veto) ... ok
+test_interval_cut_keeps_the_older_days_complete (test_funding_screening.RulesTest.test_interval_cut_keeps_the_older_days_complete) ... ok
+test_legs_priced_as_two_assets_fail (test_funding_screening.RulesTest.test_legs_priced_as_two_assets_fail) ... ok
+test_one_day_squeeze_fails (test_funding_screening.RulesTest.test_one_day_squeeze_fails) ... ok
+test_steady_spread_passes (test_funding_screening.RulesTest.test_steady_spread_passes) ... ok
+test_truncated_book_short_of_size_is_unknown_not_fail (test_funding_screening.RulesTest.test_truncated_book_short_of_size_is_unknown_not_fail) ... ok
+test_underlying (test_funding_screening.RulesTest.test_underlying) ... ok
+test_bad_arguments_return_1 (test_funding_screening.RunTest.test_bad_arguments_return_1) ... ok
+test_complete_evidence_exits_0_and_runs_do_not_collide (test_funding_screening.RunTest.test_complete_evidence_exits_0_and_runs_do_not_collide) ... ok
+test_evidence_issues (test_funding_screening.RunTest.test_evidence_issues) ... ok
+test_incomplete_coverage_or_assumed_fees_exit_2 (test_funding_screening.RunTest.test_incomplete_coverage_or_assumed_fees_exit_2) ... ok
+test_failed_history_is_unknown_with_its_reason (test_funding_screening.ScreenTest.test_failed_history_is_unknown_with_its_reason) ... ok
+test_http_encodes_non_ascii_tickers (test_funding_screening.ScreenTest.test_http_encodes_non_ascii_tickers) ... ok
+test_programming_errors_are_not_swallowed (test_funding_screening.ScreenTest.test_programming_errors_are_not_swallowed) ... ok
+test_reversed_pair_fails_its_own_snapshot_line (test_funding_screening.ScreenTest.test_reversed_pair_fails_its_own_snapshot_line) ... ok
+test_screen_end_to_end (test_funding_screening.ScreenTest.test_screen_end_to_end) ... ok
+test_taker_rate_prefers_symbol_override (test_funding_screening.ScreenTest.test_taker_rate_prefers_symbol_override) ... ok
+test_stage_is_the_leading_run_of_passes (test_funding_screening.StageTest.test_stage_is_the_leading_run_of_passes) ... ok
+test_book_readers_and_level_caps (test_funding_screening.VenueParsersTest.test_book_readers_and_level_caps) ... ok
+test_bulk_read_is_cached_per_client (test_funding_screening.VenueParsersTest.test_bulk_read_is_cached_per_client) ... ok
+test_history_readers (test_funding_screening.VenueParsersTest.test_history_readers) ... ok
+test_native_names (test_funding_screening.VenueParsersTest.test_native_names) ... ok
+test_aggregate_consistency_detects_corrupt_response (test_opportunity_screening.ScreeningTest.test_aggregate_consistency_detects_corrupt_response) ... ok
+test_assumed_fee_reference_does_not_depend_on_warning_wording (test_opportunity_screening.ScreeningTest.test_assumed_fee_reference_does_not_depend_on_warning_wording) ... ok
+test_assumed_fees_are_reference_only_unknown (test_opportunity_screening.ScreeningTest.test_assumed_fees_are_reference_only_unknown) ... ok
+test_book_failure_diagnostics_are_saved_rendered_and_sanitized (test_opportunity_screening.ScreeningTest.test_book_failure_diagnostics_are_saved_rendered_and_sanitized) ... ok
+test_category_freshness_rejects_old_future_stale_or_missing_evidence (test_opportunity_screening.ScreeningTest.test_category_freshness_rejects_old_future_stale_or_missing_evidence) ... ok
+test_comparison_skew_uses_market_time_not_static_cache_age (test_opportunity_screening.ScreeningTest.test_comparison_skew_uses_market_time_not_static_cache_age) ... ok
+test_credentials_embedded_in_whitelisted_domain_labels_are_redacted (test_opportunity_screening.ScreeningTest.test_credentials_embedded_in_whitelisted_domain_labels_are_redacted) ... ok
+test_current_api_separate_boros_legs_preserve_values_and_roll_matching (test_opportunity_screening.ScreeningTest.test_current_api_separate_boros_legs_preserve_values_and_roll_matching) ... ok
+test_current_api_unsupported_or_incomplete_boros_plans_remain_unknown (test_opportunity_screening.ScreeningTest.test_current_api_unsupported_or_incomplete_boros_plans_remain_unknown) ... ok
+test_four_leg_candidate_beside_a_spread_is_screened_on_its_own (test_opportunity_screening.ScreeningTest.test_four_leg_candidate_beside_a_spread_is_screened_on_its_own) ... ok
+test_friction_denominator_and_numeric_range_are_handled_explicitly (test_opportunity_screening.ScreeningTest.test_friction_denominator_and_numeric_range_are_handled_explicitly) ... ok
+test_friction_uses_gross_spread_and_strict_configurable_limit (test_opportunity_screening.ScreeningTest.test_friction_uses_gross_spread_and_strict_configurable_limit) ... ok
+test_gate_parameters_are_validated_before_requests (test_opportunity_screening.ScreeningTest.test_gate_parameters_are_validated_before_requests) ... Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+ok
+test_gate_values_and_explanations_are_present_in_both_formats (test_opportunity_screening.ScreeningTest.test_gate_values_and_explanations_are_present_in_both_formats) ... ok
+test_invalid_contract_label_does_not_crash_diagnostic_association (test_opportunity_screening.ScreeningTest.test_invalid_contract_label_does_not_crash_diagnostic_association) ... ok
+test_invalid_market_warning_scope_cannot_exempt_a_candidate (test_opportunity_screening.ScreeningTest.test_invalid_market_warning_scope_cannot_exempt_a_candidate) ... ok
+test_invalid_values_never_rank (test_opportunity_screening.ScreeningTest.test_invalid_values_never_rank) ... ok
+test_legacy_aggregate_timestamp_cannot_prove_category_freshness (test_opportunity_screening.ScreeningTest.test_legacy_aggregate_timestamp_cannot_prove_category_freshness) ... ok
+test_legacy_warning_without_machine_evidence_is_unknown (test_opportunity_screening.ScreeningTest.test_legacy_warning_without_machine_evidence_is_unknown) ... ok
+test_malformed_nested_evidence_produces_degraded_report (test_opportunity_screening.ScreeningTest.test_malformed_nested_evidence_produces_degraded_report) ... ok
+test_market_and_static_freshness_use_independent_age_limits (test_opportunity_screening.ScreeningTest.test_market_and_static_freshness_use_independent_age_limits) ... ok
+test_minimum_net_profit_is_notional_ratio_with_strict_boundary (test_opportunity_screening.ScreeningTest.test_minimum_net_profit_is_notional_ratio_with_strict_boundary) ... ok
+test_minimum_profit_scales_with_per_leg_notional (test_opportunity_screening.ScreeningTest.test_minimum_profit_scales_with_per_leg_notional) ... ok
+test_missing_contract_book_cost_or_capital_is_unknown (test_opportunity_screening.ScreeningTest.test_missing_contract_book_cost_or_capital_is_unknown) ... ok
+test_missing_maker_and_costs_have_identified_specific_reasons (test_opportunity_screening.ScreeningTest.test_missing_maker_and_costs_have_identified_specific_reasons) ... ok
+test_new_gates_preserve_roll_comparison_and_unknown_priority (test_opportunity_screening.ScreeningTest.test_new_gates_preserve_roll_comparison_and_unknown_priority) ... ok
+test_nonpositive_profit_is_normal_filter_and_empty_scan_is_valid (test_opportunity_screening.ScreeningTest.test_nonpositive_profit_is_normal_filter_and_empty_scan_is_valid) ... ok
+test_numeric_overflow_saves_unknown_report_instead_of_crashing (test_opportunity_screening.ScreeningTest.test_numeric_overflow_saves_unknown_report_instead_of_crashing) ... ok
+test_old_future_missing_and_stale_observations_are_unknown (test_opportunity_screening.ScreeningTest.test_old_future_missing_and_stale_observations_are_unknown) ... ok
+test_parameters_remote_url_and_write_failure_return_one (test_opportunity_screening.ScreeningTest.test_parameters_remote_url_and_write_failure_return_one) ... Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Unable to start: invalid parameters or token file.
+Report write failed; dual-format output is incomplete.
+ok
+test_partial_fetch_and_authentication_exit_semantics (test_opportunity_screening.ScreeningTest.test_partial_fetch_and_authentication_exit_semantics) ... Authentication failed.
+ok
+test_partial_valid_candidates_and_nonpositive_term (test_opportunity_screening.ScreeningTest.test_partial_valid_candidates_and_nonpositive_term) ... ok
+test_report_distinguishes_aggregate_and_market_observation (test_opportunity_screening.ScreeningTest.test_report_distinguishes_aggregate_and_market_observation) ... ok
+test_roll_maker_leg_mismatch_preserves_close_and_marks_comparison_unknown (test_opportunity_screening.ScreeningTest.test_roll_maker_leg_mismatch_preserves_close_and_marks_comparison_unknown) ... ok
+test_roll_missing_skew_scope_or_settings_preserves_valid_close (test_opportunity_screening.ScreeningTest.test_roll_missing_skew_scope_or_settings_preserves_valid_close) ... ok
+test_same_second_runs_are_unique_and_units_consistent (test_opportunity_screening.ScreeningTest.test_same_second_runs_are_unique_and_units_consistent) ... ok
+test_shared_diagnostics_contract_survives_report_sanitization (test_opportunity_screening.ScreeningTest.test_shared_diagnostics_contract_survives_report_sanitization) ... ok
+test_single_scan_copies_api_values_and_writes_private_dual_reports (test_opportunity_screening.ScreeningTest.test_single_scan_copies_api_values_and_writes_private_dual_reports) ... ok
+test_top_limit_and_stable_sort (test_opportunity_screening.ScreeningTest.test_top_limit_and_stable_sort) ... ok
+test_transport_disables_proxy_and_redirects_and_uses_get (test_opportunity_screening.ScreeningTest.test_transport_disables_proxy_and_redirects_and_uses_get) ... /usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 401: 'synthetic-token'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+/usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 302: 'redirect refused'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+test_unknown_roll_outside_top_is_saved_and_explains_overall_status (test_opportunity_screening.ScreeningTest.test_unknown_roll_outside_top_is_saved_and_explains_overall_status) ... ok
+test_unrelated_unsupported_market_warning_does_not_exclude_valid_pair (test_opportunity_screening.ScreeningTest.test_unrelated_unsupported_market_warning_does_not_exclude_valid_pair) ... ok
+test_warning_for_selected_market_and_groupwide_warning_remain_unknown (test_opportunity_screening.ScreeningTest.test_warning_for_selected_market_and_groupwide_warning_remain_unknown) ... ok
+test_wrong_type_notional_scope_never_matches (test_opportunity_screening.ScreeningTest.test_wrong_type_notional_scope_never_matches) ... ok
+
+----------------------------------------------------------------------
+Ran 73 tests in 0.333s
+
+OK
+UNKNOWN: 1 candidates; reports: /tmp/tmps4k5pme4/20261007T200000-ae83d2153cad
+VALID: 1 candidates; reports: /tmp/tmpag5978wk/20261007T200000-959cfb2a7226
+VALID: 1 candidates; reports: /tmp/tmpag5978wk/20261007T200000-5fa4fef81469
+UNKNOWN: 1 candidates; reports: /tmp/tmpwx7_qmtx/20261007T200000-e33a3b5babc6

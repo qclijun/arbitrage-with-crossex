@@ -46,3 +46,7 @@ install-info.json
 # Python risk monitor runtime caches.
 __pycache__/
 *.py[cod]
+
+# Ticket 21 manual browser reruns stay local; curated acceptance captures are force-added.
+.scratch/perp-funding-opportunities/evidence/21-browser-runs/
+.scratch/perp-funding-opportunities/evidence/21-browser-evidence.json

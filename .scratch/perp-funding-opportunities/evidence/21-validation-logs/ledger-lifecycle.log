@@ -1,0 +1,12 @@
+yarn run v1.22.22
+$ /home/jerel/workspace/GitHub/arbitrage-with-crossex-perp-funding-opportunities-docs/node_modules/.bin/vitest run --project server tests/server/funding-ledger-lifecycle.test.ts
+
+ RUN  v4.1.9 /home/jerel/workspace/GitHub/arbitrage-with-crossex-perp-funding-opportunities-docs
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  02:54:51
+   Duration  4.66s (transform 2.49s, setup 147ms, import 3.71s, tests 582ms, environment 0ms)
+
+Done in 5.38s.

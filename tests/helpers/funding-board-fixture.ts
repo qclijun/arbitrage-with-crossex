@@ -11,7 +11,7 @@ import { createFundingMarket, type FundingContractListing, type FundingMarket } 
 import { Store } from '../../src/engine/db';
 import { FakeVenue, VirtualClock } from '../unit/engine-sim';
 import { HOST, makeTestApp } from '../server/helpers/gate-nock';
-import { fakeReads, readState } from './funding-intent-fixture';
+import { fakeReads, readState, type ReadState } from './funding-intent-fixture';
 import { CUTOFF, NOW, flat, historyLeg, live, publish } from './funding-ranking-fixture';
 
 export { CUTOFF, NOW };
@@ -51,23 +51,26 @@ export interface BoardWorld {
   /** Every source read the market made; requests must add none. */
   sourceCalls: string[];
   quotes: Record<string, VenueFundingRate[]>;
+  state: ReadState;
+  reads: ReturnType<typeof fakeReads>;
   get(query?: string): Promise<{ status: number; body: any }>;
   post(url: string, payload: object): Promise<{ status: number; body: any }>;
 }
 
-export async function boardWorld(opts: { history?: FundingHistoryCache; listings?: FundingContractListing[] | null } = {}): Promise<BoardWorld> {
+export async function boardWorld(opts: { history?: FundingHistoryCache; listings?: FundingContractListing[] | null; store?: Store } = {}): Promise<BoardWorld> {
   const clock = new VirtualClock();
   clock.t = NOW;
-  const store = new Store(':memory:', { programVersion: '9.9.9' });
+  const store = opts.store ?? new Store(':memory:', { programVersion: '9.9.9' });
   const venue = new FakeVenue();
   const history = opts.history ?? publish(HISTORY);
+  const listings = opts.listings === undefined ? LISTINGS : opts.listings;
   const sourceCalls: string[] = [];
   const quotes: Record<string, VenueFundingRate[]> = { BINANCE: [], OKX: [], BYBIT: [] };
+  for (const listing of listings ?? []) quotes[listing.venue] ??= [];
   const feeds = Object.fromEntries(Object.keys(quotes).map((v) => [v, async () => {
     sourceCalls.push(v);
     return quotes[v];
   }]));
-  const listings = opts.listings === undefined ? LISTINGS : opts.listings;
   const market = createFundingMarket({
     feeds,
     now: clock.now,
@@ -77,9 +80,10 @@ export async function boardWorld(opts: { history?: FundingHistoryCache; listings
     } } : {}),
   });
   await market.runOnce();
-  const reads = readState();
+  const state = readState();
   // Books the fake read port does not know answer as the real port's failure shape.
-  for (const l of listings ?? []) if (l.symbol && !reads.books[l.symbol]) reads.books[l.symbol] = { book: null, failure: { category: 'network' } };
+  for (const l of listings ?? []) if (l.symbol && !state.books[l.symbol]) state.books[l.symbol] = { book: null, failure: { category: 'network' } };
+  const reads = fakeReads(state, clock);
   // Wired as production wires it: ticket 12's admission reads the same cache and mapping.
   const legOf = (symbol: string) => {
     const hit = (listings ?? []).find((l) => l.symbol === symbol);
@@ -88,10 +92,10 @@ export async function boardWorld(opts: { history?: FundingHistoryCache; listings
   const app = makeTestApp({
     engine: { store, venue, clock },
     opportunities: { history, market },
-    funding: { history, legOf, reads: fakeReads(reads, clock) },
+    funding: { history, legOf, reads },
   });
   return {
-    app, store, venue, clock, history, market, sourceCalls, quotes,
+    app, store, venue, clock, history, market, sourceCalls, quotes, state, reads,
     get: async (query = '') => {
       const res = await app.inject({ method: 'GET', url: `/api/funding/opportunities${query}`, headers: HOST });
       return { status: res.statusCode, body: res.json() };

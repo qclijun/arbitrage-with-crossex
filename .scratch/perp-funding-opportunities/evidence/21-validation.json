@@ -1,0 +1,120 @@
+{
+  "capturedAt": "2026-10-30T00:12:02.087309+00:00",
+  "baseCommit": "9728a455b88cb8e69d7b60cc9e234bb4d997a205",
+  "productionCodeDiff": [],
+  "node": "v24.21.0",
+  "yarn": "1.22.22",
+  "chrome": "Google Chrome 156.0.8078.73",
+  "checks": [
+    {
+      "command": "yarn verify",
+      "exitCode": 0,
+      "log": "21-validation-logs/verify.log",
+      "sha256": "a05757308d0d3a294562924b7c71ac73618c3d17ca30def7818cc33b62a7129b"
+    },
+    {
+      "command": "yarn --cwd web build",
+      "exitCode": 0,
+      "log": "21-validation-logs/web-build.log",
+      "sha256": "4e5ba6a619e1823a13a1edf0ea8a4685cfc377a1b0e9c3f166eff4167bcd5176"
+    },
+    {
+      "command": "python3 -m unittest discover -s tests/monitor -v",
+      "exitCode": 0,
+      "log": "21-validation-logs/monitor.log",
+      "sha256": "e42ae105217d2a4a9bf487055802ce8966cece15d26ecea4770e3b9b6664667d"
+    },
+    {
+      "command": "python3 -m unittest discover -s tests/screening -v",
+      "exitCode": 0,
+      "log": "21-validation-logs/screening.log",
+      "sha256": "c8955916ccbb008e33e3ce8dcf3ad5e555b376de3701be21ddca06d94da84b14"
+    },
+    {
+      "command": "yarn typecheck",
+      "exitCode": 0,
+      "log": "21-validation-logs/typecheck.log",
+      "sha256": "c5fadefb3efc4c717996d969fafef81684a858a9fad2bc9f2f51b22b1a796932"
+    },
+    {
+      "command": "yarn tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --strict --esModuleInterop --skipLibCheck src/core/proxy-from-env.d.ts .scratch/perp-funding-opportunities/evidence/21-browser-server.ts",
+      "exitCode": 0,
+      "log": "21-validation-logs/browser-typecheck.log",
+      "sha256": "5cb4558c466f85b26924b80ac8b328e8bc72a0989c7e02dacd2c8aac8119541c"
+    },
+    {
+      "command": "yarn vitest run --project server tests/server/funding-integrated-readiness.test.ts",
+      "exitCode": 0,
+      "log": "21-validation-logs/integration.log",
+      "sha256": "d26a31007b44e1c9988db596dcdfa0a9ad98a353342e265d2d2d57db4b354b97"
+    },
+    {
+      "command": "yarn vitest run --project server tests/server/funding-ledger-lifecycle.test.ts",
+      "exitCode": 0,
+      "log": "21-validation-logs/ledger-lifecycle.log",
+      "sha256": "d71de80516f4473d983d4fb30d10b90e567356b873eb169c28138fa39e96efe7"
+    },
+    {
+      "command": "node .scratch/perp-funding-opportunities/evidence/21-browser-check.mjs",
+      "exitCode": 0,
+      "log": "21-validation-logs/browser-check.log",
+      "sha256": "76fa05fb75cc934062e88ceaf5da2b5193c797debcca9bdefa39b022b4327c3a"
+    }
+  ],
+  "tests": {
+    "tests/helpers/funding-board-fixture.ts": "ba71c6e3e03b65f21d32d73e2612a29d79cb0207d72b2c46c7d7e5f8cae3a050",
+    "tests/helpers/funding-integrated-fixture.ts": "467bc38c2ced1db91fb9d21d8e2e893e030b0be1b45bbee62c2d8ad4523f9d64",
+    "tests/server/funding-integrated-readiness.test.ts": "2c2d09547ff03ff525fbddf35ed25e524ff47e6438094c8f395c8aa8d925e0fb",
+    "tests/server/funding-ledger-lifecycle.test.ts": "289dc72c7563f89c891779bbc8dd42c835c80c831fb57a2927945bc702603e31"
+  },
+  "browser": {
+    "run": ".scratch/perp-funding-opportunities/evidence/21-browser-runs/2026-10-30T00-11-19-791Z/",
+    "result": "passed",
+    "steps": 14,
+    "deals": 1,
+    "admissionOpenAtEnd": false,
+    "blockedExternalOrigins": [
+      "https://storage.googleapis.com"
+    ],
+    "authChecks": [
+      {
+        "path": "/api/credentials",
+        "token": "missing",
+        "status": 401
+      },
+      {
+        "path": "/api/credentials",
+        "token": "incorrect",
+        "status": 401
+      },
+      {
+        "path": "/api/account",
+        "token": "missing",
+        "status": 401
+      },
+      {
+        "path": "/api/account",
+        "token": "incorrect",
+        "status": 401
+      },
+      {
+        "path": "/api/funding/opportunities",
+        "token": "missing",
+        "status": 401
+      },
+      {
+        "path": "/api/funding/opportunities",
+        "token": "incorrect",
+        "status": 401
+      }
+    ]
+  },
+  "fixtureFailureRecords": 4,
+  "liveTestsRun": false,
+  "productionServicesChanged": false,
+  "harnessSources": {
+    ".scratch/perp-funding-opportunities/evidence/21-browser-server.ts": "ed137bd009f8e9f25a643eb7ffe3e3bc752629966074f7c6d38854926a4534f8",
+    ".scratch/perp-funding-opportunities/evidence/21-browser-check.mjs": "4e5b5cc30b24efcc204fdf36eec42083f480f60cd827380c57c6cc8ed17895ba",
+    ".scratch/perp-funding-opportunities/evidence/21-browser-cdp.mjs": "55869b38643a9565f07b7cf76b11d32a6544cdb152db2243b3bd6864aaeb7329"
+  }
+}
