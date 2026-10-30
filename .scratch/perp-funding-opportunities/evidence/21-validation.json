@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-10-30T00:12:02.087309+00:00",
+  "capturedAt": "2026-10-30T00:15:43.127510+00:00",
   "baseCommit": "9728a455b88cb8e69d7b60cc9e234bb4d997a205",
   "productionCodeDiff": [],
   "node": "v24.21.0",
@@ -40,7 +40,7 @@
       "command": "yarn tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --strict --esModuleInterop --skipLibCheck src/core/proxy-from-env.d.ts .scratch/perp-funding-opportunities/evidence/21-browser-server.ts",
       "exitCode": 0,
       "log": "21-validation-logs/browser-typecheck.log",
-      "sha256": "5cb4558c466f85b26924b80ac8b328e8bc72a0989c7e02dacd2c8aac8119541c"
+      "sha256": "c33bffcba913c28119a7fe26332ff222b222afe3485308492986355f37416b82"
     },
     {
       "command": "yarn vitest run --project server tests/server/funding-integrated-readiness.test.ts",
@@ -58,7 +58,7 @@
       "command": "node .scratch/perp-funding-opportunities/evidence/21-browser-check.mjs",
       "exitCode": 0,
       "log": "21-validation-logs/browser-check.log",
-      "sha256": "76fa05fb75cc934062e88ceaf5da2b5193c797debcca9bdefa39b022b4327c3a"
+      "sha256": "e7cd735b79920836c73499957395ae4834ea7c52f2007ad1b436e63df2957519"
     }
   ],
   "tests": {
@@ -68,7 +68,7 @@
     "tests/server/funding-ledger-lifecycle.test.ts": "289dc72c7563f89c891779bbc8dd42c835c80c831fb57a2927945bc702603e31"
   },
   "browser": {
-    "run": ".scratch/perp-funding-opportunities/evidence/21-browser-runs/2026-10-30T00-11-19-791Z/",
+    "run": ".scratch/perp-funding-opportunities/evidence/21-browser-runs/2026-10-30T00-14-55-853Z/",
     "result": "passed",
     "steps": 14,
     "deals": 1,
@@ -107,13 +107,14 @@
         "token": "incorrect",
         "status": 401
       }
-    ]
+    ],
+    "evidenceSha256": "d2fc53b7fc78d90b6c566166ab337185172759b1c781d0f3d63d58655353ee7c"
   },
   "fixtureFailureRecords": 4,
   "liveTestsRun": false,
   "productionServicesChanged": false,
   "harnessSources": {
-    ".scratch/perp-funding-opportunities/evidence/21-browser-server.ts": "ed137bd009f8e9f25a643eb7ffe3e3bc752629966074f7c6d38854926a4534f8",
+    ".scratch/perp-funding-opportunities/evidence/21-browser-server.ts": "fb597bdee5fadeab57703c909e077e46b613ab8b5fde2c0b80ddbeccfdca5db0",
     ".scratch/perp-funding-opportunities/evidence/21-browser-check.mjs": "4e5b5cc30b24efcc204fdf36eec42083f480f60cd827380c57c6cc8ed17895ba",
     ".scratch/perp-funding-opportunities/evidence/21-browser-cdp.mjs": "55869b38643a9565f07b7cf76b11d32a6544cdb152db2243b3bd6864aaeb7329"
   }

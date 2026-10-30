@@ -7,7 +7,7 @@ import { integratedFundingWorld } from '../../../tests/helpers/funding-integrate
 import { HOST, TEST_TOKEN } from '../../../tests/server/helpers/gate-nock';
 import { LONG_SYMBOL, SHORT_SYMBOL } from '../../../tests/helpers/funding-intent-fixture';
 import { tickPair } from '../../../src/engine/loop';
-import { fxStr } from '../../../src/engine/fx';
+import { fx, fxStr } from '../../../src/engine/fx';
 import { NOW } from '../../../tests/helpers/funding-ranking-fixture';
 
 async function main() {
@@ -39,7 +39,7 @@ async function main() {
   // Only this fake account is visible through slice/position HTTP reads.
   nock('https://api.gateio.ws').persist().get('/api/v4/crossex/positions').query(true).reply(() => [200,
     w.state.positions.map((p) => ({ symbol: p.symbol, position_qty: p.positionQty, position_side: 'SINGLE', mark_price: '2500',
-      entry_price: '2500', position_value: String(Number(p.positionQty) * 2500), leverage: '5', max_leverage: '50', upnl: '0', upnl_rate: '0',
+      entry_price: '2500', position_value: fxStr(fx(p.positionQty) * 2500n), leverage: '5', max_leverage: '50', upnl: '0', upnl_rate: '0',
       funding_fee: '0', fee: '0', initial_margin: '25', maintenance_margin: '5' }))]);
   nock('https://api.gateio.ws').persist().get('/api/v4/crossex/rule/symbols').query(true).reply(() => [200,
     w.state.rules.map((r) => ({ symbol: r.symbol, state: 'live', business_type: 'FUTURE', lot_size: r.lotSize,

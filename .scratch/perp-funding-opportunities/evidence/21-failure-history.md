@@ -21,8 +21,12 @@
 - 首次Positions只拍到无钱包资产空态，未据此证明数量界面。补实际打开Strategy ownership，检查两腿各0.05、reconciled和费用/收益UNKNOWN；Risk保留外部证据UNKNOWN，三腿/四腿各实际打开对应向导。
 - 人工QA发现滚动中全页截图使sticky header落在中间且tooltip覆盖控件；驱动截图前回顶部、移开鼠标并在独立profile关闭提示。没有改页面布局或生产样式。
 
-较早原始驱动结果在`21-browser-runs/initial-discovery`及各失败时间目录，另有`/tmp/issue21-browser-attempt{1,2}*`诊断资料。所有时间目录保留result与截图，不以早期失败图充当完成证明。最后通过的14步目录为`21-browser-runs/2026-10-30T00-11-19-791Z/`，详见[浏览器验收](21-browser-acceptance.md)。
+较早原始驱动结果在`21-browser-runs/initial-discovery`及各失败时间目录，另有`/tmp/issue21-browser-attempt{1,2}*`诊断资料。所有时间目录保留result与截图，不以早期失败图充当完成证明。最后通过的14步目录为`21-browser-runs/2026-10-30T00-14-55-853Z/`，详见[浏览器验收](21-browser-acceptance.md)。
 
 ## 接续认证补强
 
 新增负例先在未修补夹具复现：无token的`/api/credentials`返回200而非401（退出1，日志`21-validation-logs/browser-auth-red.log`，失败元数据已并入归档）。随后仅在隔离bridge的/api分支统一校验TEST_TOKEN；缺失/错误token访问credentials、account、funding/opportunities共6项全部401。完整14步浏览器重新通过，strict typecheck通过；生产与已验证测试源码hash不变，故保留原完整gate，不重复挑绿。新运行关键截图已人工复核。
+
+## Standards审查修复
+
+审查发现合成position_value使用Number浮点，违反项目decimal约定；本次0.05×2500恰为125，未发现已有页面结果错误。改为既有fx/fxStr与bigint精确计算，未改生产源码。修后strict类型检查、6项认证负例和完整14步Chrome全部通过，最终1个deal、2次create、准入关闭。修前绿色捕获及日志保留在历史提交，未删除本机中间档案；最终目录以上文与21-validation.json为准，已复核新Positions/部分成交截图。

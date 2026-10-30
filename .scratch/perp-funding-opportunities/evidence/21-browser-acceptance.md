@@ -1,6 +1,6 @@
 # 21正式页面浏览器验收
 
-结论：隔离技术验收通过。最终运行[原始记录](21-browser-runs/2026-10-30T00-11-19-791Z/evidence.json)共14步、1个deal、2次由用户分别确认的接受请求（第一次409变更拒绝，第二次202接受后截断响应），不是2个执行。前端fetch记录、服务端请求与intent/deal身份可对照；刷新后只有查询，没有补发接受。
+结论：隔离技术验收通过。最终运行[原始记录](21-browser-runs/2026-10-30T00-14-55-853Z/evidence.json)共14步、1个deal、2次由用户分别确认的接受请求（第一次409变更拒绝，第二次202接受后截断响应），不是2个执行。前端fetch记录、服务端请求与intent/deal身份可对照；刷新后只有查询，没有补发接受。
 
 环境：Linux、Chrome156.0.8078.73全新profile，Node24.21.0，正式`web/dist`。通过Node localhost桥向真实`buildApp`调用`app.inject()`，没有让Fastify测试app监听。bridge只允许本次origin，Host/Origin规范到测试app的localhost:6688；这只是注入参数，从未连接6688。API token为既有TEST_TOKEN；所有/api含合成bootstrap均统一认证，前置6项缺失/错误token检查返回401；账户、合约、历史、盘口、费用、Boros卡片及交易均为合成夹具。页面外站请求全部拦截，Google静态图标回退为文字；Node nock与fetch封锁外连，未使用真实账户或RPC。
 
@@ -8,7 +8,7 @@
 
 ## 实际交互及截图
 
-下列文件位于`21-browser-runs/2026-10-30T00-11-19-791Z/`，已人工查看关键截图；每步DOM文字、页面时钟及fetch记录见同目录evidence.json。
+下列文件位于`21-browser-runs/2026-10-30T00-14-55-853Z/`，已人工查看关键截图；每步DOM文字、页面时钟及fetch记录见同目录evidence.json。
 
 | 步 | 已验证行为 | 截图文件 |
 |---|---|---|
