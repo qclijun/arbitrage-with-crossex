@@ -340,8 +340,31 @@ export function accountRiskMeasurements(scope: RiskScope, input: RiskInputs, now
     matchComplete ? metricNumber18([...exactGaps.entries()].filter(([key]) => key.startsWith(`ETH:${venue}:`))
       .reduce((max, [, gap]) => gap === null ? max : abs18(gap) > max ? abs18(gap) : max, 0n)) : null,
     seenAt, matchComplete, 'Incomplete funding quantities', gaps);
-  const maturityMatch = boros.every(b => b.maturity! > now);
-  put('hedge.maturity_match', borosComplete ? maturityMatch : null, asset?.time ?? null, borosComplete, 'Incomplete live funding maturities');
+  const expired = boros.filter(b => b.maturity! <= now);
+  const expiredGroups = new Map<string, bigint>();
+  let expiredUsd = 0n;
+  let valuationComplete = true;
+  let ordinary = true;
+  for (const leg of expired) {
+    const size = exact18(leg.sizeBase);
+    const usd = exact18(leg.notionalUsdExact);
+    if (usd === null || usd < 0n) valuationComplete = false;
+    else expiredUsd += usd;
+    if (size === null || leg.spreadVenues?.length) { ordinary = false; continue; }
+    const key = `${leg.base}:${leg.maturity}`;
+    expiredGroups.set(key, (expiredGroups.get(key) ?? 0n) + (leg.side === 'LONG' ? size : -size));
+  }
+  const balanced = ordinary && [...expiredGroups.values()].every(size => size === 0n);
+  const maturityMatch = !borosComplete ? null : !balanced || expiredUsd > BigInt(MIN_ORDER_VALUE_USD) * SCALE18
+    ? false : !valuationComplete ? null : true;
+  const expiredDetails = expired.map(leg => {
+    const date = new Date(leg.maturity! * 1000);
+    const maturity = Number.isFinite(date.getTime()) ? date.toISOString() : String(leg.maturity);
+    return { label: `${leg.base} ${leg.venue} #${leg.marketId} ${leg.side}`, value: leg.sizeBase ?? null,
+      unit: leg.base ?? '', reason: `到期 ${maturity}；名义价值 ${leg.notionalUsdExact ?? 'UNKNOWN'} USD` };
+  });
+  put('hedge.maturity_match', maturityMatch, asset?.time ?? null, borosComplete && maturityMatch !== null,
+    'Incomplete funding maturities or expired position USD valuations', expiredDetails);
   // Dust (at or below the venue's minimum order value) can only settle, so it
   // must not set the rollover clock: a $2 remainder would otherwise keep a fully
   // rolled position "9 days from maturity" and page the operator forever.

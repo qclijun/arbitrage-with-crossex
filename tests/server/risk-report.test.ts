@@ -12,6 +12,7 @@ import { evaluateRisk, visibleRiskChecks, type RiskScope } from '../../src/core/
 import { riskMeasurements, type RiskInputs } from '../../web/src/lib/riskSources';
 import { borosStub } from '../helpers/boros-stub';
 import { HOST, makeTestApp } from './helpers/gate-nock';
+import { expiredResidualTests } from './helpers/expired-residual-tests';
 
 const now = 1800000000, address = '0x' + '1'.repeat(40), pool = address + '000002ffffff';
 let app: FastifyInstance;
@@ -322,6 +323,7 @@ describe('read-only shared Risk report', () => {
     expect(metric(r, 'hedge.maturity_match').value).toBe(false);
     expect(metric(r, 'hedge.quantity_verified').value).toBe(false);
   });
+  expiredResidualTests(fixture, readReport, metric, now);
   it('uses the same account loss thresholds when history or recovery margin changes', async () => {
     const f = await fixture();
     f.snapshots.positions.positions[0].upnl = '-30';

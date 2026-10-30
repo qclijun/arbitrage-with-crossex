@@ -34,6 +34,7 @@ KEY_METRICS = {
     'boros.available_eth': 'Boros 可用 ETH',
     'boros.rate_mtm_usd': 'Boros 利率估值盈亏',
     'hedge.perp_net_eth': '永续净 ETH 敞口',
+    'hedge.maturity_match': 'Boros到期持仓检查',
     'execution.unhedged_eth': '执行未对冲残留',
     'rollover.days_to_maturity': '距到期天数',
     'agent.gas_balance_usd': 'Gas 余额',
@@ -132,7 +133,10 @@ def markdown(report):
             for detail in metric.get('details') or []:
                 detail_value = detail.get('value')
                 detail_shown = 'UNKNOWN' if detail_value is None else f'{detail_value:+.6g}' if isinstance(detail_value, (int, float)) and not isinstance(detail_value, bool) else str(detail_value)
-                rows.append(f"| ↳ {detail.get('label', '')} | {detail_shown} {detail.get('unit', '')} | {check['status']} |")
+                detail_label = detail.get('label', '')
+                if key == 'hedge.maturity_match' and detail.get('reason'):
+                    detail_label += f"（{detail['reason']}）"
+                rows.append(f"| ↳ {detail_label} | {detail_shown} {detail.get('unit', '')} | {check['status']} |")
     lines.append('\n'.join(rows))
     attention = [c for c in report['checks'] if c['status'] in STATUSES[:3]]
     for check in attention:

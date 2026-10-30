@@ -579,7 +579,15 @@
         false,
         "CRITICAL"
       ]
-    ]
+    ],
+    "account": {
+      "label": "5. Boros到期持仓",
+      "metrics": ["hedge.maturity_match"],
+      "conditions": [
+        ["hedge.maturity_match", "eq", false, "CRITICAL"]
+      ],
+      "action": "核对到期持仓及结算；未配平或较大到期持仓需暂停扩大规模并核对原始成交"
+    }
   },
   {
     "id": "hedge.market_identity_match",

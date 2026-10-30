@@ -52,6 +52,19 @@ class ReadOnlyRiskReportTest(unittest.TestCase):
             code = main(['--config', str(self.config_path)] + (['--json'] if json_output else []))
         return code, out.getvalue(), request
 
+    def test_expired_positions_are_visible_without_an_alert(self):
+        self.report['checks'].append({'id': 'hedge.maturity_match', 'label': 'Boros到期持仓', 'status': 'OK',
+            'reason': '', 'recommendedAction': '核对结算', 'metrics': {'hedge.maturity_match': {
+                'value': True, 'unit': 'bool', 'observedAt': time.time(), 'ttlSeconds': 3600, 'complete': True,
+                'source': 'fixture', 'details': [{'label': 'ETH OKX #198 LONG', 'value': '0.0008313',
+                    'unit': 'ETH', 'reason': '到期 2026-10-30T00:00:00.000Z；名义价值 1.85 USD'}]}}})
+        code, output, _ = self.invoke()
+        self.assertEqual(code, 0)
+        self.assertIn('ETH OKX #198 LONG', output)
+        self.assertIn('2026-10-30T00:00:00.000Z', output)
+        self.assertIn('0.0008313 ETH', output)
+        self.assertIn('1.85 USD', output)
+
     def test_single_fresh_get_preserves_critical_history_and_all_files(self):
         before = {p.name: p.read_bytes() for p in self.folder.iterdir()}
         code, output, request = self.invoke()

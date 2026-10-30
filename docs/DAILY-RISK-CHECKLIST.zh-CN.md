@@ -82,7 +82,7 @@
 | 4 | 4. 实际退出成本：`basis.executable_exit_cost_usd`、`basis.depth_coverage_ratio`、`basis.exit_cost_profit_ratio` | basis.exit_cost_profit_ratio gt 0.25 → WARNING；basis.depth_coverage_ratio lt 1 → WARNING | 不用标记价替代成交价；控制双腿执行间隔 |
 | 5 | 5. 永续数量中性：`hedge.perp_net_eth` | hedge.perp_net_eth abs_gt 0.001 → WARNING；hedge.perp_net_eth abs_gt 0.01 → CRITICAL | 核对订单与成交后处理残量，禁止盲目重复下单 |
 | 5 | 5. 每条资金费腿匹配（当前 account）：`hedge.funding_gap_ratio`、`hedge.funding_gap_usd`、`hedge.quantity_verified` | 每来源偏差严格超过 0.1% → WARNING、超过 1% → CRITICAL；须同时超过 $10 本金及一个有效步长；缺侧/方向错误独立 CRITICAL | 保留尾差明细，按来源协调处理，避免单独补腿 |
-| 5 | 5. 期限匹配：`hedge.maturity_match` | hedge.maturity_match eq False → CRITICAL | 暂停扩大规模，核对原始成交 |
+| 5 | Boros到期持仓：`hedge.maturity_match` | 账户级未配平或总名义价值超过 $10 的到期持仓 → CRITICAL；普通持仓按资产及到期日精确配平、总名义价值不超过 $10 → OK；估值不足以判断 → UNKNOWN；旧策略级仍比较两腿期限 | 核对到期持仓及结算；严重时暂停扩大规模并核对原始成交 |
 | 5 | 5. 策略市场身份（历史基线）：`hedge.market_identity_match` | hedge.market_identity_match eq False → CRITICAL | 核对可信历史成交与策略基线；不得自动接纳当前仓位 |
 | 5 | 5. 执行残留：`execution.unhedged_eth`、`execution.halted_count`、`execution.pending_age_s` | execution.unhedged_eth abs_gt 0.001 → CRITICAL；execution.halted_count gt 0 → CRITICAL；execution.pending_age_s gt 120 → WARNING | 查真实订单状态，不把超时当作未成交 |
 | 5 | 5. 非预期仓位变化：`positions.unexpected_change_eth` | positions.unexpected_change_eth gt 0.001 → CRITICAL | 核对是否清算/ADL，重建四腿对冲 |
