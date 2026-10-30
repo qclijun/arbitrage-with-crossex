@@ -1,7 +1,7 @@
 # 永续两腿机会页：从浮动利差观察到人工确认开仓
 
 Label: wayfinder:map
-Status: open
+Status: resolved
 Updated: 2026-10-30 Asia/Taipei
 Latest implementation update: 2026-10-30 Asia/Taipei
 
@@ -68,3 +68,5 @@ Latest implementation update: 2026-10-30 Asia/Taipei
 逐票签收见[完成验收](map-acceptance.md)，后续阶段原文见[实施历史](map-implementation-log.md)。
 
 - 2026-10-30：用户签收23并授权下一票；21为唯一未完成工单，依赖全部resolved，已claimed。正在完成跨票集成、正式A页隔离浏览器、升级回退及完整门禁；开仓保持关闭，不部署或交易。
+
+- 2026-10-30（当前）：[21](issues/21-integrated-readiness-and-enablement.md)技术交付resolved，全23票工作进度已完成。14行矩阵、完整标准门禁、正式Chrome及双轴复审齐备，见[完成交接](evidence/21-completion-handoff.md)；仅可申请人工启用，观察/完整人工两阶段仍待用户分别签收，生产未部署或启用。此前open/claimed描述保留为历史。

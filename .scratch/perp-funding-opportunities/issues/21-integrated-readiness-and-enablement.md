@@ -1,7 +1,7 @@
 # 整体验收、停用回退证据与人工启用准入
 
 Type: task
-Status: claimed
+Status: resolved
 Assignee: Codex
 Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
 
@@ -47,3 +47,11 @@ Blocked by: 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22
 - 2026-10-29：18拆出[22官方历史适配器与合约身份映射](22-history-adapters-and-contract-identity.md)，本票增加对22的依赖。
 
 - 2026-10-30：用户按UNKNOWN签收22实现，完整公开限流校准移至[23](23-public-history-calibration.md)，本票新增23依赖，不能因22 resolved跳过该证据。22最终默认完整verify为5402通过/8跳过，build通过，但这不是本票整体验收。第二轮StrategyWizard零成交用例曾瞬态失败，单跑及默认完整前端诊断未复现，根因未宣布修复；本票最终门禁需继续确认，见[22门禁记录](../evidence/22-full-gate-repair.md)。
+
+## Answer（技术交付resolved，人工签收待定）
+
+2026-10-30：主体2ea469e、修复be46437完成全部14行[验收矩阵](../evidence/21-acceptance-matrix.md)。新增6条组合测试，默认完整verify后端3631通过/8项Darwin限定跳过、前端1788通过，Web build、Python monitor151/screening73通过；[验证记录](../evidence/21-validation.json)绑定命令、退出码与hash。正式构建Chrome14步及6项401认证通过，最终一个deal、2次fake create、准入关闭；账本迁移/新写入回退拒绝均在合成库验证。
+
+[双轴审查](../evidence/21-review.md)：Standards的合成金额浮点P3已修复并复验，旧run跟踪与说明已校准；Spec零缺陷，无剩余项。失败与修复记录保留。生产src/web/src未改，不连接实际6688，不部署、重启、交易或修改账户/代理/凭据。[完成交接](../evidence/21-completion-handoff.md)及[停用回退手册](../evidence/21-rollout-runbook.md)保留来源/规则/单位、限流、共享IP/跨实例重启和Windows等未证边界。
+
+resolved仅表示本票工作进度完成；观察阶段与完整人工阶段均待用户分别签收，实际启用也需另行明确授权。当前仅可申请人工启用，不以技术PASS替代现场能力证据或运行许可。

@@ -46,3 +46,7 @@
 ## 13完成验收
 
 - 2026-10-29：[13](issues/13-exact-prefill-and-confirmation.md)用户签收，追加Answer并resolved。A页精确两腿预览/确认/长按接受（197f1cd＋ee426f0），内存回执；默认verify/build全绿。14不再受13阻塞（其余依赖已resolved），可开始；不启用交易。
+
+## 21技术完成（人工签收待定）
+
+- 2026-10-30：[21](issues/21-integrated-readiness-and-enablement.md)工作进度resolved，主体2ea469e、修复be46437。默认完整verify/build/Python与正式Chrome14步通过，双轴审查闭环，见[矩阵](evidence/21-acceptance-matrix.md)、[完成交接](evidence/21-completion-handoff.md)。此处记录技术交付，不冒称用户签收；两个阶段人工签收及实际启用仍待用户，生产保持未启用。
