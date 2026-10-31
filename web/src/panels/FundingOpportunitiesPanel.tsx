@@ -10,7 +10,6 @@ import { CandidateTable } from './funding/CandidateTable';
 import { dealSummary } from './funding/FundingReceiptView';
 import { FundingSubmissionsProvider, useFundingSubmissions } from './funding/FundingSubmissions';
 import { UNPAIRED } from './funding/labels';
-import { FundingSpreadsPanel } from './FundingSpreadsPanel';
 
 const micro = 'text-[11px] text-ink-400';
 
@@ -77,17 +76,6 @@ function Filters({ board, params, set }: { board: FundingBoard | undefined; para
         Positive spread only
       </label>
     </div>
-  );
-}
-
-/** The old current-rate table, kept for reference; mounted (and fetched) only once opened. */
-function CurrentRates() {
-  const [open, setOpen] = useState(false);
-  return (
-    <details className="mt-6" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="cursor-pointer text-[12px] text-ink-300">Current rates (unranked, for reference only)</summary>
-      {open && <div className="mt-3"><FundingSpreadsPanel /></div>}
-    </details>
   );
 }
 
@@ -213,7 +201,6 @@ function Board() {
           </div>
         </>
       )}
-      <CurrentRates />
     </section>
   );
 }

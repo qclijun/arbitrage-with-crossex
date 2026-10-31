@@ -123,13 +123,12 @@ describe('FundingOpportunitiesPanel', () => {
     expect(screen.getByText(/No candidates/)).toBeInTheDocument();
   });
 
-  it('keeps the current-rate table folded away, and it fetches nothing until opened', async () => {
+  it('has no current-rate table and never asks for one', async () => {
     const { spreads } = serve();
     renderWithClient(<FundingOpportunitiesPanel />);
     await screen.findByRole('table', { name: 'Directed funding pairs' });
+    expect(screen.queryByText(/Current rates/)).not.toBeInTheDocument();
     expect(spreads).toHaveLength(0);
-    fireEvent.click(screen.getByText(/Current rates \(unranked/));
-    await waitFor(() => expect(spreads).toHaveLength(1));
   });
 
   it('never rounds a real non-zero figure to zero, and names a failed first contract read', async () => {
