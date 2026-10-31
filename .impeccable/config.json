@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-31T01:12:43.541Z",
+        "reason": "Agent: Inter is the Boros design-system face (PRODUCT.md brand commitment, DESIGN.md typography), self-hosted for tabular numerals per web/src/styles.css"
+      }
+    ]
+  }
+}
