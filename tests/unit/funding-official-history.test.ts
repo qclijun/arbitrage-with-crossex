@@ -10,16 +10,16 @@ const event = (fundingTime: number, rateType = 'Regular') => ({ symbol: 'BTCUSDT
 beforeEach(() => nock.disableNetConnect());
 afterEach(() => { nock.cleanAll(); nock.enableNetConnect(); });
 
-it('pages Binance with an overlapping boundary so a special settlement is not lost', async () => {
+it('pages Binance with an overlapping boundary and through the cutoff settlement\'s jitter', async () => {
   const source = createOfficialHistorySources().find((s) => s.venue === 'BINANCE')!;
   const end = start + 2_000;
   const first = [...Array.from({ length: 999 }, (_, i) => event(start + i + 1)), event(start + 1_000)];
   nock('https://fapi.binance.com').get('/fapi/v1/fundingRate')
-    .query({ symbol: 'BTCUSDT', startTime: start + 1, endTime: end, limit: 1000 }).reply(200, first);
+    .query({ symbol: 'BTCUSDT', startTime: start + 1, endTime: end + 999, limit: 1000 }).reply(200, first);
   const page = await source.page('BTCUSDT', { start, end }, null, call);
   expect(page).toMatchObject({ done: false, cursor: String(start + 1_000), firstAt: start + 1, lastAt: start + 1_000 });
   nock('https://fapi.binance.com').get('/fapi/v1/fundingRate')
-    .query({ symbol: 'BTCUSDT', startTime: start + 1_000, endTime: end, limit: 1000 })
+    .query({ symbol: 'BTCUSDT', startTime: start + 1_000, endTime: end + 999, limit: 1000 })
     .reply(200, [event(start + 1_000), event(start + 1_000, 'Special')]);
   const tail = await source.page('BTCUSDT', { start, end }, page.cursor, call);
   expect(tail.rows.map((r) => r.rateType)).toEqual(['Regular', 'Special']);
@@ -101,4 +101,23 @@ it('maps an HL delayed cutoff record only with independent timestamp evidence', 
     settledAt: start + hour, rawTime: raw.time, timeMappingEvidence: proof.evidence, rate: '-0.000001',
   });
   expect(source.timeMapping?.({ ...raw, time: raw.time + 1 })).toBeUndefined();
+});
+
+it('maps Binance fundingTime under one second past the hour to that settlement, never backwards and never on Aster', async () => {
+  const hour = 3_600_000;
+  const at = start + 8 * hour;
+  const [binance, aster] = ['BINANCE', 'ASTER'].map((venue) => createOfficialHistorySources().find((s) => s.venue === venue)!);
+  const settle = (source: typeof binance, fundingTime: number) => normalizeOfficialSettlement(
+    { venue: source!.venue, api: source!.api, contractId: 'BTCUSDT' }, event(fundingTime), 8, 'page', source!.timeMapping?.(event(fundingTime)));
+  for (const raw of [at + 9, at + 999]) {
+    expect(settle(binance, raw)).toMatchObject({ settledAt: at, rawTime: raw,
+      timeMappingEvidence: expect.stringContaining('user-approved 2026-10-31') });
+  }
+  expect(settle(binance, at)).toEqual(expect.not.objectContaining({ rawTime: expect.anything() }));
+  for (const raw of [at + 1_000, at - 1]) {
+    expect(settle(binance, raw)).toMatchObject({ settledAt: raw });
+    expect(settle(binance, raw)).not.toHaveProperty('rawTime');
+  }
+  expect(aster!.timeMapping).toBeUndefined();
+  expect(settle(aster, at + 9)).toMatchObject({ settledAt: at + 9 });
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FundingHistoryCache, legKey } from '../../src/core/funding/history-cache';
 import { createFundingHistoryRefresher } from '../../src/core/funding/history-collector';
+import { createOfficialHistorySources } from '../../src/core/funding/official-history';
 import { BTC, D, H, M, T, currentFor, grid, pair, run, setup, stubSource } from '../helpers/funding-history-stub';
 
 beforeEach(() => {
@@ -74,6 +75,27 @@ describe('funding history cadence double proof', () => {
     expect(termination(cache)).toBe('stopped:budget-exhausted');
     expect(cache.evaluate(binanceOnly(30), Date.now())).toMatchObject({ coverage: 'complete', historyEligible: true });
     expect(cache.evaluate(binanceOnly(90), Date.now())!.short.reasons).toContain('page-incomplete');
+  });
+
+  it('proves official Binance history whose fundingTime jitters under a second, including the settlement at the cutoff', async () => {
+    const cutoff = T - 2 * H;
+    vi.setSystemTime(cutoff + M);
+    for (const late of [0, 1_000]) {
+      const jitter = (t: number) => (t === cutoff - D ? late : 1 + ((t / (8 * H)) % 15));
+      const read = async (_venue: string, url: string) => {
+        const query = new URL(url).searchParams;
+        const [from, to] = [Number(query.get('startTime')), Number(query.get('endTime'))];
+        return grid(8, from - 8 * H, to).map((t) => t + jitter(t)).filter((raw) => raw >= from && raw <= to)
+          .map((fundingTime) => ({ symbol: 'BTCUSDT', fundingTime, fundingRate: '0.0001' }));
+      };
+      const cache = new FundingHistoryCache();
+      const [binance] = createOfficialHistorySources({ read, context: async () => ({ listing: { at: 0, evidence: 'listing' } }) });
+      await run(createFundingHistoryRefresher({ cache, sources: [binance!], legs: async () => [BTC.binance],
+        currentSchedules: currentFor([BTC.binance]) }));
+      const week = cache.evaluate(binanceOnly(7), Date.now())!.short;
+      if (late) expect(week).toMatchObject({ coverage: 'unknown', reasons: expect.arrayContaining(['schedule-unverified']) });
+      else expect(week).toMatchObject({ coverage: 'complete', total: '0.0021', missingEvents: [] });
+    }
   });
 
   it('never ranks a window over a deleted, shifted or re-cadenced record, or under a wrong current interval (seeded fuzz)', async () => {

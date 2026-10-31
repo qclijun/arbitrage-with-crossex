@@ -27,6 +27,16 @@ function timestamp(value: unknown): number {
   return Number(value);
 }
 
+const HOUR = 3_600_000;
+/** User-approved 2026-10-31 from a live read: 249 of 500 Binance BTC/ETH rows had fundingTime = hour + 0..15 ms. */
+const BINANCE_JITTER_MS = 1_000;
+const BINANCE_JITTER = 'Binance fundingTime under 1 s past a UTC hour denotes that hour\'s settlement (user-approved 2026-10-31)';
+function binanceSettlement(row: Row): { settlementAt: number; evidence: string } | undefined {
+  const raw = timestamp(row.fundingTime);
+  const settlementAt = Math.floor(raw / HOUR) * HOUR;
+  return raw - settlementAt < BINANCE_JITTER_MS ? { settlementAt, evidence: BINANCE_JITTER } : undefined;
+}
+
 type HistoryContext = Awaited<ReturnType<FundingHistorySource['context']>>;
 export interface OfficialHistoryOptions {
   now?: () => number;
@@ -40,13 +50,14 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
   return {
     venue: e.venue, api: e.api, version: 'official-v1', ...(e.venue === 'OKX' ? { maxDays: 90 } : {}),
     ...(e.venue === 'HYPERLIQUID' ? { timeMapping: (row: Row) => opts.hlSettlements?.get(timestamp(row.time)) } : {}),
+    ...(e.venue === 'BINANCE' ? { timeMapping: binanceSettlement } : {}),
     context: async (id, call) => opts.context?.(e.venue, id, call) ?? null,
     async page(contractId, range, cursor, call): Promise<HistorySourcePage> {
       const hl = e.venue === 'HYPERLIQUID';
-      // Include delayed timestamps throughout the cutoff's settlement hour.
+      // Include delayed timestamps of the cutoff's settlement: HL's whole hour, Binance's jitter.
       // This is only a raw query bound, never proof of the hour mapping.
-      const rawStart = hl ? range.start + 3_600_000 : range.start + 1;
-      const rawEnd = hl ? range.end + 3_599_999 : range.end;
+      const rawStart = hl ? range.start + HOUR : range.start + 1;
+      const rawEnd = range.end + (hl ? HOUR - 1 : e.venue === 'BINANCE' ? BINANCE_JITTER_MS - 1 : 0);
       const boundary = cursor === null ? (e.direction === 'forward' ? rawStart : range.end) : timestamp(cursor);
       if (!contractId || !Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end) || range.start >= range.end
         || !Number.isSafeInteger(rawEnd) || boundary < rawStart || boundary > rawEnd) throw new Error('invalid-history-range');
@@ -54,7 +65,7 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
       const params = e.venue === 'OKX'
         ? { instId: contractId, before: range.start, after: cursor === null ? range.end + 1 : boundary, limit: e.limit }
         : { symbol: contractId, startTime: e.direction === 'forward' ? boundary : range.start + 1,
-          endTime: e.direction === 'forward' ? range.end : boundary, limit: e.limit,
+          endTime: e.direction === 'forward' ? rawEnd : boundary, limit: e.limit,
           ...(e.venue === 'BYBIT' ? { category: 'linear' } : {}) };
       const body = hl ? { type: 'fundingHistory', coin: contractId, startTime: boundary, endTime: rawEnd } : undefined;
       if (!hl) for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
