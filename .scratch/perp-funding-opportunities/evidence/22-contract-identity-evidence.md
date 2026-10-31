@@ -30,3 +30,5 @@ Binance 资产页不是合约上市日证明；Ethereum 页上的跨链代币地
 [HL funding](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding)明确按 position_size × oracle_price × funding_rate，故独立为 `linear-oracle-notional-fraction`，不得与上述 mark 组混排。[合约规格](https://hyperliquid.gitbook.io/hyperliquid-docs/trading/contract-specifications)还说明 USDC collateral、USDT 计价及 HYPE/PURR 的特例，不推导汇率或现金流等价。
 
 五场所当前产品说明均未补齐有生效起止时间的历史周期证据，生产 `rules=[]`、历史 UNKNOWN；HL 当前“每小时”描述不回填到时间零。Binance/OKX/Bybit 只有真实上市字段才生成 listing；Aster 字段缺失、HL 未证时均为 null。毫秒偏移也不按相邻事件或整点四舍五入反推；仅允许独立证明表中的 HL rawTime 映射。离线 fixture 的生效规则/上市/映射证明不是生产证明。
+
+> 2026-10-31修订：历史周期改按“双重证明”（规则结算记录 + 当前官方周期）判定，见[历史证据与资格契约](../history-and-eligibility.md)末节“修订 2026-10-31：周期双重证明”；生产不再由目录提供`rules`，周期在读取后证明，Binance不足1秒的抖动按同节映射。
