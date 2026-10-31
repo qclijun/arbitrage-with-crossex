@@ -47,11 +47,10 @@ describe('funding preview', () => {
     ['leverage', 'leverage-unread'],
     ['leverageMax', 'leverage-unknown'],
     ['rules', 'rules-unknown'],
-    ['spot', 'fx-unknown'],
   ])('a failed %s read blocks (%s) — never a pass', async (read, code) => {
     w = fundingWorld();
     w.state.fail.add(read);
-    const res = await w.preview(read === 'spot' ? { long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } } : {});
+    const res = await w.preview();
     expect(codes(res)).toContain(code);
     expect(res.body.data.previewId).toBeNull();
   });
@@ -120,18 +119,15 @@ describe('funding preview', () => {
     expect(codes(await w.preview())).toContain('contract-unreconciled');
   });
 
-  it('needs no FX for a same-quote pair, and a USDC/USDT one only from a current, timed book', async () => {
+  it('needs no FX for a same-quote pair, and values USDC/USDT at par without reading a book', async () => {
     w = fundingWorld();
-    w.state.fail.add('spot');
     const same = await w.preview({ long: { venue: 'BINANCE', contractId: 'ETHUSDT', symbol: USDT_LONG } });
     expect(same.body.data.content.fx).toBe('none');
-    expect(same.body.data.blockers.map((b: { code: string }) => b.code)).not.toContain('fx-unknown');
 
-    w.state.fail.delete('spot');
-    w.state.spotAt = w.clock.now() - 10_001;
-    expect(codes(await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } }))).toContain('fx-unknown');
-    w.state.spotAt = null;
-    expect(codes(await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } }))).toContain('fx-unknown');
+    const cross = await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } });
+    expect(cross.body.data.blockers).toEqual([]);
+    expect(cross.body.data.content.fx).toBe('parity:USDC=USDT');
+    expect(cross.body.data.scenario.legs.long.fx).toMatchObject({ from: 'USDC', to: 'USDT', rate: '1', basis: 'assumed' });
   });
 
   it('charges an existing liability as known carry, and blocks one it cannot price', async () => {

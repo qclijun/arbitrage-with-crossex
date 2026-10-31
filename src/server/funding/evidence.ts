@@ -8,7 +8,7 @@
 import type { CrossexAccount, CrossexInterestRate, Symbol as RuleSymbol } from 'gate-api';
 import { readCostEvidence, type LegCostEvidence } from '../../core/funding/cost-evidence';
 import type { HistoryAdmission, HistoryLegKey, HistoryPairRequest } from '../../core/funding/history-cache';
-import { decimal, div, exact, sign } from '../../core/funding/exact';
+import { stableParityRates } from '../../core/funding/pair-valuation';
 import type { FxRate, Side } from '../../core/funding/scenario';
 import { parseSymbol } from '../../core/numbers';
 import { signedPositions } from '../livePositions';
@@ -38,35 +38,11 @@ export interface FundingEvidence {
   positions: Map<string, string> | null;
   /** Contracts with an open venue order. */
   openOrders: Set<string> | null;
-  /** Rates into the common currency; null when one was needed and unread. */
+  /** Rates into the common currency (stablecoins at par); null when a quote has none. */
   fx: FxRate[] | null;
 }
 
 const orNull = <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
-
-const FX_PAIR = 'USDC_USDT';
-/** The FX book must carry its own time, within this of the round's start. */
-const FX_MAX_AGE_MS = 10_000;
-
-async function readFx(reads: FundingReads, req: PreviewRequest, readAt: number): Promise<FxRate[] | null> {
-  const currency = currencyOf(req);
-  const quotes = new Set([req.short.symbol, req.long.symbol].map((s) => parseSymbol(s).quote));
-  if ([...quotes].every((q) => q === currency)) return [];
-  if (![...quotes].every((q) => q === currency || q === 'USDC')) return null;
-  try {
-    const top = await reads.spotTop(FX_PAIR);
-    const [bid, ask] = [exact(top.bid), exact(top.ask)];
-    if (top.at === null || Math.abs(readAt - top.at) > FX_MAX_AGE_MS || !bid || !ask || sign(bid) <= 0 || sign(ask) <= 0) return null;
-    const source = `Gate spot ${FX_PAIR} book top`;
-    // Selling USDC earns the bid; buying it back pays the ask.
-    return [
-      { from: 'USDC', to: currency, rate: decimal(bid), source: `${source} (bid)`, at: top.at, basis: 'real' },
-      { from: currency, to: 'USDC', rate: decimal(div({ n: 1n, d: 1n }, ask)), source: `${source} (1/ask)`, at: top.at, basis: 'real' },
-    ];
-  } catch {
-    return null;
-  }
-}
 
 export async function gatherEvidence(ports: FundingPorts, req: PreviewRequest, now: () => number): Promise<FundingEvidence> {
   const readAt = now();
@@ -78,7 +54,7 @@ export async function gatherEvidence(ports: FundingPorts, req: PreviewRequest, n
     short: { venue: req.short.venue, contractId: req.short.contractId },
     long: { venue: req.long.venue, contractId: req.long.contractId },
   }, readAt);
-  const [rules, leverageMax, leverage, costs, account, interest, positions, openOrders, fx] = await Promise.all([
+  const [rules, leverageMax, leverage, costs, account, interest, positions, openOrders] = await Promise.all([
     orNull(reads.rules(symbols)),
     orNull(reads.leverageMax(symbols)),
     orNull(reads.leverage(symbols)),
@@ -88,9 +64,9 @@ export async function gatherEvidence(ports: FundingPorts, req: PreviewRequest, n
     orNull(reads.interestRates()),
     orNull(reads.positions().then(signedPositions)),
     orNull(reads.openOrders().then(openOrderContracts)),
-    readFx(reads, req, readAt),
   ]);
   const { readAt: _r, ...legCosts } = costs;
+  const fx = stableParityRates(symbols.map((s) => parseSymbol(s).quote), currencyOf(req), readAt);
   return { readAt, history, legs, rules, leverageMax, leverage, costs: legCosts, account, interest, positions, openOrders, fx };
 }
 

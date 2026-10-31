@@ -6,7 +6,7 @@
  * tick) and then places the maker. A refused acceptance mutates nothing.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { confirm, fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, type FundingWorld } from '../helpers/funding-intent-fixture';
+import { confirm, CROSS_LONG, fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, type FundingWorld } from '../helpers/funding-intent-fixture';
 
 let w: FundingWorld;
 afterEach(async () => {
@@ -98,11 +98,13 @@ describe('funding acceptance', () => {
     nothingHappened(w);
   });
 
-  it('accepts across a tick of the FX book: only the FX status is confirmed, its amount effect at display precision', async () => {
+  it('accepts a Hyperliquid USDC leg against a USDT leg, valued at par', async () => {
     w = fundingWorld();
-    const preview = await w.preview();
-    w.state.spot = { bid: '0.99981', ask: '1.00019' };
+    const preview = await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } });
+    expect(preview.body.data.blockers).toEqual([]);
+    expect(preview.body.data.content).toMatchObject({ currency: 'USDT', fx: 'parity:USDC=USDT' });
     expect((await w.accept(confirm(preview))).status).toBe(202);
+    expect(w.store.getPair('fi-intent-001')).toMatchObject({ a: { contract: CROSS_LONG, side: 'BUY' }, b: { contract: SHORT_SYMBOL, side: 'SELL' } });
   });
 
   it('returns a new preview, without accepting, when what was confirmed changed', async () => {

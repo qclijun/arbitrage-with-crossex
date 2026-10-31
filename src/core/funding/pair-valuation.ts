@@ -1,7 +1,7 @@
-/** Cross-basis funding rates can be compared as fractions, not as cash P&L. */
+/** Cross-basis funding pairs: rates compare as fractions; cash is valued with stablecoins at par. */
 import type { LiveFundingContract } from './ranking';
 import { nativeFundingId } from './contract-evidence';
-import { parseSymbol } from '../numbers';
+import type { FxRate } from './scenario';
 
 export interface FundingRateEstimate {
   short: { price: 'oracle' | 'mark'; settlement: 'USDC' | 'USDT' };
@@ -25,8 +25,18 @@ export function fundingRateEstimate(short: LiveFundingContract, long: LiveFundin
   return a && b && a.price !== b.price ? { short: a, long: b } : null;
 }
 
-/** Fail closed at execution, independently of client labels or rankedness. */
-export function fundingValuationUnnormalized(short: { venue: string; symbol: string }, long: { venue: string; symbol: string }): boolean {
-  return (short.venue === 'HYPERLIQUID') !== (long.venue === 'HYPERLIQUID')
-    || parseSymbol(short.symbol).quote !== parseSymbol(long.symbol).quote;
+/** Stablecoin quotes valued at par, as the Opportunities page does: 1 USDC = 1 USDT = 1 USD. */
+const PAR_STABLES = new Set(['USDT', 'USDC', 'USD']);
+
+/** Parity rates from each leg quote into `currency`; [] when no conversion is
+ * needed, null when a quote is not a par stablecoin (its rate is unknown). */
+export function stableParityRates(quotes: string[], currency: string, at: number): FxRate[] | null {
+  const foreign = [...new Set(quotes.map((q) => q.toUpperCase()))].filter((q) => q !== currency);
+  if (!foreign.length) return [];
+  if (!PAR_STABLES.has(currency) || !foreign.every((q) => PAR_STABLES.has(q))) return null;
+  const source = 'parity: 1 USDC = 1 USDT = 1 USD';
+  return foreign.flatMap((q) => [
+    { from: q, to: currency, rate: '1', source, at, basis: 'assumed' as const },
+    { from: currency, to: q, rate: '1', source, at, basis: 'assumed' as const },
+  ]);
 }

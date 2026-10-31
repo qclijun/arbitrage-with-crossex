@@ -16,7 +16,7 @@ it('ranks ETH short HL / long OKX at equal notional with hourly vs eight-hour in
   expect(board).toMatchObject({ candidateCount: 12, rankedCount: 12 });
   const row = board.rows.find(isHlOkx)!;
   expect(row).toMatchObject({ rateEstimate: { short: { price: 'oracle', settlement: 'USDC' }, long: { price: 'mark', settlement: 'USDT' } },
-    executionBlockers: ['funding-valuation-unnormalized'] });
+    executionBlockers: [] });
   // HL earns 168 * .00002, OKX pays 21 * .0001. Difference .00126; APR .00126 * 365 / 7 = .0657.
   expect(row.windows[0]).toMatchObject({ eligible: true, coverage: 'complete', netTotal: '0.00126', netAnnualized: '0.0657',
     legs: { short: { cadence: { basis: 'inferred', intervals: [1] } }, long: { cadence: { basis: 'inferred', intervals: [8] } } } });

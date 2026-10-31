@@ -9,16 +9,17 @@ const okx = { venue: 'OKX', contractId: 'ETH-USDT-SWAP', symbol: 'OKX_FUTURE_ETH
 it.each([
   { short: hl, long: okx },
   { short: okx, long: hl },
-])('blocks cross-basis opens in either direction despite admissible history and an open switch', async (legs) => {
+])('previews a cross-basis pair in either direction with USDC valued at par in USDT', async (legs) => {
   world = fundingWorld();
-  expect(world.store.admission.read().open).toBe(true);
   const res = await world.preview(legs);
   expect(res.status).toBe(200);
-  expect(res.body.data.blockers.map((b: { code: string }) => b.code)).toContain('funding-valuation-unnormalized');
-  expect(res.body.data.previewId).toBeNull();
-  expect(res.body.data.scenario).toBeNull();
-  expect(res.body.data.content.amounts.daily).toBeNull();
+  const { data } = res.body;
+  expect(data.blockers).toEqual([]);
+  expect(data.previewId).toEqual(expect.any(String));
+  expect(data.content).toMatchObject({ currency: 'USDT', fx: 'parity:USDC=USDT' });
+  expect(data.content.amounts.daily).toEqual(expect.any(String));
+  const hlSide = legs.short === hl ? 'short' : 'long';
+  expect(data.scenario.legs[hlSide].fx).toMatchObject({ from: 'USDC', to: 'USDT', rate: '1' });
   expect(world.store.listPairs()).toEqual([]);
   expect(world.venue.createCalls).toEqual([]);
-  expect(world.venue.leverageCalls).toEqual([]);
 });

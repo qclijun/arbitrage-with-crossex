@@ -141,7 +141,6 @@ function boardWindow(w: RankingWindow): BoardWindow {
 /** Why this pair could not be opened as shown, whatever its history: unproven symbol, unit or coin. */
 function executionBlockers(candidate: FundingCandidate, listings: Map<string, FundingContractListing>): string[] {
   const out: string[] = [];
-  if (candidate.rateEstimate) out.push('funding-valuation-unnormalized');
   if (!isSupportedCoin(candidate.underlying)) out.push('coin-unsupported');
   for (const side of SIDES) {
     const symbol = listings.get(legKey(candidate[side]))?.symbol ?? null;

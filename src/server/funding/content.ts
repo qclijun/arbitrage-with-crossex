@@ -70,7 +70,7 @@ export function contentOf({ req, ev, sizing, price, currency, borrow, scenario }
     quantityInput: req.quantity, quantity: sizing.qty, rounding: sizing.rounding, makerPrice: price,
     timeoutSec: req.timeoutSec, onExpiry: 'convert-to-taker', holdDays: req.holdDays, currency,
     fees: { short: fee(ev.costs.short.fees), long: fee(ev.costs.long.fees) },
-    fx: ev.fx === null ? 'unknown' : ev.fx.length ? `known:${[...new Set(ev.fx.map((r) => r.from))].sort().join('/')}` : 'none',
+    fx: ev.fx === null ? 'unknown' : ev.fx.length ? `parity:${[...new Set(ev.fx.flatMap((r) => [r.from, r.to]))].sort().join('=')}` : 'none',
     borrow: borrow.status === 'known' ? `known:${borrow.currency}` : borrow.status,
     amounts: {
       normalOneTime: shown(scenario?.normal.oneTime, 2),

@@ -17,7 +17,7 @@ export { B_CONTRACT as SHORT_SYMBOL };
 export const CROSS_LONG = A_CONTRACT;
 /** A USDT-quoted long leg, for a same-quote pair. */
 export const USDT_LONG = 'BINANCE_FUTURE_ETH_USDT';
-/** Executable fixture uses a common mark/USDT basis; HL is observation-only. */
+/** The default pair shares a mark/USDT basis; CROSS_LONG is the HL oracle/USDC leg. */
 export const LONG_SYMBOL = USDT_LONG;
 
 const top = (bid: number, ask: number, size = 10) => ({ book: { bids: [[bid, size]] as Array<[number, number]>, asks: [[ask, size]] as Array<[number, number]>, ts: 0 }, failure: null });
@@ -38,9 +38,6 @@ export function readState() {
     interest: [] as unknown[],
     positions: [] as Array<{ symbol: string; positionQty: string }>,
     openOrders: [] as Array<{ symbol: string }>,
-    spot: { bid: '0.9998', ask: '1.0002' },
-    /** The FX book's own time; defaults to the read moment. */
-    spotAt: undefined as number | null | undefined,
     fail: new Set<string>(),
     /** Virtual ms each read round takes (advanced on the clock before it answers). */
     readMs: 0,
@@ -69,10 +66,6 @@ export function fakeReads(s: ReadState, clock: VirtualClock): FundingReads & { c
     interestRates: r('interest', () => s.interest as never),
     positions: r('positions', () => s.positions),
     openOrders: r('openOrders', () => s.openOrders),
-    spotTop: async () => {
-      if (s.fail.has('spot')) throw new Error('spot read failed');
-      return { ...s.spot, at: s.spotAt === undefined ? clock.now() : s.spotAt };
-    },
   };
   return port;
 }
