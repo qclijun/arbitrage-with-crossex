@@ -56,7 +56,6 @@ describe('funding history cadence double proof', () => {
     for (const at of [T + M, T + 5 * M]) {
       vi.setSystemTime(at);
       await run(refresher);
-      // Seven days of 4-hour settlements at 0.0001.
       expect(cache.evaluate(pair(7), Date.now())!.short).toMatchObject({ coverage: 'complete', total: '0.0042' });
       for (const days of [30, 90, 365] as const) {
         const short = cache.evaluate(pair(days), Date.now())!.short;
@@ -68,7 +67,6 @@ describe('funding history cadence double proof', () => {
   });
 
   it('proves a budget-cut read from its fully read segments only, dropping a half-read segment', async () => {
-    // 7 days in one page, the next 23 days in three, then one of six 90-day pages before the budget runs out.
     const { cache, binance, refresher } = setup({ legs: [BTC.binance], binance: { pageSize: 30 }, budget: { venueRequests: 5 } });
     await run(refresher);
     expect(binance.calls).toHaveLength(5);

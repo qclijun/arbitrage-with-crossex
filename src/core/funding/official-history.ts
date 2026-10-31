@@ -54,7 +54,6 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
     context: async (id, call) => opts.context?.(e.venue, id, call) ?? null,
     async page(contractId, range, cursor, call): Promise<HistorySourcePage> {
       const hl = e.venue === 'HYPERLIQUID';
-      // Include delayed timestamps of the cutoff's settlement: HL's whole hour, Binance's jitter.
       // This is only a raw query bound, never proof of the hour mapping.
       const rawStart = hl ? range.start + HOUR : range.start + 1;
       const rawEnd = range.end + (hl ? HOUR - 1 : e.venue === 'BINANCE' ? BINANCE_JITTER_MS - 1 : 0);

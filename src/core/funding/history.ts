@@ -2,7 +2,7 @@
 import { sourceBoundary } from './history-sources';
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const FRESH_MS = 15 * 60_000;
+export const FRESH_MS = 15 * 60_000;
 export const HISTORY_DAYS = [7, 30, 90, 180, 365] as const;
 export type HistoryDays = typeof HISTORY_DAYS[number];
 export type Coverage = 'complete' | 'partial' | 'unknown' | 'unsupported';

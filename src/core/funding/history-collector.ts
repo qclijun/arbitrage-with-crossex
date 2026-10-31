@@ -74,7 +74,7 @@ export interface FundingHistorySource {
   version: string;
   /** Longest window the endpoint can serve, when shorter than a year. */
   maxDays?: number;
-  /** Proven listing time; null when the contract cannot be read (UNKNOWN, no page reads). Cadence is proved after the read. */
+  /** Proven listing time; null when the contract cannot be read. */
   context(contractId: string, call: HistoryCall): Promise<{ listing: FundingHistoryLeg['listing'] } | null>;
   /** One page of settled history in (range.start, range.end]. */
   page(contractId: string, range: { start: number; end: number }, cursor: string | null, call: HistoryCall): Promise<HistorySourcePage>;
@@ -236,11 +236,9 @@ async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call
     reason = err instanceof RoundStop ? err.reason : 'source-error';
   }
   if (covered === state.cutoff) return { leg, reason: reason ?? 'no-history-read' };
-  // A half-read segment's records lie at or before `covered`, where the proof does not look.
   const proof = proveSettlementRun({ everyHours: current.everyHours, currentAt: current.observedAt, rangeStart: covered,
     cutoff: state.cutoff, regularSettledAt: events.filter((e) => e.kind === 'regular').map((e) => e.settledAt) });
   const termination = `${reason ? `stopped:${reason}` : 'all-segments-done'}${proof.ok ? '' : `;schedule:${proof.reason}`}`;
-  // A refused leg still publishes, with no events, so a stamp no rule vouches for never reaches a later merge.
   Object.assign(leg, {
     observedAt, verifiedAt: Date.now(), rules: proof.ok ? [proof.rule] : [], events: proof.ok ? inProvenRange(events, proof.rule) : [],
     pages: { complete: true, rangeStart: covered, rangeEnd: state.cutoff, pages, termination },

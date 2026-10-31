@@ -16,14 +16,12 @@ export const T = Date.UTC(2026, 9, 1, 10);
 
 export type Fail = 'rate-limited' | 'error' | 'hang';
 
-/** Times on the `hours` UTC grid in (from, to]. */
 export function grid(hours: number, from: number, to: number): number[] {
   const out: number[] = [];
   for (let t = Math.floor(from / (hours * H)) * hours * H + hours * H; t <= to; t += hours * H) out.push(t);
   return out;
 }
 
-/** One venue serving settled history, 8-hourly unless `times` lists every raw time; `fail` and `pageSize` script its behavior. */
 export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number; fail?: () => Fail | null; drop?: number; delayMs?: number;
   times?: () => readonly number[] } = {}) {
   const calls: string[] = [];
@@ -81,10 +79,6 @@ export async function run<T>(refresher: { runOnce(): Promise<T> }): Promise<T> {
   return done;
 }
 
-/**
- * The market's current official intervals for `legs`, quoted at each read. Mutate `hours` to
- * change a venue's interval between rounds.
- */
 export function currentFor(legs: HistoryLegKey[], hours: Record<string, number> = { BINANCE: 8, BYBIT: 8, HYPERLIQUID: 1 }) {
   return () => new Map(legs.filter((k) => hours[k.venue] !== undefined)
     .map((k) => [legKey(k), { intervalHours: hours[k.venue]!, at: Date.now() }]));

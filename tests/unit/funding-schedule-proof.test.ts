@@ -3,7 +3,6 @@ import { acceptCurrentInterval, inProvenRange, proveSettlementRun, type RunInput
 
 const H = 3_600_000;
 const D = 24 * H;
-/** 2026-10-01 10:00 UTC: the newest 8-hour settlement before it is 08:00. */
 const CUTOFF = Date.UTC(2026, 9, 1, 10);
 const RANGE = CUTOFF - 7 * D;
 const every = (hours: number, from: number, to: number) => {
@@ -66,7 +65,6 @@ describe('proveSettlementRun', () => {
     const history = [...every(8, RANGE + 1, switchAt - 1), ...every(4, switchAt, CUTOFF)];
     expect(prove(history, 4)).toMatchObject({ ok: true, rule: { from: switchAt, everyHours: 4, anchor: CUTOFF - 2 * H } });
     expect(prove(history, 8)).toEqual({ ok: false, reason: 'run-too-short' });
-    // The interval changed before its first new-cadence settlement: one record shows no cadence.
     expect(prove([...every(8, RANGE + 1, CUTOFF - 7 * H), CUTOFF - 2 * H], 4)).toEqual({ ok: false, reason: 'run-too-short' });
   });
 

@@ -78,8 +78,7 @@ export function normalizeOfficialSettlement(
   const hour = Math.floor(settledAt / 3_600_000) * 3_600_000;
   if (settledAt !== hour && (source.venue === 'HYPERLIQUID' || (source.venue === 'BINANCE' && timeMapping))) {
     // Official HL fundingHistory has time = hour + milliseconds, and Binance fundingTime jitters
-    // milliseconds past the hour. The caller must prove which UTC settlement hour a raw time denotes;
-    // an unmapped Binance time stays raw, off the grid.
+    // milliseconds past the hour.
     if (!timeMapping?.evidence || timeMapping.settlementAt !== hour) return null;
     return { settledAt: timeMapping.settlementAt, rawTime: settledAt,
       timeMappingEvidence: timeMapping.evidence, rate, intervalHours, status: 'settled', kind, evidence };

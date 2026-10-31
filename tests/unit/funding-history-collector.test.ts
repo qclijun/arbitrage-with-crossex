@@ -79,7 +79,6 @@ describe('funding history refresher', () => {
     const throwing = stubSource('BYBIT');
     throwing.source.page = async () => { throw new Error('adapter bug outside call'); };
     const gate = { venue: 'GATE', contractId: 'BTC_USDT' };
-    // The market has no current Binance interval, so its cadence cannot be proved.
     const refresher = createFundingHistoryRefresher({ cache, sources: [binance.source, throwing.source],
       legs: async () => [BTC.binance, gate, BTC.bybit], currentSchedules: currentFor([BTC.bybit]) });
     expect(await run(refresher)).toMatchObject({ outcome: 'published' });

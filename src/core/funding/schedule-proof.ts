@@ -4,11 +4,10 @@
  * records that are exactly regular on the UTC grid AND whose interval equals
  * the venue's current official interval. Pure: no IO, no clock.
  */
-import type { FundingRuleSegment } from './history';
+import { FRESH_MS, type FundingRuleSegment } from './history';
 
 const HOUR = 3_600_000;
 
-/** The slice of a market quote the proof needs; `CurrentFundingRate` satisfies it. */
 export interface CurrentSchedule {
   intervalHours: number;
   /** When the market poller read this interval. */
@@ -28,16 +27,13 @@ export type ScheduleProof =
   | { ok: true; rule: FundingRuleSegment }
   | { ok: false; reason: RunRefusal };
 
-/** The evaluator's freshness bound: an older quote cannot speak for the interval now. */
-export const CURRENT_MAX_AGE_MS = 15 * 60_000;
+const dividesDay = (hours: number) => Number.isInteger(hours) && hours > 0 && 24 % hours === 0;
 
-/** Proof 2, parsed before any page request so an unprovable leg spends no budget. */
 export function acceptCurrentInterval(current: CurrentSchedule | undefined, now: number): CurrentInterval {
   if (!current) return { ok: false, reason: 'no-current-interval' };
-  if (current.at > now || now - current.at > CURRENT_MAX_AGE_MS) return { ok: false, reason: 'current-interval-stale' };
+  if (current.at > now || now - current.at > FRESH_MS) return { ok: false, reason: 'current-interval-stale' };
   const hours = current.intervalHours;
-  // Only a divisor of a day defines one UTC grid shared by every day.
-  if (!Number.isInteger(hours) || hours <= 0 || 24 % hours !== 0) return { ok: false, reason: 'current-interval-unusable' };
+  if (!dividesDay(hours)) return { ok: false, reason: 'current-interval-unusable' };
   return { ok: true, everyHours: hours, observedAt: current.at };
 }
 
@@ -55,7 +51,7 @@ export interface RunInput {
 const iso = (at: number) => new Date(at).toISOString();
 
 /**
- * Proof 1: the trailing run of records spaced exactly one current interval
+ * The trailing run of records spaced exactly one current interval
  * apart and ending on the grid at the newest record. Any short or long gap ends
  * the run; a gap is never fitted, because a missing record and a slower cadence
  * look the same.
@@ -72,10 +68,9 @@ export function proveSettlementRun(input: RunInput): ScheduleProof {
   while (i > 0 && times[i]! - times[i - 1]! === period) i -= 1;
   const first = times[i]!;
   const runLength = times.length - i;
-  // One record shows no spacing at all, e.g. the first settlement after an interval change.
   if (runLength < 2) return { ok: false, reason: 'run-too-short' };
-  // Reach back to the read's edge only when no grid point can hide between it and `first`.
-  const from = i === 0 && first - period <= input.rangeStart ? input.rangeStart : first;
+  const noGridPointBeforeFirst = i === 0 && first - period <= input.rangeStart;
+  const from = noGridPointBeforeFirst ? input.rangeStart : first;
   return { ok: true, rule: { from, until: last + period, everyHours: input.everyHours, anchor: last,
     evidence: `double proof: ${runLength} settled records every ${input.everyHours}h on the UTC grid ${iso(first)}..${iso(last)}`
       + `; current official interval ${input.everyHours}h read ${iso(input.currentAt)}` } };

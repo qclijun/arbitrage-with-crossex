@@ -10,7 +10,6 @@ let app: FastifyInstance | undefined;
 afterEach(async () => { await app?.close(); app = undefined; });
 const rule = (symbol: string) => ({ symbol, exchangeType: symbol.split('_')[0]!, businessType: 'FUTURE', state: 'live', delistTime: '0' });
 const H = 3_600_000;
-/** Official 8-hourly settled history in [from, to], oldest first. */
 const settled = (query: Record<string, unknown>) => {
   const out: number[] = [];
   for (let t = Math.ceil(Number(query.startTime) / (8 * H)) * 8 * H; t <= Number(query.endTime); t += 8 * H) out.push(t);
