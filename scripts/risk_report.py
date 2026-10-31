@@ -64,7 +64,7 @@ def collect(config_path):
 def sanitize(report):
     checks = report.get('checks')
     stamp = report.get('observedAt')
-    if (report.get('version') != 1 or not isinstance(checks, list) or not checks
+    if (report.get('version') not in (1, 2) or not isinstance(checks, list) or not checks
             or not isinstance(report.get('complete'), bool)
             or not isinstance(stamp, (int, float)) or isinstance(stamp, bool) or not math.isfinite(stamp)):
         raise ValueError('Malformed shared Risk report')

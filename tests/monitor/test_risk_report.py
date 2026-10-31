@@ -79,6 +79,13 @@ class ReadOnlyRiskReportTest(unittest.TestCase):
         self.assertEqual(json.loads(query['previous'][0])['state'], self.prior)
         self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir()}, before)
 
+    def test_current_terminal_report_version_is_read(self):
+        self.report['version'] = 2
+        self.report['collection']['fundingApplicability'] = []
+        code, output, _ = self.invoke()
+        self.assertEqual(code, 0)
+        self.assertIn('风险总结：**OK**', output)
+
     def test_json_excludes_account_wallet_install_identity_and_credentials(self):
         code, output, _ = self.invoke(True)
         self.assertEqual(code, 0)
