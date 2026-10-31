@@ -1,0 +1,516 @@
+{
+ "schemaVersion": 2,
+ "generatedAt": "2026-10-31T00:54:39+00:00",
+ "title": "Design System: Arbitrage with CrossEx",
+ "extensions": {
+  "colorMeta": {
+   "info": {
+    "role": "primary",
+    "displayName": "Info",
+    "tonalRamp": [
+     "#1E2A66",
+     "#2C3C99",
+     "#4A5FD9",
+     "#6079FF",
+     "#8396FF",
+     "#A8B5FF",
+     "#C9D1FF",
+     "#E6EAFF"
+    ]
+   },
+   "pastel-blue": {
+    "role": "primary",
+    "displayName": "Pastel blue",
+    "tonalRamp": [
+     "#2C3C99",
+     "#4A5FD9",
+     "#6079FF",
+     "#8396FF",
+     "#A8B5FF",
+     "#C9D1FF",
+     "#DDE3FF",
+     "#F0F2FF"
+    ]
+   },
+   "grass": {
+    "role": "secondary",
+    "displayName": "Grass",
+    "tonalRamp": [
+     "#06463C",
+     "#0B7566",
+     "#14B89C",
+     "#1BE3C2",
+     "#5BEBD3",
+     "#A5F3E5",
+     "#CFF9F1",
+     "#ECFDF9"
+    ]
+   },
+   "guava": {
+    "role": "secondary",
+    "displayName": "Guava",
+    "tonalRamp": [
+     "#5C2626",
+     "#8F3B3B",
+     "#E67878",
+     "#FF9393",
+     "#FFAEAE",
+     "#FFCACA",
+     "#FFE0E0",
+     "#FFF2F2"
+    ]
+   },
+   "gold": {
+    "role": "tertiary",
+    "displayName": "Gold",
+    "tonalRamp": [
+     "#4F4019",
+     "#806829",
+     "#D4B058",
+     "#F0CE74",
+     "#F5DC9A",
+     "#FAEAC4",
+     "#FCF3DC",
+     "#FEFAF0"
+    ]
+   },
+   "warning": {
+    "role": "tertiary",
+    "displayName": "Warning",
+    "tonalRamp": [
+     "#4D3510",
+     "#80591C",
+     "#C98F2E",
+     "#EFB54B",
+     "#F4CB7D",
+     "#F8DDAA",
+     "#FBEDD2",
+     "#FEF8EE"
+    ]
+   },
+   "crossex": {
+    "role": "tertiary",
+    "displayName": "CrossEx",
+    "tonalRamp": [
+     "#0B4A54",
+     "#127A8A",
+     "#2CC4DB",
+     "#4BE7FF",
+     "#7EEEFF",
+     "#ADF4FF",
+     "#D3FAFF",
+     "#EEFDFF"
+    ]
+   },
+   "link": {
+    "role": "tertiary",
+    "displayName": "Link",
+    "tonalRamp": [
+     "#173A61",
+     "#2462A6",
+     "#4D93E6",
+     "#7AB7FF",
+     "#9CCAFF",
+     "#BEDCFF",
+     "#DCEDFF",
+     "#F1F7FF"
+    ]
+   },
+   "wash": {
+    "role": "neutral",
+    "displayName": "Wash",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "tooltip-ground": {
+    "role": "neutral",
+    "displayName": "Tooltip ground",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-950": {
+    "role": "neutral",
+    "displayName": "Ink 950",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-900": {
+    "role": "neutral",
+    "displayName": "Ink 900",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-850": {
+    "role": "neutral",
+    "displayName": "Ink 850",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-800": {
+    "role": "neutral",
+    "displayName": "Ink 800",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-700": {
+    "role": "neutral",
+    "displayName": "Ink 700",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-600": {
+    "role": "neutral",
+    "displayName": "Ink 600",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-500": {
+    "role": "neutral",
+    "displayName": "Ink 500",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-400": {
+    "role": "neutral",
+    "displayName": "Ink 400",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-300": {
+    "role": "neutral",
+    "displayName": "Ink 300",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-200": {
+    "role": "neutral",
+    "displayName": "Ink 200",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-100": {
+    "role": "neutral",
+    "displayName": "Ink 100",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   },
+   "ink-50": {
+    "role": "neutral",
+    "displayName": "Ink 50",
+    "tonalRamp": [
+     "#090D18",
+     "#0F1421",
+     "#1A2537",
+     "#374B6D",
+     "#48638F",
+     "#667FA7",
+     "#9DAFCD",
+     "#DAE1EC"
+    ]
+   }
+  },
+  "typographyMeta": {
+   "display": {
+    "displayName": "Display",
+    "purpose": "Hero figures: Total PnL, APR, capital."
+   },
+   "headline": {
+    "displayName": "Headline",
+    "purpose": "Modal titles."
+   },
+   "title": {
+    "displayName": "Title",
+    "purpose": "Leg capsules, asset names, section heads."
+   },
+   "body": {
+    "displayName": "Body",
+    "purpose": "Default for everything, including tables and controls."
+   },
+   "label": {
+    "displayName": "Label",
+    "purpose": "Chips and tags."
+   }
+  },
+  "shadows": [
+   {
+    "name": "tooltip-lift",
+    "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+    "purpose": "Tooltips and hover cards only."
+   },
+   {
+    "name": "roll-nudge",
+    "value": "0 0 0 4px rgba(27, 227, 194, 0.28)",
+    "purpose": "Roll over pill pulse every 10s; off under reduced motion."
+   }
+  ],
+  "motion": [
+   {
+    "name": "color-transition",
+    "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+    "purpose": "Hover and state color changes on controls."
+   },
+   {
+    "name": "tab-underline",
+    "value": "300ms ease-in",
+    "purpose": "Active tab underline scale and color."
+   },
+   {
+    "name": "hold-to-confirm",
+    "value": "800ms linear",
+    "purpose": "Progress ring fill on irreversible wire actions."
+   },
+   {
+    "name": "flash-pulse",
+    "value": "1.8s ease-out",
+    "purpose": "Ring flash when an Execute lands."
+   }
+  ],
+  "breakpoints": [
+   {
+    "name": "sm",
+    "value": "640px"
+   },
+   {
+    "name": "content-max",
+    "value": "1500px"
+   }
+  ]
+ },
+ "components": [
+  {
+   "name": "Primary Button",
+   "kind": "button",
+   "refersTo": "button-primary",
+   "description": "Solid info fill; only the action that starts something.",
+   "html": "<button class=\"ds-btn-primary\">Open this strategy</button>",
+   "css": ".ds-btn-primary { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:inline-flex; align-items:center; height:36px; padding:0 16px; border:1px solid transparent; border-radius:5px; background:#6079FF; color:#fff; font-size:12px; font-weight:500; cursor:pointer; transition:background-color .15s; } .ds-btn-primary:hover { background:rgba(96,121,255,.75); } .ds-btn-primary:focus-visible { outline:1px solid #9DAFCD; outline-offset:2px; }"
+  },
+  {
+   "name": "Outline Button",
+   "kind": "button",
+   "refersTo": "button-outline",
+   "description": "Default control: a hairline on nothing.",
+   "html": "<button class=\"ds-btn\">Close perp at maturity</button>",
+   "css": ".ds-btn { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:inline-flex; align-items:center; height:36px; padding:0 16px; border:1px solid #374B6D; border-radius:5px; background:transparent; color:#fff; font-size:12px; font-weight:500; cursor:pointer; transition:background-color .15s; } .ds-btn:hover { background:rgba(55,75,109,.2); } .ds-btn:focus-visible { outline:1px solid #9DAFCD; outline-offset:2px; }"
+  },
+  {
+   "name": "Danger Button",
+   "kind": "button",
+   "refersTo": "button-danger",
+   "description": "Outline box for actions that stop or remove.",
+   "html": "<button class=\"ds-btn-danger\">Cancel order</button>",
+   "css": ".ds-btn-danger { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:inline-flex; align-items:center; height:36px; padding:0 16px; border:1px solid rgba(255,147,147,.6); border-radius:5px; background:transparent; color:#FFAEAE; font-size:12px; font-weight:500; cursor:pointer; transition:background-color .15s; } .ds-btn-danger:hover { background:rgba(255,147,147,.1); } .ds-btn-danger:focus-visible { outline:1px solid #FFAEAE; outline-offset:2px; }"
+  },
+  {
+   "name": "Input",
+   "kind": "input",
+   "refersTo": "input",
+   "description": "Ink ground, ink-600 stroke, ink-300 focus ring.",
+   "html": "<input class=\"ds-input\" placeholder=\"Notional (USDT)\" />",
+   "css": ".ds-input { font-family: Inter, ui-sans-serif, system-ui, sans-serif; width:240px; padding:8px 12px; border:1px solid #48638F; border-radius:5px; background:#090D18; color:#9DAFCD; font-size:12px; font-variant-numeric:tabular-nums lining-nums; transition:border-color .15s; } .ds-input::placeholder { color:#667FA7; } .ds-input:focus { outline:none; border-color:#9DAFCD; box-shadow:0 0 0 1px #9DAFCD; }"
+  },
+  {
+   "name": "Chips",
+   "kind": "chip",
+   "refersTo": "chip",
+   "description": "2px tags; tone at full strength over a 20% fill.",
+   "html": "<span class=\"ds-chip\">GATE</span> <span class=\"ds-chip ds-chip-grass\">Hedged</span> <span class=\"ds-chip ds-chip-guava\">UNHEDGED</span> <span class=\"ds-chip ds-chip-warn\">Stale</span>",
+   "css": ".ds-chip { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:inline-flex; align-items:center; padding:3px 6px; border:1px solid #374B6D; border-radius:2px; background:rgba(191,203,223,.06); color:#BFC8DF; font-size:10px; font-weight:600; line-height:1; white-space:nowrap; } .ds-chip-grass { border-color:#1BE3C2; background:rgba(27,227,194,.2); color:#1BE3C2; } .ds-chip-guava { border-color:#FF9393; background:rgba(255,147,147,.2); color:#FF9393; } .ds-chip-warn { border-color:#EFB54B; background:rgba(239,181,75,.2); color:#EFB54B; }"
+  },
+  {
+   "name": "Card",
+   "kind": "card",
+   "refersTo": "card",
+   "description": "Hairline over a 5% wash fill; no shadow.",
+   "html": "<div class=\"ds-card\"><div class=\"ds-card-label\">Current APR (Fixed)</div><div class=\"ds-card-fig\">28.24%</div><div class=\"ds-card-sub\">= $1.27/day</div></div>",
+   "css": ".ds-card { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:inline-flex; flex-direction:column; gap:6px; padding:16px 20px; border:1px solid #374B6D; border-radius:5px; background:rgba(191,203,223,.05); } .ds-card-label { font-size:12px; color:#BFC8DF; text-decoration:underline dotted; text-underline-offset:4px; } .ds-card-fig { font-size:28px; font-weight:600; line-height:1.1; color:#1BE3C2; font-variant-numeric:tabular-nums lining-nums; } .ds-card-sub { font-size:10px; color:#7B94BD; }"
+  },
+  {
+   "name": "Tabs",
+   "kind": "nav",
+   "refersTo": "tabs",
+   "description": "Sentence-case tabs; active is white with a 1px info underline.",
+   "html": "<nav class=\"ds-tabs\"><button class=\"ds-tab ds-tab-p\">Opportunities</button><button class=\"ds-tab ds-tab-p\" aria-selected=\"true\">Positions</button><span class=\"ds-sep\"></span><button class=\"ds-tab\">Funding Spreads</button><button class=\"ds-tab\">Risk</button></nav>",
+   "css": ".ds-tabs { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:flex; align-items:stretch; border-bottom:1px solid #374B6D; background:#090D18; } .ds-tab { position:relative; padding:12px 16px; border:0; background:transparent; color:#7B94BD; font-size:12px; cursor:pointer; transition:color .3s; } .ds-tab-p { font-size:13px; } .ds-tab:hover { color:#DAE1EC; } .ds-tab[aria-selected=\"true\"] { color:#fff; font-weight:600; background-image:linear-gradient(to top, rgba(96,120,255,.25), transparent 50%); } .ds-tab[aria-selected=\"true\"]::after { content:\"\"; position:absolute; left:0; right:0; bottom:0; height:1px; background:#6079FF; } .ds-tab:focus-visible { outline:1px solid #9DAFCD; outline-offset:-2px; } .ds-sep { width:1px; height:16px; align-self:center; margin:0 12px; background:#374B6D; }"
+  },
+  {
+   "name": "Segmented Control",
+   "kind": "custom",
+   "refersTo": "segmented",
+   "description": "Butted 1px cells; selection by fill and weight, not blue.",
+   "html": "<div class=\"ds-seg\"><button class=\"ds-seg-btn\" data-active=\"true\">Maker</button><button class=\"ds-seg-btn\">Taker</button></div>",
+   "css": ".ds-seg { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:inline-flex; } .ds-seg-btn { margin-right:-1px; padding:5px 16px; border:1px solid #374B6D; background:transparent; color:#667FA7; font-size:12px; cursor:pointer; transition:background-color .15s; } .ds-seg-btn:first-child { border-radius:5px 0 0 5px; } .ds-seg-btn:last-child { margin-right:0; border-radius:0 5px 5px 0; } .ds-seg-btn:hover { background:rgba(191,203,223,.05); } .ds-seg-btn[data-active=\"true\"] { position:relative; z-index:1; background:rgba(191,203,223,.15); color:#9DAFCD; font-weight:500; } .ds-seg-btn:focus-visible { outline:1px solid #9DAFCD; outline-offset:1px; }"
+  },
+  {
+   "name": "Act-now Alert",
+   "kind": "custom",
+   "refersTo": "alert",
+   "description": "Guava hairline over a 10% fill, always with an icon.",
+   "html": "<div class=\"ds-alert\" role=\"alert\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z\"/><path d=\"M12 9v4M12 17h.01\"/></svg><span><b>UNHEDGED</b> Only the OKX leg filled. Complete the missing leg or unwind.</span></div>",
+   "css": ".ds-alert { font-family: Inter, ui-sans-serif, system-ui, sans-serif; display:flex; gap:8px; align-items:flex-start; max-width:460px; padding:10px 12px; border:1px solid rgba(255,147,147,.35); border-radius:5px; background:rgba(255,147,147,.1); color:#FFCACA; font-size:12px; line-height:1.4; } .ds-alert svg { flex-shrink:0; color:#FF9393; margin-top:1px; } .ds-alert b { color:#FF9393; font-weight:600; }"
+  }
+ ],
+ "narrative": {
+  "northStar": "The Night Desk",
+  "overview": "A trading desk after hours. The ground is deep water navy, dead even and unlit, so the only light on screen comes from numbers that matter: a mint APR, a coral short leg, a gold fixed rate, one blue button that starts something. Chrome stays quiet. Panels are hairlines over translucent fills, not slabs, so they nest without each level going darker.\n\nThe desk is dense because the operator is expert. Type runs small (12px body) and exact. Columns align on Inter's tabular numerals, and nothing is set in a mono face. Color carries meaning, never decoration: if a value is tinted, it is long, short, fixed, cautionary, or actionable. Calm is the default state, so when a guava alert or an UNHEDGED banner appears it is unmistakable.\n\nThe tokens are the Boros design system's, carried on the house `ink` names in `web/tailwind.config.cjs`. They stay aligned with Boros and Pendle's open-source identity. Do not drift into a private palette.",
+  "keyCharacteristics": [
+   "One flat, deep-water ground (`ink-950`); no glow, no texture, no gradient field.",
+   "Depth is a hairline (`ink-700`) over a 5% `wash` fill. There are no drop shadows on surfaces.",
+   "Inter only, 12px body, tabular lining numerals in every figure column.",
+   "Four semantic colors (grass, guava, gold, info) and nothing else bright.",
+   "Outline by default; a solid fill marks the single primary action."
+  ],
+  "rules": [
+   {
+    "name": "The Semantic Four Rule",
+    "body": "Grass, guava, gold, and info each mean one thing. A color appears only when the value is that thing; never use one as decoration or for brand flavor.",
+    "section": "colors"
+   },
+   {
+    "name": "The Contrast Floor Rule",
+    "body": "Ink 500 and 400 stay at or above 4.5:1 on ink-900/950, and ink 600 at 3:1. Do not swap in the raw Boros ramp values that fail the floor.",
+    "section": "colors"
+   },
+   {
+    "name": "The Never by Color Alone Rule",
+    "body": "Every alert severity and leg side pairs color with an icon, a word (LONG/SHORT, Hedged), or position.",
+    "section": "colors"
+   },
+   {
+    "name": "The Tabular Figure Rule",
+    "body": "Every number that can sit in a column carries `.num`. A figure that shifts width when it updates is a bug.",
+    "section": "typography"
+   },
+   {
+    "name": "The Sentence Case Rule",
+    "body": "Tabs, table headers, and buttons are sentence case, with no uppercase tracking. The column name is meant to be read, not to act as a rule.",
+    "section": "typography"
+   },
+   {
+    "name": "The No Glow Rule",
+    "body": "No drop shadows on cards, no background glows, no dot grids. The even ground is what lets a 5% fill read as a surface.",
+    "section": "elevation"
+   }
+  ],
+  "dos": [
+   "**Do** use the semantic names (`grass`, `guava`, `gold`, `info`) in new code; the `cyan`/`emerald`/`rose`/`amber`/`sky` scales are bridge aliases slated for deletion.",
+   "**Do** build surfaces as a 1px `ink-700` hairline over a 5% `wash` fill, and give popovers and menus an opaque ink ground.",
+   "**Do** put `.num` on every figure and keep body type at 12px.",
+   "**Do** reserve the solid info button for the one action per view that starts something; everything else is an outline.",
+   "**Do** pair every severity color with an icon or word.",
+   "**Do** keep motion short and functional, and switch off looping animation under `prefers-reduced-motion`."
+  ],
+  "donts": [
+   "**Don't** add drop shadows, glows, background gradients, or textured grounds to cards or the page.",
+   "**Don't** introduce a monospace face or a second typeface.",
+   "**Don't** use blue to mean \"selected\" in segmented controls; selection reads by fill and weight.",
+   "**Don't** uppercase tabs, headers, or buttons.",
+   "**Don't** use `crossex` cyan for anything other than \"via CrossEx\".",
+   "**Don't** use colors outside the Boros token set or lower the ink contrast floor."
+  ]
+ }
+}
