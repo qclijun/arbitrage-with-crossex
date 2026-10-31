@@ -78,6 +78,11 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
         <span className="text-grass">Long {row.long.venue} {row.long.contractId}</span>
       </p>
       <p className={micro}>Direction is fixed: the short leg receives a positive spread. Snapshot {snapshotId ?? 'none'}.</p>
+      {row.rateEstimate && <div role="note" aria-label="Funding rate estimate" className="mt-2 rounded border border-warning/40 p-2 text-warning">
+        <p>费率差估算：同一截止点、同一窗口，按相同名义金额将空腿结算费率总和减去多腿，再乘 365 ÷ 窗口天数。</p>
+        <p>空腿 {row.rateEstimate.short.price} · {row.rateEstimate.short.settlement} 结算；多腿 {row.rateEstimate.long.price} · {row.rateEstimate.long.settlement} 结算。</p>
+        <p>未计入各期价格差、USDC/USDT 汇率、基差或费用，并非实际现金收益或权益收益。现金流计价尚未统一，无法开仓。</p>
+      </div>}
       {selectedLegs && (selectedLegs.short.cadence || selectedLegs.long.cadence) && <p className={`mt-1 ${micro}`}>
         Settlement cadence: {(['short', 'long'] as const).map((side) => {
           const cadence = selectedLegs[side].cadence;
@@ -89,7 +94,7 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
         <table aria-label="History windows" className="w-full">
           <thead className={`text-left ${micro}`}>
             <tr className="[&>th]:pb-1 [&>th]:pr-2 [&>th]:font-normal">
-              <th>Window</th><th>Net total</th><th>Net APR</th><th>Short total · APR</th><th>Long total · APR</th><th>Coverage</th>
+              <th>Window</th><th>{row.rateEstimate ? 'Rate spread total' : 'Net total'}</th><th>{row.rateEstimate ? 'Rate spread APR' : 'Net APR'}</th><th>Short total · APR</th><th>Long total · APR</th><th>Coverage</th>
             </tr>
           </thead>
           <tbody>{row.windows.map((w) => <WindowRow key={w.days} w={w} />)}</tbody>
@@ -120,7 +125,7 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
                 </p>
               );
             })}
-            <p className="num">Net {pct(row.current.netAnnualized)} APR at each leg&apos;s own interval</p>
+            <p className="num">{row.rateEstimate ? 'Rate spread estimate' : 'Net'} {pct(row.current.netAnnualized)} APR at each leg&apos;s own interval</p>
             {row.current.reversed && (
               <p className="text-warning">Current spread runs opposite to the {days}d history — a hint only; the pair is not swapped or re-ranked.</p>
             )}
@@ -142,7 +147,9 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
       <div className={section}>
         <h4 className="font-semibold text-ink-100">Open this pair</h4>
         <p className={micro}>Costs, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.</p>
-        {snapshotId ? (
+        {row.rateEstimate ? (
+          <p className="text-warning">仅供观察：现金流计价尚未统一，无法开仓。</p>
+        ) : snapshotId ? (
           // A new pair or window is a new draft; nothing typed carries over.
           <FundingOrderForm key={`${row.id}/${days}`} row={row} days={days} snapshotId={snapshotId} admissionOpen={admissionOpen} />
         ) : (

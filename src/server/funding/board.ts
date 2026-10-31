@@ -78,6 +78,7 @@ export interface BoardWindow {
 export interface BoardRow {
   id: string;
   underlying: string;
+  rateEstimate?: FundingCandidate['rateEstimate'];
   short: BoardLeg;
   long: BoardLeg;
   rank: number | null;
@@ -140,6 +141,7 @@ function boardWindow(w: RankingWindow): BoardWindow {
 /** Why this pair could not be opened as shown, whatever its history: unproven symbol, unit or coin. */
 function executionBlockers(candidate: FundingCandidate, listings: Map<string, FundingContractListing>): string[] {
   const out: string[] = [];
+  if (candidate.rateEstimate) out.push('funding-valuation-unnormalized');
   if (!isSupportedCoin(candidate.underlying)) out.push('coin-unsupported');
   for (const side of SIDES) {
     const symbol = listings.get(legKey(candidate[side]))?.symbol ?? null;
@@ -181,6 +183,7 @@ export function buildFundingBoard(input: {
     rankingId: fingerprint,
     rankingChanged,
     rows: rows.map((row) => ({
+      ...(row.candidate.rateEstimate ? { rateEstimate: row.candidate.rateEstimate } : {}),
       id: row.candidate.id, underlying: row.candidate.underlying, short: leg(row.candidate.short), long: leg(row.candidate.long),
       rank: row.rank, windows: row.windows.map(boardWindow), current: row.current, executionBlockers: row.executionBlockers,
     })),

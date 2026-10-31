@@ -13,9 +13,12 @@ import type { FundingReads } from '../../src/server/funding/reads';
 import { A_CONTRACT, B_CONTRACT, FakeVenue, VirtualClock } from '../unit/engine-sim';
 import { HOST, makeTestApp } from '../server/helpers/gate-nock';
 
-export { A_CONTRACT as LONG_SYMBOL, B_CONTRACT as SHORT_SYMBOL };
+export { B_CONTRACT as SHORT_SYMBOL };
+export const CROSS_LONG = A_CONTRACT;
 /** A USDT-quoted long leg, for a same-quote pair. */
 export const USDT_LONG = 'BINANCE_FUTURE_ETH_USDT';
+/** Executable fixture uses a common mark/USDT basis; HL is observation-only. */
+export const LONG_SYMBOL = USDT_LONG;
 
 const top = (bid: number, ask: number, size = 10) => ({ book: { bids: [[bid, size]] as Array<[number, number]>, asks: [[ask, size]] as Array<[number, number]>, ts: 0 }, failure: null });
 
@@ -24,11 +27,11 @@ export function readState() {
   return {
     rules: [A_CONTRACT, B_CONTRACT, USDT_LONG].map((symbol) => ({ symbol, state: 'live', businessType: 'FUTURE', lotSize: '0.001', minSize: '0.001', minNotional: '5', tickSize: '0.01', maxMarketSize: '100', maxLimitSize: '100' })),
     leverageMax: new Map([[A_CONTRACT, 50], [B_CONTRACT, 20], [USDT_LONG, 50]]),
-    leverage: { [A_CONTRACT]: '10', [B_CONTRACT]: '3' } as Record<string, unknown>,
+    leverage: { [A_CONTRACT]: '10', [B_CONTRACT]: '3', [USDT_LONG]: '10' } as Record<string, unknown>,
     fees: [
-      { exchangeType: 'HYPERLIQUID', futureMakerFee: '0.0001', futureTakerFee: '0.00045' },
+      { exchangeType: 'BINANCE', futureMakerFee: '0.0001', futureTakerFee: '0.00045' },
       { exchangeType: 'OKX', futureMakerFee: '0.0002', futureTakerFee: '0.0005' },
-      { exchangeType: 'BINANCE', futureMakerFee: '0.0002', futureTakerFee: '0.0005' },
+      { exchangeType: 'HYPERLIQUID', futureMakerFee: '0.0001', futureTakerFee: '0.00045' },
     ],
     books: { [A_CONTRACT]: top(2499.9, 2500.1), [B_CONTRACT]: top(2501.9, 2502.1), [USDT_LONG]: top(2499.9, 2500.1) } as Record<string, ReturnType<typeof top> | { book: null; failure: { category: string } }>,
     account: { availableMargin: '10000', positionMode: 'SINGLE', assets: [{ coin: 'USDT', liability: '0' }, { coin: 'USDC', liability: '0' }] } as Record<string, unknown>,
@@ -97,7 +100,7 @@ export const LEGS: Record<string, { venue: string; contractId: string }> = {
 export function request(over: Record<string, unknown> = {}) {
   return {
     underlying: 'ETH', snapshotId: 'snap-1', windowDays: 30,
-    short: { ...LEGS[B_CONTRACT], symbol: B_CONTRACT }, long: { ...LEGS[A_CONTRACT], symbol: A_CONTRACT },
+    short: { ...LEGS[B_CONTRACT], symbol: B_CONTRACT }, long: { ...LEGS[LONG_SYMBOL], symbol: LONG_SYMBOL },
     quantity: '0.1505', makerLeg: 'long', leverage: { short: '3', long: '5' }, timeoutSec: 300, holdDays: '30',
     ...over,
   };
@@ -115,6 +118,8 @@ export interface FundingWorld {
 export function fundingWorld(opts: { at?: number; funding?: boolean } = {}): FundingWorld {
   const store = new Store(':memory:', { programVersion: '9.9.9' });
   const venue = new FakeVenue();
+  venue.refPrices.set(LONG_SYMBOL, '2500');
+  venue.books.set(LONG_SYMBOL, { bid: '2499.99', ask: '2500.01' });
   const clock = new VirtualClock();
   if (opts.at !== undefined) clock.t = opts.at;
   store.admission.enable(clock.now());

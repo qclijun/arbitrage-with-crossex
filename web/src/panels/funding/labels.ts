@@ -5,6 +5,7 @@ import type { BoardWindow } from '../../api/fundingOpportunities';
 export const micro = 'text-[11px] text-ink-400';
 
 const REASONS: Record<string, string> = {
+  'funding-valuation-unnormalized': '费率差估算：现金流计价尚未统一（oracle/mark、USDC/USDT），无法开仓',
   'history-cold-start': 'no history published yet (cold start)',
   'history-clock-behind': 'this clock is behind the snapshot',
   'history-cutoff-behind': 'the snapshot is behind the current UTC hour',

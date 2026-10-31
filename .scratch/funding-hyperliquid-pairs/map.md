@@ -4,7 +4,9 @@
 
 | 工单 | 分诊状态 | 实现进度 | Blocked by |
 |---|---|---|---|
-| [01：恢复HL BTC/ETH跨场所方向排名](issues/01-hl-directed-pair-rankings.md) | ready-for-agent | 未开始 | None |
+| [01：恢复HL BTC/ETH跨场所方向排名](issues/01-hl-directed-pair-rankings.md) | ready-for-agent | resolved | None |
 | [02：预算内刷新与过期原因](issues/02-hl-history-freshness-and-backfill.md) | ready-for-agent | 未开始 | None |
 
-当前可开始：01、02。两票没有相互阻塞，可并行；本次仅发布工单，尚未开始实现。
+01 已完成并通过验收；当前可开始：02。
+
+01结论：HL原生BTC/ETH已纳入费率差估算排名，保留服务端执行阻止。见[工单01](issues/01-hl-directed-pair-rankings.md)及[验收记录](validation-01.md)。

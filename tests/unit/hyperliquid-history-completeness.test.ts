@@ -155,5 +155,6 @@ it('wires native catalog proof through the production source to the formal settl
     expect(row.windows.every((window) => window.coverage === 'complete' && window.annualized !== null)).toBe(true);
   }
   expect(view.rows.find((row) => row.assetCode === 'HYPE')!.windows.every((window) => window.coverage !== 'complete')).toBe(true);
-  expect(discovery.listings.every((listing) => listing.underlying === null)).toBe(true);
+  expect(discovery.listings.map((listing) => [listing.contractId, listing.underlying?.id ?? null]))
+    .toEqual([['BTC', 'BTC'], ['ETH', 'ETH'], ['HYPE', null]]);
 });

@@ -6,6 +6,7 @@
  * score is the pure settled funding-rate spread: no costs, leverage or
  * execution permission are implied. Pure: callers supply the live contracts.
  */
+import { fundingRateEstimate, type FundingRateEstimate } from './pair-valuation';
 import { createHash } from 'node:crypto';
 import { HISTORY_DAYS, divideRounded, parseDecimal, scale, snapshotCutoff, type Coverage, type FundingHistoryResult, type HistoryDays } from './history';
 import { legKey, type FundingHistoryCache, type HistoryLegKey } from './history-cache';
@@ -16,7 +17,7 @@ export interface LiveFundingContract {
   contractId: string;
   /** Proven economic underlying; a ticker or alias match alone is not proof. */
   underlying: { id: string; evidence: string } | null;
-  /** Proven funding-rate basis; legs pair only on the same one. */
+  /** Proven funding-rate basis; cross-basis pairs require an explicit estimate policy. */
   rateBasis: { id: string; evidence: string } | null;
 }
 
@@ -24,6 +25,8 @@ export interface FundingCandidate {
   /** Stable identity: underlying, short leg, long leg. */
   id: string;
   underlying: string;
+  /** Equal-notional rate comparison only; cash-flow valuation is not normalized. */
+  rateEstimate?: FundingRateEstimate;
   /** Receives funding when the spread is positive. */
   short: HistoryLegKey;
   long: HistoryLegKey;
@@ -66,23 +69,25 @@ export function enumerateFundingCandidates(contracts: LiveFundingContract[]): {
     } else if (!contract.rateBasis?.id || !contract.rateBasis.evidence) {
       unpaired.push({ venue: contract.venue, contractId: contract.contractId, reason: 'rate-basis-unverified' });
     } else {
-      const group = JSON.stringify([contract.underlying.id, contract.rateBasis.id]);
+      const group = contract.underlying.id;
       groups.set(group, [...(groups.get(group) ?? []), contract]);
     }
   }
   const candidates: FundingCandidate[] = [];
   for (const group of groups.values()) {
     for (const short of group) {
-      const peers = group.filter((long) => long.venue !== short.venue);
+      const peers = group.filter((long) => long.venue !== short.venue
+        && (long.rateBasis!.id === short.rateBasis!.id || fundingRateEstimate(short, long) !== null));
       if (!peers.length) {
         // Only a proven basis on another venue can prove a mismatch.
-        const elsewhere = [...groups.values()].some((other) => other[0].rateBasis!.id !== short.rateBasis!.id
-          && other.some((peer) => peer.venue !== short.venue && peer.underlying!.id === short.underlying!.id));
+        const elsewhere = group.some((peer) => peer.venue !== short.venue && peer.rateBasis!.id !== short.rateBasis!.id);
         unpaired.push({ venue: short.venue, contractId: short.contractId, reason: elsewhere ? 'rate-basis-mismatch' : 'no-comparable-peer' });
       }
       for (const long of peers) {
         const underlying = short.underlying!.id;
+        const rateEstimate = fundingRateEstimate(short, long);
         candidates.push({
+          ...(rateEstimate ? { rateEstimate } : {}),
           id: JSON.stringify([underlying, short.venue, short.contractId, long.venue, long.contractId]),
           underlying,
           short: { venue: short.venue, contractId: short.contractId },

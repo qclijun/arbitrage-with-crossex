@@ -33,11 +33,11 @@ it.each([
   expect(result.rejected.length).toBeGreaterThan(0);
 });
 
-it('keeps HL economic identity unproved while exposing its distinct oracle basis', () => {
+it('proves native HL BTC identity while retaining its distinct oracle funding basis', () => {
   const native = [{ ...btc, venue: 'OKX', contractId: 'BTC-USDT-SWAP' },
     { ...btc, venue: 'HYPERLIQUID', contractId: 'BTC', quote: 'USDC' }];
   const result = mapFundingContracts([rule('OKX_FUTURE_BTC_USDT'), rule('HYPERLIQUID_FUTURE_BTC_USDC')], native);
-  expect(result.listings.map((l) => l.underlying?.id)).toEqual(['BTC', undefined]);
+  expect(result.listings.map((l) => l.underlying?.id)).toEqual(['BTC', 'BTC']);
   expect(result.listings.map((l) => l.rateBasis?.id)).toEqual(['linear-mark-notional-fraction', 'linear-oracle-notional-fraction']);
 });
 
@@ -51,4 +51,18 @@ it('does not upgrade a familiar ticker to economic proof without a reviewed exac
   const result = mapFundingContracts([rule('BINANCE_FUTURE_HYPE_USDT'), rule('ASTER_FUTURE_BTC_USDT')],
     [{ ...btc, base: 'HYPE', contractId: 'HYPEUSDT' }, { ...btc, venue: 'ASTER' }]);
   expect(result.listings.map((l) => l.underlying)).toEqual([null, null]);
+});
+
+it.each(['XBT', 'WBTC', 'kBTC', 'xyz:BTC', 'HYPE'])('keeps the unreviewed HL %s product out of native BTC/ETH identity', (asset) => {
+  const native = { ...btc, venue: 'HYPERLIQUID', contractId: asset, base: asset, quote: 'USDC' };
+  const result = mapFundingContracts([rule(`HYPERLIQUID_FUTURE_${asset}_USDC`)], [native]);
+  expect(result.listings.every((l) => l.underlying === null)).toBe(true);
+  expect(result.rejected.length + result.listings.length).toBe(1);
+});
+
+it('rejects HL BTC with a non-native settlement unit rather than reusing a ticker proof', () => {
+  const result = mapFundingContracts([rule('HYPERLIQUID_FUTURE_BTC_USDT')],
+    [{ ...btc, venue: 'HYPERLIQUID', contractId: 'BTC' }]);
+  expect(result.listings).toEqual([]);
+  expect(result.rejected[0]?.reason).toBe('native-contract-unverified');
 });

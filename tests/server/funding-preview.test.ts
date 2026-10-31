@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { deal, order } from '../helpers/slice-fixture';
-import { fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, USDT_LONG, type FundingWorld } from '../helpers/funding-intent-fixture';
+import { CROSS_LONG, fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, USDT_LONG, type FundingWorld } from '../helpers/funding-intent-fixture';
 
 let w: FundingWorld;
 afterEach(async () => {
@@ -25,12 +25,12 @@ describe('funding preview', () => {
     expect(data.previewId).toEqual(expect.any(String));
     expect(data.expiresAt).toBe(data.readAt + 10_000);
     expect(data.content).toMatchObject({
-      candidateId: JSON.stringify(['ETH', 'OKX', 'ETH-USDT-SWAP', 'HYPERLIQUID', 'ETH']),
+      candidateId: JSON.stringify(['ETH', 'OKX', 'ETH-USDT-SWAP', 'BINANCE', 'ETHUSDT']),
       quantityInput: '0.1505', quantity: '0.15', rounding: expect.stringContaining('0.001'),
       makerPrice: '2499.9', timeoutSec: 300, onExpiry: 'convert-to-taker', currency: 'USDT',
       legs: { long: { role: 'maker', side: 'BUY', leverage: '5' }, short: { role: 'hedge', side: 'SELL', leverage: '3' } },
       fees: { short: { maker: '0.0002', taker: '0.0005' }, long: { maker: '0.0001', taker: '0.00045' } },
-      fx: 'known:USDC/USDT', borrow: 'not-applicable',
+      fx: 'none', borrow: 'not-applicable',
     });
     expect(data.content.warnings).toEqual(expect.arrayContaining(['maker-expiry-converts-remainder-to-taker', `leverage-change:${LONG_SYMBOL}:10->5`]));
     expect(data.content.amounts.normalOneTime).toMatch(/^-?\d+(\.\d{1,2})?$/);
@@ -51,7 +51,7 @@ describe('funding preview', () => {
   ])('a failed %s read blocks (%s) — never a pass', async (read, code) => {
     w = fundingWorld();
     w.state.fail.add(read);
-    const res = await w.preview();
+    const res = await w.preview(read === 'spot' ? { long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } } : {});
     expect(codes(res)).toContain(code);
     expect(res.body.data.previewId).toBeNull();
   });
@@ -129,9 +129,9 @@ describe('funding preview', () => {
 
     w.state.fail.delete('spot');
     w.state.spotAt = w.clock.now() - 10_001;
-    expect(codes(await w.preview())).toContain('fx-unknown');
+    expect(codes(await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } }))).toContain('fx-unknown');
     w.state.spotAt = null;
-    expect(codes(await w.preview())).toContain('fx-unknown');
+    expect(codes(await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: CROSS_LONG } }))).toContain('fx-unknown');
   });
 
   it('charges an existing liability as known carry, and blocks one it cannot price', async () => {

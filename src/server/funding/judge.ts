@@ -10,6 +10,7 @@ import { cmp, exact, mul } from '../../core/funding/exact';
 import { underlyingOf } from '../../core/funding/spreads';
 import { estimateFundingScenario, type BorrowEvidence, type FundingScenario, type Side } from '../../core/funding/scenario';
 import { parseSymbol } from '../../core/numbers';
+import { fundingValuationUnnormalized } from '../../core/funding/pair-valuation';
 import type { AdmissionState } from '../../engine/admission';
 import { fx } from '../../engine/fx';
 import type { LegSpec } from '../../engine/types';
@@ -39,6 +40,8 @@ const OTHER: Record<Side, Side> = { short: 'long', long: 'short' };
 /** The candidate itself: admission, history, contract identity and unit. */
 function candidateBlockers(req: PreviewRequest, ev: FundingEvidence, admission: AdmissionState): Blocker[] {
   const out: Blocker[] = [];
+  if (fundingValuationUnnormalized(req.short, req.long)) out.push({ code: 'funding-valuation-unnormalized',
+    message: '费率差估算：oracle/mark or settlement currency differs; cash-flow valuation must be normalized before opening' });
   if (!admission.open) out.push({ code: 'admission-closed', message: `new funding opens are not admitted (${admission.reason})` });
   if (!ev.history.admitted) out.push({ code: ev.history.reason, message: 'the selected history window is not admissible now' });
   for (const side of SIDES) {
@@ -74,7 +77,7 @@ function costBlockers(req: PreviewRequest, ev: FundingEvidence, borrow: BorrowEv
 function scenarioOf(
   req: PreviewRequest, ev: FundingEvidence, sizing: Sizing, price: string | null, borrow: BorrowEvidence,
 ): FundingScenario | null {
-  if (!sizing.qty || !price || !ev.history.admitted) return null;
+  if (fundingValuationUnnormalized(req.short, req.long) || !sizing.qty || !price || !ev.history.admitted) return null;
   const { short, long } = ev.history.result;
   try {
     return estimateFundingScenario({
@@ -121,7 +124,7 @@ export function judge(req: PreviewRequest, ev: FundingEvidence, ledger: LedgerVi
   blockers.push(...positionBlockers({ short: req.short.symbol, long: req.long.symbol }, ev.positions, ev.openOrders, ledger));
   const scenario = scenarioOf(req, ev, sizing, price, borrow);
   if (scenario) blockers.push(...scenarioBlockers(req, ev, sizing, scenario));
-  else if (sizing.qty && price && ev.history.admitted) {
+  else if (sizing.qty && price && ev.history.admitted && !fundingValuationUnnormalized(req.short, req.long)) {
     blockers.push({ code: 'scenario-invalid', message: 'the scenario inputs are invalid' });
   }
 

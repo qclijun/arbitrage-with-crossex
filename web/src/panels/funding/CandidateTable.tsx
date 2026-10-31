@@ -52,6 +52,7 @@ export function CandidateTable({ board, selectedId, onSelect }: { board: Funding
                   <VenueChip exchange={row.short.venue} /> <span className="text-ink-500">→</span> <VenueChip exchange={row.long.venue} />
                 </span>
                 <span className="num text-[11px] text-ink-400">{row.short.contractId} / {row.long.contractId}</span>
+                {row.rateEstimate && <span className="text-[10px] text-warning">费率差估算</span>}
               </button>
             </td>
             <td className="px-2.5 py-1.5 text-right"><Rate row={row} days={board.days} /></td>
