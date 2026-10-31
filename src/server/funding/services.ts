@@ -17,6 +17,8 @@ export function createFundingServices(opts: { contracts?: FundingMarketDeps['con
     cache: history,
     sources: opts.sources ?? [],
     legs: async () => listings().map(({ venue, contractId }) => ({ venue, contractId })),
+    // Quotes are keyed by `legKey` of the venue-native contract ID, the same key the refresher reads.
+    currentSchedules: () => market.view().current,
   });
   const legOf = (symbol: string): HistoryLegKey | null => {
     const hits = listings().filter((l) => l.symbol === symbol);

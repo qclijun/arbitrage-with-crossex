@@ -12,7 +12,7 @@ it('reads official listing metadata without backdating today\'s funding interval
   ] });
   const catalog = createOfficialFundingCatalog({ rules: async () => [rule('BINANCE_FUTURE_BTC_USDT')] });
   expect((await catalog.contracts()).listings).toMatchObject([{ contractId: 'BTCUSDT', underlying: { id: 'BTC' } }]);
-  expect(catalog.historyContext('BINANCE', 'BTCUSDT')).toMatchObject({ listing: { at: 1_600_000_000_000 }, rules: [] });
+  expect(catalog.historyContext('BINANCE', 'BTCUSDT')).toMatchObject({ listing: { at: 1_600_000_000_000 } });
 });
 
 it('corroborates venue-native ids including paged Bybit listings and rejects missing or inverse products', async () => {
@@ -39,9 +39,9 @@ it('corroborates venue-native ids including paged Bybit listings and rejects mis
   const result = await catalog.contracts();
   expect(result.listings.map((l) => l.contractId).sort()).toEqual(['BTC', 'BTC-USDT-SWAP', 'BTCUSDT', 'ETHUSDT', 'ETHUSDT']);
   expect(result.rejected.map((r) => r.symbol).sort()).toEqual(['HYPERLIQUID_FUTURE_ETH_USDC', 'OKX_FUTURE_ETH_USD']);
-  expect(catalog.historyContext('ASTER', 'ETHUSDT')).toEqual({ listing: null, rules: [] });
-  expect(catalog.historyContext('OKX', 'BTC-USDT-SWAP')).toMatchObject({ listing: { at: Number(listed) }, rules: [] });
-  expect(catalog.historyContext('HYPERLIQUID', 'BTC')).toEqual({ listing: null, rules: [] });
+  expect(catalog.historyContext('ASTER', 'ETHUSDT')).toEqual({ listing: null });
+  expect(catalog.historyContext('OKX', 'BTC-USDT-SWAP')).toMatchObject({ listing: { at: Number(listed) } });
+  expect(catalog.historyContext('HYPERLIQUID', 'BTC')).toEqual({ listing: null });
 });
 
 it('isolates a failed venue and never accepts a truncated or cyclic native catalog', async () => {

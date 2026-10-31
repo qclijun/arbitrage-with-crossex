@@ -78,11 +78,8 @@ it('honours Retry-After across rounds and accepts a later read only after cooldo
   expect(await source.page('BTCUSDT', { start, end: start + 2_000 }, null, call)).toMatchObject({ done: true });
 });
 
-it('carries externally proved listing and cadence segments rather than inventing them from adjacent rates', async () => {
-  const context = { listing: { at: start, evidence: 'fixture listing document' }, rules: [
-    { from: start, until: start + 8 * 3_600_000, everyHours: 8, anchor: start, evidence: 'fixture old schedule' },
-    { from: start + 8 * 3_600_000, until: Number.MAX_SAFE_INTEGER, everyHours: 4, anchor: start, evidence: 'fixture effective change announcement' },
-  ] };
+it('carries only the catalog listing: cadence is proved from the read pages and the current interval, never the source', async () => {
+  const context = { listing: { at: start, evidence: 'fixture listing document' } };
   const source = createOfficialHistorySources({ context: async (venue, id) => venue === 'BINANCE' && id === 'BTCUSDT' ? context : null })[0]!;
   expect(await source.context('BTCUSDT', call)).toEqual(context);
   expect(await source.context('ETHUSDT', call)).toBeNull();

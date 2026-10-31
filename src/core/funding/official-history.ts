@@ -40,7 +40,6 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
   return {
     venue: e.venue, api: e.api, version: 'official-v1', ...(e.venue === 'OKX' ? { maxDays: 90 } : {}),
     ...(e.venue === 'HYPERLIQUID' ? { timeMapping: (row: Row) => opts.hlSettlements?.get(timestamp(row.time)) } : {}),
-    // Today's instrument metadata does not prove historical funding cadence.
     context: async (id, call) => opts.context?.(e.venue, id, call) ?? null,
     async page(contractId, range, cursor, call): Promise<HistorySourcePage> {
       const hl = e.venue === 'HYPERLIQUID';

@@ -1,6 +1,6 @@
 /** Stub settled-history venues and a fake-clock round driver for the funding history cache/refresher tests. */
 import { vi } from 'vitest';
-import { FundingHistoryCache, type HistoryLegKey } from '../../src/core/funding/history-cache';
+import { FundingHistoryCache, legKey, type HistoryLegKey } from '../../src/core/funding/history-cache';
 import {
   createFundingHistoryRefresher,
   type FundingHistorySource,
@@ -16,8 +16,16 @@ export const T = Date.UTC(2026, 9, 1, 10);
 
 export type Fail = 'rate-limited' | 'error' | 'hang';
 
-/** One venue serving settled 8-hour history; `fail` and `pageSize` script its behavior. */
-export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number; fail?: () => Fail | null; drop?: number; delayMs?: number } = {}) {
+/** Times on the `hours` UTC grid in (from, to]. */
+export function grid(hours: number, from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let t = Math.floor(from / (hours * H)) * hours * H + hours * H; t <= to; t += hours * H) out.push(t);
+  return out;
+}
+
+/** One venue serving settled history, 8-hourly unless `times` lists every raw time; `fail` and `pageSize` script its behavior. */
+export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number; fail?: () => Fail | null; drop?: number; delayMs?: number;
+  times?: () => readonly number[] } = {}) {
   const calls: string[] = [];
   let inflight = 0;
   let peak = 0;
@@ -29,10 +37,7 @@ export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number
     venue,
     api,
     version: 'stub-v1',
-    context: async (contractId: string) => ({
-      listing: { at: 0, evidence: `${venue}/${contractId}/listing` },
-      rules: [{ from: 0, until: T + 30 * D, everyHours: 8, anchor: 0, evidence: `${venue}/rules` }],
-    }),
+    context: async (contractId: string) => ({ listing: { at: 0, evidence: `${venue}/${contractId}/listing` } }),
     page: (contractId, range, cursor, call: HistoryCall) => call(`${venue} ${contractId} ${range.start}-${range.end} ${cursor ?? ''}`, async () => {
       calls.push(`${contractId}:${range.start}:${cursor ?? ''}`);
       inflight += 1;
@@ -44,8 +49,8 @@ export function stubSource(venue: 'BINANCE' | 'BYBIT', opts: { pageSize?: number
         if (failure === 'rate-limited') throw Object.assign(new Error('429'), { response: { status: 429 } });
         if (failure === 'error') throw new Error('boom');
         const from = cursor === null ? range.start : Number(cursor);
-        const times: number[] = [];
-        for (let t = Math.floor(from / (8 * H)) * 8 * H + 8 * H; t <= range.end; t += 8 * H) if (t > from && t !== opts.drop) times.push(t);
+        const times = (opts.times?.() ?? grid(8, from, range.end).filter((t) => t !== opts.drop))
+          .filter((t) => t > from && t <= range.end).sort((a, b) => a - b);
         const size = opts.pageSize ?? times.length;
         const rows = times.slice(0, size);
         const done = rows.length === times.length;
@@ -76,18 +81,29 @@ export async function run<T>(refresher: { runOnce(): Promise<T> }): Promise<T> {
   return done;
 }
 
+/**
+ * The market's current official intervals for `legs`, quoted at each read. Mutate `hours` to
+ * change a venue's interval between rounds.
+ */
+export function currentFor(legs: HistoryLegKey[], hours: Record<string, number> = { BINANCE: 8, BYBIT: 8, HYPERLIQUID: 1 }) {
+  return () => new Map(legs.filter((k) => hours[k.venue] !== undefined)
+    .map((k) => [legKey(k), { intervalHours: hours[k.venue]!, at: Date.now() }]));
+}
+
 export function setup(opts: {
   binance?: Parameters<typeof stubSource>[1];
   bybit?: Parameters<typeof stubSource>[1];
   legs?: HistoryLegKey[];
   budget?: Partial<HistoryBudget>;
+  current?: Record<string, number>;
 } = {}) {
   const cache = new FundingHistoryCache();
   const binance = stubSource('BINANCE', opts.binance);
   const bybit = stubSource('BYBIT', opts.bybit);
+  const legs = opts.legs ?? [BTC.binance, BTC.bybit];
   const refresher = createFundingHistoryRefresher({
-    cache, sources: [binance.source, bybit.source], legs: async () => opts.legs ?? [BTC.binance, BTC.bybit],
-    random: () => 0, budget: opts.budget,
+    cache, sources: [binance.source, bybit.source], legs: async () => legs,
+    currentSchedules: currentFor(legs, opts.current), random: () => 0, budget: opts.budget,
   });
   return { cache, binance, bybit, refresher };
 }

@@ -14,9 +14,10 @@ import {
   type HistoryStopReason,
   type HistoryVenueReport,
 } from './history-cache';
-import { HISTORY_DAYS, snapshotCutoff, type FundingHistoryLeg, type FundingRuleSegment,
-  type HistoryPages, type SettledFundingEvent } from './history';
+import { HISTORY_DAYS, snapshotCutoff, type FundingHistoryLeg, type HistoryPages, type SettledFundingEvent } from './history';
 import { normalizeOfficialSettlement, sourceBoundary } from './history-sources';
+import { acceptCurrentInterval, inProvenRange, proveSettlementRun, type CurrentInterval,
+  type CurrentSchedule } from './schedule-proof';
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -73,8 +74,8 @@ export interface FundingHistorySource {
   version: string;
   /** Longest window the endpoint can serve, when shorter than a year. */
   maxDays?: number;
-  /** Proven listing time and historical cadence; null when they cannot be proven (UNKNOWN, no page reads). */
-  context(contractId: string, call: HistoryCall): Promise<{ listing: FundingHistoryLeg['listing']; rules: FundingRuleSegment[] } | null>;
+  /** Proven listing time; null when the contract cannot be read (UNKNOWN, no page reads). Cadence is proved after the read. */
+  context(contractId: string, call: HistoryCall): Promise<{ listing: FundingHistoryLeg['listing'] } | null>;
   /** One page of settled history in (range.start, range.end]. */
   page(contractId: string, range: { start: number; end: number }, cursor: string | null, call: HistoryCall): Promise<HistorySourcePage>;
   /** Proven settlement hour for a raw row stamped off the hour (Hyperliquid). */
@@ -192,8 +193,9 @@ function segments(cutoff: number, maxDays: number, listingAt: number | null): Ar
 }
 
 async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call: HistoryCall, state: RoundState,
-  budget: HistoryBudget): Promise<{ leg: FundingHistoryLeg; reason: HistoryAttemptReason | null }> {
+  budget: HistoryBudget, current: CurrentInterval): Promise<{ leg: FundingHistoryLeg; reason: HistoryAttemptReason | null }> {
   const leg = placeholder(key, source);
+  if (!current.ok) return { leg, reason: 'schedule-unverified' };
   let observedAt: number | null = null;
   const events: SettledFundingEvent[] = [];
   const pages: HistoryPages['pages'] = [];
@@ -205,9 +207,6 @@ async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call
     const context = await bounded(() => source.context(key.contractId, call));
     if (!context) return { leg, reason: 'schedule-unverified' };
     leg.listing = context.listing;
-    leg.rules = context.rules;
-    if (!context.rules.length) return { leg, reason: 'schedule-unverified' };
-    const ruleAt = (t: number) => context.rules.find((r) => r.from <= t && t < r.until);
     const ref = { venue: source.venue, api: source.api, contractId: key.contractId };
     for (const seg of segments(state.cutoff, source.maxDays ?? 365, context.listing?.at ?? null)) {
       let cursor: string | null = null;
@@ -222,11 +221,7 @@ async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call
         pages.push({ request, firstAt: page.firstAt, lastAt: page.lastAt, count: page.rows.length, cursor: page.cursor, rawHash: page.rawHash });
         const evidence = `${request}#${page.rawHash}`;
         for (const row of page.rows) {
-          const mapping = source.timeMapping?.(row);
-          // The rule (and so the interval) is chosen by the settlement time it parses to.
-          const at = normalizeOfficialSettlement(ref, row, 1, evidence, mapping)?.settledAt;
-          const rule = at === undefined ? undefined : ruleAt(at);
-          const event = rule ? normalizeOfficialSettlement(ref, row, rule.everyHours, evidence, mapping) : null;
+          const event = normalizeOfficialSettlement(ref, row, current.everyHours, evidence, source.timeMapping?.(row));
           if (!event) throw new RoundStop('settlement-unnormalized');
           if (event.settledAt > seg.start && event.settledAt <= seg.end) events.push(event);
         }
@@ -241,12 +236,16 @@ async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call
     reason = err instanceof RoundStop ? err.reason : 'source-error';
   }
   if (covered === state.cutoff) return { leg, reason: reason ?? 'no-history-read' };
+  // A half-read segment's records lie at or before `covered`, where the proof does not look.
+  const proof = proveSettlementRun({ everyHours: current.everyHours, currentAt: current.observedAt, rangeStart: covered,
+    cutoff: state.cutoff, regularSettledAt: events.filter((e) => e.kind === 'regular').map((e) => e.settledAt) });
+  const termination = `${reason ? `stopped:${reason}` : 'all-segments-done'}${proof.ok ? '' : `;schedule:${proof.reason}`}`;
+  // A refused leg still publishes, with no events, so a stamp no rule vouches for never reaches a later merge.
   Object.assign(leg, {
-    observedAt, verifiedAt: Date.now(), events,
-    pages: { complete: true, rangeStart: covered, rangeEnd: state.cutoff, pages,
-      termination: reason ? `stopped:${reason}` : 'all-segments-done' },
+    observedAt, verifiedAt: Date.now(), rules: proof.ok ? [proof.rule] : [], events: proof.ok ? inProvenRange(events, proof.rule) : [],
+    pages: { complete: true, rangeStart: covered, rangeEnd: state.cutoff, pages, termination },
   });
-  return { leg, reason };
+  return { leg, reason: reason ?? (proof.ok ? null : 'schedule-unverified') };
 }
 
 /**
@@ -295,6 +294,8 @@ export interface FundingHistoryRefresherDeps {
   sources: FundingHistorySource[];
   /** The current CrossEx live contracts, mapped to venue-native IDs. */
   legs(): Promise<HistoryLegKey[]>;
+  /** The market's current official interval by `legKey`; read once per round so every leg sees one snapshot. */
+  currentSchedules(): ReadonlyMap<string, CurrentSchedule>;
   budget?: Partial<HistoryBudget>;
   random?: () => number;
 }
@@ -318,6 +319,7 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       return failedReport(startedAt, 'leg-list-failed');
     }
     const prior = deps.cache.snapshot()?.legs;
+    const currents = deps.currentSchedules();
     const next = new Map<string, CachedHistoryLeg>();
     const byVenue = new Map<string, HistoryLegKey[]>();
     for (const key of new Map(keys.map((k) => [legKey(k), k])).values()) {
@@ -334,7 +336,8 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       const pending = [...queue].sort((a, b) => verified(a) - verified(b));
       const worker = async () => {
         for (let key = pending.shift(); key; key = pending.shift()) {
-          const { leg, reason } = await collectLeg(key, source, call, state, budget);
+          const current = acceptCurrentInterval(currents.get(legKey(key)), startedAt);
+          const { leg, reason } = await collectLeg(key, source, call, state, budget, current);
           if (!reason) tally.refreshed += 1;
           const id = legKey(key);
           next.set(id, merge(prior?.get(id), leg, cutoff, Date.now(), reason));
