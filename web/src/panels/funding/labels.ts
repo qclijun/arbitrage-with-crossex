@@ -14,6 +14,7 @@ const REASONS: Record<string, string> = {
   'history-unknown': 'history is UNKNOWN',
   'history-unsupported': 'history is UNSUPPORTED for this window',
   'history-stale': 'stale (verified over 15 min ago)',
+  'history-restored': '重启前数据，待核验',
   'historical-source-unsupported': 'the source cannot serve this window',
   'no-history-source': 'no official history source is wired',
   'source-unverified': 'the source is not verified',
@@ -70,7 +71,10 @@ export function windowValue(w: BoardWindow | undefined): { text: string; known: 
 /** Name the actionable gap instead of collapsing every failure into UNKNOWN. */
 export function windowStatus(w: BoardWindow | undefined): string {
   if (!w) return 'UNKNOWN';
-  if (w.coverage === 'complete') return `${w.eligible ? 'Complete' : 'STALE'}${inferredWindow(w) ? ' · inferred' : ''}`;
+  if (w.coverage === 'complete') {
+    const restored = !w.eligible && w.reasons.some((code) => code.endsWith('history-restored'));
+    return `${w.eligible ? 'Complete' : restored ? REASONS['history-restored'] : 'STALE'}${inferredWindow(w) ? ' · inferred' : ''}`;
+  }
   if (w.coverage === 'unsupported') return 'UNSUPPORTED';
   const codes = w.reasons.map((code) => code.replace(/^(short|long):/, ''));
   if (codes.includes('history-cold-start')) return 'Collecting history';

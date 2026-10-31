@@ -33,6 +33,20 @@ function Notices({ board }: { board: FundingBoard }) {
         <Chip sm tone="amber">Contract list refresh failed — using the list read {fmtTime(toDate(contracts.at))}.</Chip>
       )}
       {history.state === 'cold' && <Chip sm tone="amber">No funding history has been published yet (cold start) — every row is UNKNOWN.</Chip>}
+      {history.restored && (
+        <Chip sm tone="amber">
+          重启前数据，待核验 — showing history saved {fmtTime(toDate(history.restored.savedAt))}; nothing ranks or opens from it until it is re-read.
+        </Chip>
+      )}
+      {(history.persistence.restore?.outcome === 'discarded' || history.persistence.restore?.outcome === 'unavailable') && (
+        <Chip sm tone="amber" title={history.persistence.restore.reason}>
+          {history.persistence.restore.outcome === 'discarded' ? 'The saved history could not be used and was discarded' : 'The history cache file is unavailable'}
+          {' '}— collecting from scratch.
+        </Chip>
+      )}
+      {history.persistence.lastSave?.outcome === 'failed' && (
+        <Chip sm tone="amber" title={history.persistence.lastSave.reason}>Saving history for the next restart failed — this page is unaffected.</Chip>
+      )}
       {history.cutoffBehind && <Chip sm tone="amber">History is behind the current UTC hour — nothing ranks until it refreshes.</Chip>}
       {history.lastRound?.outcome === 'failed' && (
         <Chip sm tone="red">

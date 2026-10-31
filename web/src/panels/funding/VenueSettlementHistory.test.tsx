@@ -11,7 +11,7 @@ const board = (): SettlementBoard => ({ evaluatedAt: cutoff + 60_000, snapshotId
   options: { underlyings: ['BTC'], venues: ['ASTER', 'HYPERLIQUID', 'OKX'] },
   rows: ['ASTER', 'HYPERLIQUID', 'OKX'].map((venue) => ({ venue, contractId: venue === 'HYPERLIQUID' ? 'BTC' : venue === 'OKX' ? 'BTC-USDT-SWAP' : 'BTCUSDT',
     symbol: `${venue}_FUTURE_BTC_${venue === 'HYPERLIQUID' ? 'USDC' : 'USDT'}`, assetCode: 'BTC', lastAttempt: { at: cutoff + 60_000, outcome: 'success' },
-    windows: [7, 30, 90, 180, 365].map((days) => ({ days: days as 7 | 30 | 90 | 180 | 365, cutoff, coverage: 'unknown', fresh: true,
+    windows: [7, 30, 90, 180, 365].map((days) => ({ days: days as 7 | 30 | 90 | 180 | 365, cutoff, coverage: 'unknown', fresh: true, restored: false,
       total: null, annualized: null, observed: { total: venue === 'HYPERLIQUID' ? '0' : '-0.01', annualized: venue === 'HYPERLIQUID' ? '0' : '-0.12',
         events: 21, firstAt: cutoff - 24 * 3_600_000, lastAt: cutoff }, reasons: ['schedule-unverified'], verifiedAt: cutoff + 60_000 })),
   })),

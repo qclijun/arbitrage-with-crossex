@@ -17,7 +17,7 @@ it.each([
       backfill: { cutoff: oldCutoff, completeThroughDays: 180, pendingDays: 365, pagesRead: 50 },
       lastAttempt: { at: cutoff + 60_000, outcome: 'error', reason },
       windows: [7, 30, 90, 180, 365].map((days) => ({ days: days as 7 | 30 | 90 | 180 | 365,
-        cutoff: days === 365 ? oldCutoff : cutoff, coverage: 'complete', fresh: days !== 365,
+        cutoff: days === 365 ? oldCutoff : cutoff, coverage: 'complete', fresh: days !== 365, restored: false,
         total: '0.01', annualized: '0.1', observed: null, verifiedAt: (days === 365 ? oldCutoff : cutoff) + 60_000,
         lastAttempt: { at: cutoff + 60_000, outcome: 'error', reason }, reasons: days === 365 ? [reason, 'history-cutoff-behind'] : [],
       })),

@@ -57,6 +57,10 @@ code allowed to mutate state or call venue-mutating endpoints.
   `server/funding/board.ts`): the published history cache and
   `core/funding/market.ts`, both filled by background pollers
   (`server/funding/services.ts`), so a browser request never reaches a venue.
+  The history refresher also saves each round to `data/funding-history.sqlite`
+  (`server/funding/history-store.ts`): a rebuildable cache outside the ledger's
+  version, migrations and backups. A restart shows it at once as `restored` reads,
+  which keep their original times, are never fresh, and cannot rank or open.
   Its order form (`web/src/panels/funding/`) opens a pair only through that
   preview and acceptance; it never posts `/deals`. Each acceptance is recorded in
   localStorage, one key per intent, before its one send (`panels/funding/submissions.ts`;

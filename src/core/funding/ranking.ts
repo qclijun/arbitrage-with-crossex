@@ -183,7 +183,8 @@ function readWindow(history: HistoryReader, candidate: FundingCandidate, days: H
       reasons.push(`history-${result.coverage}`);
       for (const side of SIDES) for (const reason of new Set(result[side].reasons)) reasons.push(`${side}:${reason}`);
     }
-    for (const side of SIDES) if (!result[side].fresh) reasons.push(`${side}:history-stale`);
+    // A restored read is never fresh, whatever its timestamps: name why instead of calling it stale.
+    for (const side of SIDES) if (!result[side].fresh) reasons.push(`${side}:${result[side].restored ? 'history-restored' : 'history-stale'}`);
   }
   return {
     days,

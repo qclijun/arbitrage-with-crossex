@@ -11,6 +11,7 @@ import {
   type HistoryAttemptReason,
   type HistoryLegKey,
   type HistoryRoundReport,
+  type HistorySnapshot,
   type HistoryStopReason,
   type HistoryVenueReport,
 } from './history-cache';
@@ -186,6 +187,11 @@ export interface FundingHistoryRefresherDeps {
   random?: () => number;
   /** Reserve the bounded budget for dashboard assets first; equal-priority legs still rotate. */
   priority?(key: HistoryLegKey): number;
+  /**
+   * Called after each published round. The jobs keep changing in place, so the
+   * callee copies what it keeps (`captureHistory`); a throw never fails the round.
+   */
+  persist?(snapshot: HistorySnapshot, progress: ReadonlyMap<string, CollectionProgress>, backfilled: ReadonlyMap<string, number>): void;
 }
 
 export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps) {
@@ -223,7 +229,11 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       const source = sources.get(venue)!;
       const call = makeCall(state, venue, budget, deps.random ?? Math.random);
       // Least recently verified first, so a budget cut rotates instead of starving the same legs.
-      const verified = (key: HistoryLegKey) => prior?.get(legKey(key))?.leg.verifiedAt ?? -Infinity;
+      // A restored read is never fresh, so it waits with the never-read ones, not behind fresh legs.
+      const verified = (key: HistoryLegKey) => {
+        const leg = prior?.get(legKey(key))?.leg;
+        return leg?.restored ? -Infinity : leg?.verifiedAt ?? -Infinity;
+      };
       const pending = [...queue].sort((a, b) => (deps.priority?.(b) ?? 0) - (deps.priority?.(a) ?? 0)
         || verified(a) - verified(b) || legKey(a).localeCompare(legKey(b)));
       const process = async (key: HistoryLegKey, recentOnly = false) => {
@@ -268,7 +278,9 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
     snapshotSeq += 1;
     const finished: HistoryRoundReport = { startedAt, finishedAt: Date.now(), cutoff, outcome: 'published', requests: state.requests,
       venues: Object.fromEntries([...state.venues].map(([venue, { left: _l, nextAt: _n, ...tally }]) => [venue, tally])) };
-    deps.cache.publish({ id: `fh-${cutoff}-${startedAt}-${snapshotSeq}`, cutoff, publishedAt: finished.finishedAt, legs: next }, finished);
+    const snapshot: HistorySnapshot = { id: `fh-${cutoff}-${startedAt}-${snapshotSeq}`, cutoff, publishedAt: finished.finishedAt, legs: next };
+    deps.cache.publish(snapshot, finished);
+    try { deps.persist?.(snapshot, progress, backfilled); } catch { /* the cache file is optional; the round stands */ }
     return finished;
   }
 
@@ -301,6 +313,13 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
 
   return {
     runOnce,
+    /** Before the first round only: resume saved backfill jobs (still marked `restored`) and their rotation. */
+    restore(saved: { progress: ReadonlyMap<string, CollectionProgress>; backfilled: ReadonlyMap<string, number> }): void {
+      if (snapshotSeq || inflight) return;
+      for (const [id, job] of saved.progress) progress.set(id, job);
+      for (const [id, seq] of saved.backfilled) backfilled.set(id, seq);
+      snapshotSeq = Math.max(0, ...saved.backfilled.values());
+    },
     /** Runs a round now (unless a scheduled one is due within the offset), then on schedule. */
     start(): void {
       if (timer) return;

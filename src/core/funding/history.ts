@@ -55,6 +55,11 @@ export interface FundingHistoryLeg {
   pages: HistoryPages;
   rules: FundingRuleSegment[];
   events: SettledFundingEvent[];
+  /**
+   * Loaded from the local cache at startup. Its timestamps are the original ones,
+   * but nothing in this process re-proved it, so it is observation only: never fresh.
+   */
+  restored?: true;
 }
 
 export interface LegHistoryResult {
@@ -67,6 +72,8 @@ export interface LegHistoryResult {
   lastAttempt: FundingHistoryLeg['lastAttempt'];
   coverage: Coverage;
   fresh: boolean;
+  /** The read came from the startup cache and has not been re-read yet. */
+  restored?: true;
   reasons: string[];
   missingEvents: number[];
   missingRanges: Array<{ start: number; end: number; reason: string }>;
@@ -165,7 +172,7 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
   const specialEvents: SettledFundingEvent[] = [];
   const missingEvents: number[] = [];
   const missingRanges: LegHistoryResult['missingRanges'] = [];
-  const fresh = leg.verifiedAt !== null && leg.verifiedAt <= now
+  const fresh = !leg.restored && leg.verifiedAt !== null && leg.verifiedAt <= now
     && leg.verifiedAt >= cutoff && leg.observedAt !== null && leg.observedAt >= cutoff
     && leg.verifiedAt >= leg.observedAt
     && now - leg.verifiedAt <= FRESH_MS && snapshotCutoff(now) === cutoff;
@@ -173,6 +180,7 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
     venue: leg.venue, contractId: leg.contractId, source: leg.source,
     observedAt: leg.observedAt, verifiedAt: leg.verifiedAt, lastAttempt: leg.lastAttempt,
     fresh, reasons, missingEvents, missingRanges, conflicts, specialEvents, observed: null, cadence: leg.cadence,
+    ...(leg.restored ? { restored: true as const } : {}),
   };
   const boundary = sourceBoundary(leg.venue, leg.source.api, days);
   if (boundary === 'unsupported' || (boundary === 'verified' && leg.source.status === 'unsupported')) {

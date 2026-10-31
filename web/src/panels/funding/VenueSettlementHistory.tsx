@@ -15,10 +15,10 @@ function Metric({ window, cumulative }: { window: SettlementWindow; cumulative: 
     <span className={`num ${value == null ? 'text-ink-500' : !window.fresh ? 'text-warning' : 'text-ink-100'}`}>{value == null ? '—' : pct(value)}</span>
     <span className={`block whitespace-nowrap text-[10px] ${value == null ? 'text-ink-500' : 'text-ink-400'}`}>
       {value == null ? 'Not collected' : `${window.observed?.events ?? 0} settlements${window.cadence?.basis === 'inferred'
-        ? ` · Inferred ${window.cadence.intervals.map((hours) => `${hours}h`).join('/')}` : ''}${unverified ? ' · Unverified' : ''}${!window.fresh ? ' · Stale' : ''}`}
+        ? ` · Inferred ${window.cadence.intervals.map((hours) => `${hours}h`).join('/')}` : ''}${unverified ? ' · Unverified' : ''}${!window.fresh && !window.restored ? ' · Stale' : ''}`}
     </span>
     <span className={`block text-[10px] ${window.fresh ? 'text-ink-400' : 'text-warning'}`}>
-      {window.fresh ? 'Fresh' : window.verifiedAt ? 'Stale' : 'Not verified'}
+      {window.fresh ? 'Fresh' : window.restored ? '重启前数据，待核验' : window.verifiedAt ? 'Stale' : 'Not verified'}
     </span>
     {window.cutoff !== null && <span className={`block whitespace-nowrap ${micro}`}>Cutoff {fmtTime(toDate(window.cutoff))}</span>}
     {window.verifiedAt !== null && <span className={`block whitespace-nowrap ${micro}`}>Verified {fmtTime(toDate(window.verifiedAt))}</span>}

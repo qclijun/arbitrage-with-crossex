@@ -113,7 +113,8 @@ describe('FundingOpportunitiesPanel', () => {
   it('explains a cold start, an unwired mapping and a failed refresh rather than showing an empty market', async () => {
     serve(fundingBoard({
       rows: [], candidateCount: 0, matched: 0, rankedCount: 0, snapshotId: null,
-      history: { state: 'cold', snapshotId: null, cutoff: null, cutoffBehind: null, publishedAt: null, refreshing: true,
+      history: { state: 'cold', snapshotId: null, cutoff: null, cutoffBehind: null, publishedAt: null, restored: null, refreshing: true,
+        persistence: { restore: null, lastSave: null },
         lastRound: { startedAt: 1, finishedAt: 2, cutoff: 0, outcome: 'failed', reason: 'round-error', requests: 0, venues: {} } },
       contracts: { state: 'unwired', at: null, lastAttempt: null, count: 0, unpaired: [] }, feeds: [],
     }));

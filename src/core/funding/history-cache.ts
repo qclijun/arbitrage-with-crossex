@@ -1,8 +1,9 @@
 /**
  * Read-only side of settled funding history. The background refresher is the
  * only writer; readers get the last PUBLISHED snapshot and never trigger a
- * fetch, so a page request cannot reach a venue. Rebuildable in memory: a
- * restart is a cold start (UNKNOWN), never revived old evidence.
+ * fetch, so a page request cannot reach a venue. Rebuildable: a restart either
+ * restores the last saved snapshot as observation-only `restored` reads (original
+ * timestamps, never fresh) or is a cold start (UNKNOWN).
  */
 import {
   evaluateFundingHistory,
@@ -50,9 +51,14 @@ export function historyReads(cached: CachedHistoryLeg): HistoryWindowEvidence[] 
     ...(cached.wider ? [{ cutoff: cached.cutoff, leg: cached.wider }] : []), ...(cached.retained ?? [])];
 }
 
-/** Shared evidence ordering and range proof for both retention and window reads. */
+/**
+ * Shared evidence ordering and range proof for both retention and window reads.
+ * At one cutoff a read made by this process beats a restored one, whatever their
+ * times: a resumed backfill job finishing after the recent read must not shadow it.
+ */
 export const compareHistoryEvidence = (a: HistoryWindowEvidence, b: HistoryWindowEvidence): number =>
-  b.cutoff - a.cutoff || (b.leg.verifiedAt ?? -Infinity) - (a.leg.verifiedAt ?? -Infinity);
+  b.cutoff - a.cutoff || Number(a.leg.restored === true) - Number(b.leg.restored === true)
+    || (b.leg.verifiedAt ?? -Infinity) - (a.leg.verifiedAt ?? -Infinity);
 
 export function coversHistoryWindow({ cutoff, leg }: HistoryWindowEvidence, days: HistoryDays): boolean {
   return leg.verifiedAt !== null && leg.pages.complete
@@ -71,6 +77,8 @@ export interface HistorySnapshot {
   cutoff: number;
   publishedAt: number;
   legs: ReadonlyMap<string, CachedHistoryLeg>;
+  /** Loaded from the local cache at startup, as saved at `savedAt`; no round has published since. */
+  restored?: { savedAt: number };
 }
 
 /** Why a leg's read ended early; also a venue's `stopped` reason. */
@@ -106,21 +114,29 @@ export interface HistoryPairRequest {
   days: HistoryDays;
 }
 
+/** The local history cache: what startup restored, and how the latest save went. */
+export interface HistoryPersistenceView {
+  restore: { at: number; outcome: 'restored' | 'empty' | 'discarded' | 'unavailable'; reason?: string; legs?: number } | null;
+  lastSave: { at: number; outcome: 'saved' | 'failed'; reason?: string } | null;
+}
+
 export type HistoryCacheView =
-  | { state: 'cold'; snapshotId: null; cutoff: null; cutoffBehind: null; publishedAt: null;
-    refreshing: boolean; lastRound: HistoryRoundReport | null }
+  | { state: 'cold'; snapshotId: null; cutoff: null; cutoffBehind: null; publishedAt: null; restored: null;
+    refreshing: boolean; lastRound: HistoryRoundReport | null; persistence: HistoryPersistenceView }
   | { state: 'ready'; snapshotId: string; cutoff: number; cutoffBehind: boolean; publishedAt: number;
-    refreshing: boolean; lastRound: HistoryRoundReport | null };
+    restored: { savedAt: number } | null;
+    refreshing: boolean; lastRound: HistoryRoundReport | null; persistence: HistoryPersistenceView };
 
 export type HistoryAdmission =
   | { admitted: true; result: FundingHistoryResult }
   | { admitted: false; reason: 'history-cold-start' | 'history-snapshot-superseded'
-    | 'history-cutoff-behind' | 'history-leg-missing' | 'history-ineligible'; result?: FundingHistoryResult };
+    | 'history-cutoff-behind' | 'history-leg-missing' | 'history-restored' | 'history-ineligible'; result?: FundingHistoryResult };
 
 export class FundingHistoryCache {
   private current: HistorySnapshot | null = null;
   private round: HistoryRoundReport | null = null;
   private running = false;
+  private persistence: HistoryPersistenceView = { restore: null, lastSave: null };
 
   snapshot(): HistorySnapshot | null {
     return this.current;
@@ -129,6 +145,15 @@ export class FundingHistoryCache {
   /** Refresher only. */
   setRefreshing(running: boolean): void {
     this.running = running;
+  }
+
+  /** Startup only: shows the saved snapshot until the first round publishes; never replaces a published one. */
+  restore(snapshot: HistorySnapshot & { restored: { savedAt: number } }): void {
+    if (!this.current) this.current = snapshot;
+  }
+
+  setPersistence(change: Partial<HistoryPersistenceView>): void {
+    this.persistence = { ...this.persistence, ...change };
   }
 
   /** Refresher only: swaps the whole snapshot at once, so no reader sees a half-built round. */
@@ -140,11 +165,12 @@ export class FundingHistoryCache {
   view(now: number): HistoryCacheView {
     const snap = this.current;
     if (!snap) {
-      return { state: 'cold', snapshotId: null, cutoff: null, cutoffBehind: null, publishedAt: null,
-        refreshing: this.running, lastRound: this.round };
+      return { state: 'cold', snapshotId: null, cutoff: null, cutoffBehind: null, publishedAt: null, restored: null,
+        refreshing: this.running, lastRound: this.round, persistence: this.persistence };
     }
     return { state: 'ready', snapshotId: snap.id, cutoff: snap.cutoff, cutoffBehind: snap.cutoff < snapshotCutoff(now),
-      publishedAt: snap.publishedAt, refreshing: this.running, lastRound: this.round };
+      publishedAt: snap.publishedAt, restored: snap.restored ?? null, refreshing: this.running, lastRound: this.round,
+      persistence: this.persistence };
   }
 
   /**
@@ -175,6 +201,7 @@ export class FundingHistoryCache {
     if (snap.cutoff !== snapshotCutoff(now)) return { admitted: false, reason: 'history-cutoff-behind' };
     const result = this.evaluate(request, now);
     if (!result) return { admitted: false, reason: 'history-leg-missing' };
+    if (result.short.restored || result.long.restored) return { admitted: false, reason: 'history-restored', result };
     if (!result.historyEligible || result.cutoff !== snap.cutoff) return { admitted: false, reason: 'history-ineligible', result };
     return { admitted: true, result };
   }

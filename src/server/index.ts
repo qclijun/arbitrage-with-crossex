@@ -24,6 +24,7 @@ import { createOfficialFundingCatalog } from '../core/funding/official-catalog';
 import { createOfficialHistorySources } from '../core/funding/official-history';
 import { createOfficialPublicReader } from '../core/funding/official-public';
 import { createFundingServices } from './funding/services';
+import { openFundingHistoryStore } from './funding/history-store';
 import { readBorosAgentConfig } from './borosAgent';
 import { makeBorosApiOrderClient } from '../core/boros/borosApi';
 import type { BorosOrderClient } from '../core/boros/orders';
@@ -253,7 +254,10 @@ const telegramLink = createTelegramLink({
 
 const webDist = path.join(repoRoot, 'web', 'dist');
 
-// Funding opportunities: background history and market reads into memory.
+// Funding opportunities: background history and market reads into memory. The
+// history is also saved to its own rebuildable cache file beside the ledger (not
+// part of the ledger's version, migrations or backups), so a restart shows it at once.
+const fundingHistoryStore = openFundingHistoryStore(path.join(dataDir, 'funding-history.sqlite'));
 const fundingPublicRead = createOfficialPublicReader();
 const fundingCatalog = createOfficialFundingCatalog({
   rules: async () => (await publicCrossEx().listCrossexRuleSymbols()).body,
@@ -265,6 +269,7 @@ const fundingServices = createFundingServices({
     read: fundingPublicRead,
     context: (venue, contractId) => fundingCatalog.historyContext(venue, contractId),
   }),
+  persistence: fundingHistoryStore,
 });
 
 const appDeps = {
@@ -314,6 +319,7 @@ if (loopDeps) loopDeps.readClaimEvidence = readClaimEvidence;
 const app = buildApp({ ...appDeps, readClaimEvidence });
 app.addHook('onClose', async () => {
   fundingServices.stop();
+  fundingHistoryStore.close();
   await engineTransport.close();
   await loopDeps?.observation?.close();
 });

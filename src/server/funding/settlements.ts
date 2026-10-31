@@ -9,6 +9,8 @@ export interface SettlementQuery { underlyings?: string[]; venues?: string[]; of
 export interface SettlementWindow {
   cadence?: LegHistoryResult['cadence'] | null;
   days: HistoryDays; cutoff: number | null; coverage: LegHistoryResult['coverage'] | 'unavailable'; fresh: boolean;
+  /** Saved before the restart and not re-read yet: shown with its original times, never fresh. */
+  restored: boolean;
   total: string | null; annualized: string | null; observed: LegHistoryResult['observed']; reasons: string[];
   verifiedAt: number | null;
   lastAttempt?: LegHistoryResult['lastAttempt'];
@@ -46,9 +48,10 @@ export function buildSettlementBoard(input: { query: SettlementQuery; history: P
           const result = read && read.cutoff <= snapshotCutoff(now) ? evaluateFundingLeg(read.leg, read.cutoff, days, now) : null;
           const lastAttempt = cached?.leg.lastAttempt ?? null;
           const pending = result?.fresh && result.coverage === 'complete' ? null : lastAttempt?.reason;
-          const reasons = [...(result?.reasons ?? ['history-leg-missing']),
+          const reasons = [...(result?.reasons ?? ['history-leg-missing']), ...(result?.restored ? ['history-restored'] : []),
             ...(result && read!.cutoff < snapshotCutoff(now) ? ['history-cutoff-behind'] : []), ...(pending ? [pending] : [])];
           return { days, cutoff: result ? read!.cutoff : null, coverage: result?.coverage ?? 'unavailable', fresh: result?.fresh ?? false,
+            restored: result?.restored === true,
             total: result?.total ?? null, annualized: result?.annualized ?? null, observed: result?.observed ?? null,
             verifiedAt: result?.verifiedAt ?? null, cadence: result?.cadence ?? null, reasons: [...new Set(reasons)], lastAttempt };
         }) };
