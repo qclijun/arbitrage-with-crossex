@@ -7,26 +7,29 @@
 import { FUNDING_FEEDS } from '../../core/funding/feeds';
 import { FundingHistoryCache, legKey, type HistoryLegKey } from '../../core/funding/history-cache';
 import { createFundingHistoryRefresher, type FundingHistorySource } from '../../core/funding/history-collector';
-import { enumerateFundingCandidates } from '../../core/funding/ranking';
 import { createFundingMarket, readyListings, type FundingMarketDeps } from '../../core/funding/market';
-
-function candidateLegs(listings: ReturnType<typeof readyListings>): HistoryLegKey[] {
-  const legs = new Map<string, HistoryLegKey>();
-  for (const { short, long } of enumerateFundingCandidates(listings).candidates) {
-    for (const { venue, contractId } of [short, long]) legs.set(legKey({ venue, contractId }), { venue, contractId });
-  }
-  return [...legs.values()];
-}
+import { isSupportedCoin } from '../../core/coins';
+import { parseSymbol } from '../../core/numbers';
 
 export function createFundingServices(opts: { contracts?: FundingMarketDeps['contracts']; sources?: FundingHistorySource[] } = {}) {
   const history = new FundingHistoryCache();
   const market = createFundingMarket({ contracts: opts.contracts, feeds: FUNDING_FEEDS });
   const listings = () => readyListings(market.view().contracts);
+  let preferred = new Set<string>();
   const refresher = createFundingHistoryRefresher({
+    inferCadence: true,
     cache: history,
     sources: opts.sources ?? [],
-    legs: async () => candidateLegs(listings()),
-    currentSchedules: () => market.view().current,
+    // Finish a cold contract's long window before spending the same venue's
+    // finite quota on another contract. Across venues collection stays parallel.
+    budget: { venueConcurrency: 1 },
+    legs: async () => {
+      const rows = listings();
+      // Scheduling preference only: a native asset code does not prove economic identity.
+      preferred = new Set(rows.filter((row) => row.symbol && isSupportedCoin(parseSymbol(row.symbol).base)).map(legKey));
+      return rows.map(({ venue, contractId }) => ({ venue, contractId }));
+    },
+    priority: (key) => preferred.has(legKey(key)) ? 1 : 0,
   });
   const legOf = (symbol: string): HistoryLegKey | null => {
     const hits = listings().filter((l) => l.symbol === symbol);

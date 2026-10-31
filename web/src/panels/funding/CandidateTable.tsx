@@ -1,23 +1,22 @@
 import type { BoardRow, FundingBoard } from '../../api/fundingOpportunities';
 import { VenueChip } from '../../components/VenueChip';
-import { coverageLabel, decimalSign, windowValue } from './labels';
+import { decimalSign, inferredWindow, reasonText, windowStatus, windowValue } from './labels';
 
 /** A window's figure; only an eligible one is coloured, so stale evidence never reads as a live ranking. */
 function Rate({ row, days }: { row: BoardRow; days: number }) {
   const w = row.windows.find((x) => x.days === days);
-  const { text, known } = windowValue(w);
+  const { text, known, observed } = windowValue(w);
   const sign = decimalSign(w?.netAnnualized);
   const tone = !known ? 'text-warning' : !w?.eligible ? 'text-ink-500' : sign === 1 ? 'text-grass' : sign === -1 ? 'text-guava' : 'text-ink-300';
-  return <span className={`num ${tone}`}>{text}</span>;
+  return <span className={`num ${tone}`}>{text}{observed && <span className="block text-[10px] text-warning">Observed{w?.observed?.fresh ? '' : ' · stale'}</span>}</span>;
 }
 
 function Status({ row, days }: { row: BoardRow; days: number }) {
   const selected = row.windows.find((w) => w.days === days);
-  // Complete history that is not ranked can only be out of date; otherwise the coverage says why.
-  const label = row.rank !== null ? 'Ranked' : !selected ? 'UNKNOWN' : selected.coverage === 'complete' ? 'STALE' : coverageLabel(selected.coverage);
+  const label = row.rank !== null ? `Ranked${inferredWindow(selected) ? ' · inferred' : ''}` : windowStatus(selected);
   return (
     <span className="flex flex-col gap-0.5 text-[11px]">
-      <span className={row.rank !== null ? 'text-ink-300' : 'text-warning'}>{label}</span>
+      <span title={selected?.reasons.map((code) => reasonText(code, row.underlying)).join('; ')} className={row.rank !== null ? 'text-ink-300' : 'text-warning'}>{label}</span>
       {row.executionBlockers.length > 0 && <span className="text-ink-400">Observe only</span>}
       {row.current?.reversed && <span className="text-warning">Current reversed</span>}
     </span>

@@ -9,9 +9,11 @@ import { TableSkeleton } from '../components/Skeleton';
 import { fmtTime, toDate } from '../lib/fmt';
 import { CandidateDetail } from './funding/CandidateDetail';
 import { CandidateTable } from './funding/CandidateTable';
+import { HistoryDiagnostics } from './funding/HistoryDiagnostics';
 import { dealSummary } from './funding/FundingReceiptView';
 import { FundingSubmissionsProvider, useFundingSubmissions } from './funding/FundingSubmissions';
 import { micro, UNPAIRED } from './funding/labels';
+import { VenueSettlementHistory } from './funding/VenueSettlementHistory';
 
 
 /** Why the page shows less than a full market, in the server's own terms. */
@@ -151,17 +153,24 @@ function Board() {
         zero. History-eligible is not permission to open, and no costs are included.
       </p>
       <SentIntents />
+      <VenueSettlementHistory />
+      <h3 className="mb-2 text-[13px] font-semibold text-ink-100">Directed pair rankings</h3>
+      <p className="mb-2 text-[12px] text-ink-400">Settlement cadence is inferred from settled timestamps when sufficient data is available.
+        Inferred schedules can rank; gaps, conflicts and incomplete reads still block ranking.</p>
+      <p className="mb-2 text-[12px] text-ink-400">Observed figures use returned settlements from the same window; completeness is unverified.
+        They do not receive a rank, pass the positive-spread filter or enable opening. Status names the missing evidence.</p>
       <Filters board={data} params={params} set={filter} />
       {isPending && <TableSkeleton rows={8} cols={5} />}
       {isError && !data && <QueryError title="Couldn't load funding opportunities" error={error} />}
       {data && (
         <>
           <Notices board={data} />
+          <HistoryDiagnostics board={data} />
           {changed && <p className="mb-2 text-[12px] text-warning">The ranking changed while you were paging — showing page 1 of the new ranking.</p>}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-            <div>
+            <div className="min-w-0">
               {data.rows.length ? (
-                <CandidateTable board={data} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
+                <div className="overflow-x-auto"><CandidateTable board={data} selectedId={selected?.id ?? null} onSelect={setSelectedId} /></div>
               ) : (
                 <p className="py-6 text-center text-[12px] text-ink-400">No candidates match — missing data is not counted as zero.</p>
               )}

@@ -10,7 +10,7 @@ const event = (fundingTime: number, rateType = 'Regular') => ({ symbol: 'BTCUSDT
 beforeEach(() => nock.disableNetConnect());
 afterEach(() => { nock.cleanAll(); nock.enableNetConnect(); });
 
-it('pages Binance with an overlapping boundary and through the cutoff settlement\'s jitter', async () => {
+it('pages Binance with an overlapping boundary so a special settlement is not lost', async () => {
   const source = createOfficialHistorySources().find((s) => s.venue === 'BINANCE')!;
   const end = start + 2_000;
   const first = [...Array.from({ length: 999 }, (_, i) => event(start + i + 1)), event(start + 1_000)];
@@ -32,7 +32,7 @@ it.each([
   ['OKX', 'https://www.okx.com', '/api/v5/public/funding-rate-history', 400],
   ['BYBIT', 'https://api.bybit.com', '/v5/market/funding/history', 200],
 ] as const)('pages %s according to its native direction and terminal response', async (venue, host, path, limit) => {
-  const source = createOfficialHistorySources().find((s) => s.venue === venue)!;
+  const source = createOfficialHistorySources({ now: () => start + 86_400_000 }).find((s) => s.venue === venue)!;
   const contractId = venue === 'OKX' ? 'BTC-USDT-SWAP' : 'BTCUSDT';
   const range = { start, end: start + 10_000 };
   const raw = (at: number) => venue === 'OKX'
@@ -51,17 +51,17 @@ it.each([
   expect(await source.page(contractId, range, page.cursor, call)).toMatchObject({ done: true, cursor: null });
 });
 
-it('pages HL on raw milliseconds without claiming that rounding proves settlement time', async () => {
+it('pages HL on raw milliseconds and retains bounded settlement mapping evidence', async () => {
   const source = createOfficialHistorySources().find((s) => s.venue === 'HYPERLIQUID')!;
   const hour = 3_600_000;
   const end = start + 501 * hour;
   const rows = Array.from({ length: 500 }, (_, i) => ({ coin: 'BTC', time: start + (i + 1) * hour + 76, fundingRate: '0.00001' }));
-  nock('https://api.hyperliquid.xyz').post('/info', { type: 'fundingHistory', coin: 'BTC', startTime: start + hour, endTime: end + hour - 1 })
+  nock('https://api.hyperliquid.xyz').post('/info', { type: 'fundingHistory', coin: 'BTC', startTime: start + hour, endTime: end + 999 })
     .reply(200, rows);
   const page = await source.page('BTC', { start, end }, null, call);
   expect(page).toMatchObject({ done: false, cursor: String(start + 500 * hour + 76) });
-  expect(source.timeMapping?.(rows[0])).toBeUndefined();
-  nock('https://api.hyperliquid.xyz').post('/info', { type: 'fundingHistory', coin: 'BTC', startTime: start + 500 * hour + 76, endTime: end + hour - 1 })
+  expect(source.timeMapping?.(rows[0])).toMatchObject({ settlementAt: start + hour });
+  nock('https://api.hyperliquid.xyz').post('/info', { type: 'fundingHistory', coin: 'BTC', startTime: start + 500 * hour + 76, endTime: end + 999 })
     .reply(200, [rows[499]]);
   expect(await source.page('BTC', { start, end }, page.cursor, call)).toMatchObject({ done: true });
 });
@@ -78,8 +78,11 @@ it('honours Retry-After across rounds and accepts a later read only after cooldo
   expect(await source.page('BTCUSDT', { start, end: start + 2_000 }, null, call)).toMatchObject({ done: true });
 });
 
-it('carries only the catalog listing: cadence is proved from the read pages and the current interval, never the source', async () => {
-  const context = { listing: { at: start, evidence: 'fixture listing document' } };
+it('carries externally proved listing and cadence segments rather than inventing them from adjacent rates', async () => {
+  const context = { listing: { at: start, evidence: 'fixture listing document' }, rules: [
+    { from: start, until: start + 8 * 3_600_000, everyHours: 8, anchor: start, evidence: 'fixture old schedule' },
+    { from: start + 8 * 3_600_000, until: Number.MAX_SAFE_INTEGER, everyHours: 4, anchor: start, evidence: 'fixture effective change announcement' },
+  ] };
   const source = createOfficialHistorySources({ context: async (venue, id) => venue === 'BINANCE' && id === 'BTCUSDT' ? context : null })[0]!;
   expect(await source.context('BTCUSDT', call)).toEqual(context);
   expect(await source.context('ETHUSDT', call)).toBeNull();
@@ -93,7 +96,7 @@ it('maps an HL delayed cutoff record only with independent timestamp evidence', 
   const source = createOfficialHistorySources({ hlSettlements: new Map([[raw.time, proof]]) })
     .find((s) => s.venue === 'HYPERLIQUID')!;
   nock('https://api.hyperliquid.xyz').post('/info', {
-    type: 'fundingHistory', coin: 'BTC', startTime: start + hour, endTime: start + 2 * hour - 1,
+    type: 'fundingHistory', coin: 'BTC', startTime: start + hour, endTime: start + hour + 999,
   }).reply(200, [raw]);
   const page = await source.page('BTC', { start, end: start + hour }, null, call);
   const ref = { venue: source.venue, api: source.api, contractId: 'BTC' };
@@ -101,23 +104,4 @@ it('maps an HL delayed cutoff record only with independent timestamp evidence', 
     settledAt: start + hour, rawTime: raw.time, timeMappingEvidence: proof.evidence, rate: '-0.000001',
   });
   expect(source.timeMapping?.({ ...raw, time: raw.time + 1 })).toBeUndefined();
-});
-
-it('maps Binance fundingTime under one second past the hour to that settlement, never backwards and never on Aster', async () => {
-  const hour = 3_600_000;
-  const at = start + 8 * hour;
-  const [binance, aster] = ['BINANCE', 'ASTER'].map((venue) => createOfficialHistorySources().find((s) => s.venue === venue)!);
-  const settle = (source: typeof binance, fundingTime: number) => normalizeOfficialSettlement(
-    { venue: source!.venue, api: source!.api, contractId: 'BTCUSDT' }, event(fundingTime), 8, 'page', source!.timeMapping?.(event(fundingTime)));
-  for (const raw of [at + 9, at + 999]) {
-    expect(settle(binance, raw)).toMatchObject({ settledAt: at, rawTime: raw,
-      timeMappingEvidence: expect.stringContaining('user-approved 2026-10-31') });
-  }
-  expect(settle(binance, at)).toEqual(expect.not.objectContaining({ rawTime: expect.anything() }));
-  for (const raw of [at + 1_000, at - 1]) {
-    expect(settle(binance, raw)).toMatchObject({ settledAt: raw });
-    expect(settle(binance, raw)).not.toHaveProperty('rawTime');
-  }
-  expect(aster!.timeMapping).toBeUndefined();
-  expect(settle(aster, at + 9)).toMatchObject({ settledAt: at + 9 });
 });

@@ -40,6 +40,7 @@ describe('FundingOpportunitiesPanel', () => {
     serve();
     renderWithClient(<FundingOpportunitiesPanel />);
     await screen.findByRole('table', { name: 'Directed funding pairs' });
+    expect(screen.getByRole('region', { name: 'Venue settlement history' })).toBeInTheDocument();
     const rows = within(table()).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(4);
     expect(rows[0]).toHaveTextContent('1');

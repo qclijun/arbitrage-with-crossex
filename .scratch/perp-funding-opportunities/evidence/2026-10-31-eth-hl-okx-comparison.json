@@ -1,0 +1,206 @@
+{
+  "cutoff": 1793455200000,
+  "snapshotId": "fh-1793455200000-1793455260000-2",
+  "formula": "(sum HL short settled rates - sum OKX long settled rates) * 365 / days",
+  "unit": "equal-notional funding-rate spread, before costs; oracle/mark valuation differs",
+  "windows": [
+    {
+      "days": 7,
+      "netAnnualized": "0.00805463800533728571428571428571428571428571428571428571428571",
+      "percent": "0.8055",
+      "ethBestPercent": "2.4952",
+      "btcBestPercent": "1.6829",
+      "hypotheticalEthRank": 3
+    },
+    {
+      "days": 30,
+      "netAnnualized": "0.02909511217636495",
+      "percent": "2.9095",
+      "ethBestPercent": "0.9435",
+      "btcBestPercent": "1.0067",
+      "hypotheticalEthRank": 1
+    },
+    {
+      "days": 90,
+      "netAnnualized": "0.0366766214863951722222222222222222222222222222222222222222222",
+      "percent": "3.6677",
+      "ethBestPercent": "0.8124",
+      "btcBestPercent": "1.0777",
+      "hypotheticalEthRank": 1
+    },
+    {
+      "days": 180,
+      "netAnnualized": "0.0391216766132298222222222222222222222222222222222222222222222",
+      "percent": "3.9122",
+      "ethBestPercent": "0.4601",
+      "btcBestPercent": "1.1294",
+      "hypotheticalEthRank": 1
+    },
+    {
+      "days": 365,
+      "netAnnualized": "0.0398694002874284",
+      "percent": "3.9869",
+      "ethBestPercent": "0.1946",
+      "btcBestPercent": "0.8851",
+      "hypotheticalEthRank": 1
+    }
+  ],
+  "ethPeers": [
+    {
+      "short": "OKX",
+      "long": "BYBIT",
+      "windows": [
+        {
+          "days": 7,
+          "annualized": "0.024951696708948429"
+        },
+        {
+          "days": 30,
+          "annualized": "0.00943487547363505"
+        },
+        {
+          "days": 90,
+          "annualized": "0.008123822830271494"
+        },
+        {
+          "days": 180,
+          "annualized": "0.004601347725659067"
+        },
+        {
+          "days": 365,
+          "annualized": "-0.0006900875874284"
+        }
+      ]
+    },
+    {
+      "short": "BINANCE",
+      "long": "BYBIT",
+      "windows": [
+        {
+          "days": 7,
+          "annualized": "0.021930764285714286"
+        },
+        {
+          "days": 30,
+          "annualized": "0.004679665"
+        },
+        {
+          "days": 90,
+          "annualized": "0.005285565"
+        },
+        {
+          "days": 180,
+          "annualized": "0.004203745555555556"
+        },
+        {
+          "days": 365,
+          "annualized": "0.00125611"
+        }
+      ]
+    },
+    {
+      "short": "OKX",
+      "long": "BINANCE",
+      "windows": [
+        {
+          "days": 7,
+          "annualized": "0.003020932423234143"
+        },
+        {
+          "days": 30,
+          "annualized": "0.00475521047363505"
+        },
+        {
+          "days": 90,
+          "annualized": "0.002838257830271494"
+        },
+        {
+          "days": 180,
+          "annualized": "0.000397602170103511"
+        },
+        {
+          "days": 365,
+          "annualized": "-0.0019461975874284"
+        }
+      ]
+    },
+    {
+      "short": "BINANCE",
+      "long": "OKX",
+      "windows": [
+        {
+          "days": 7,
+          "annualized": "-0.003020932423234143"
+        },
+        {
+          "days": 30,
+          "annualized": "-0.00475521047363505"
+        },
+        {
+          "days": 90,
+          "annualized": "-0.002838257830271494"
+        },
+        {
+          "days": 180,
+          "annualized": "-0.000397602170103511"
+        },
+        {
+          "days": 365,
+          "annualized": "0.0019461975874284"
+        }
+      ]
+    },
+    {
+      "short": "BYBIT",
+      "long": "BINANCE",
+      "windows": [
+        {
+          "days": 7,
+          "annualized": "-0.021930764285714286"
+        },
+        {
+          "days": 30,
+          "annualized": "-0.004679665"
+        },
+        {
+          "days": 90,
+          "annualized": "-0.005285565"
+        },
+        {
+          "days": 180,
+          "annualized": "-0.004203745555555556"
+        },
+        {
+          "days": 365,
+          "annualized": "-0.00125611"
+        }
+      ]
+    },
+    {
+      "short": "BYBIT",
+      "long": "OKX",
+      "windows": [
+        {
+          "days": 7,
+          "annualized": "-0.024951696708948429"
+        },
+        {
+          "days": 30,
+          "annualized": "-0.00943487547363505"
+        },
+        {
+          "days": 90,
+          "annualized": "-0.008123822830271494"
+        },
+        {
+          "days": 180,
+          "annualized": "-0.004601347725659067"
+        },
+        {
+          "days": 365,
+          "annualized": "0.0006900875874284"
+        }
+      ]
+    }
+  ]
+}

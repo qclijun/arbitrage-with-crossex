@@ -2,7 +2,7 @@
 import { mapFundingContracts, type FundingRuleSymbol, type NativeFundingContract } from './contract-identity';
 import { createOfficialPublicReader, type PublicRead } from './official-public';
 import { OFFICIAL_HISTORY_VENUES, readOfficialInstruments } from './official-instruments';
-import type { FundingHistoryLeg } from './history';
+import type { FundingHistoryLeg, FundingRuleSegment } from './history';
 
 export function createOfficialFundingCatalog(opts: { rules: () => Promise<FundingRuleSymbol[]>; read?: PublicRead }) {
   const read = opts.read ?? createOfficialPublicReader();
@@ -25,9 +25,14 @@ export function createOfficialFundingCatalog(opts: { rules: () => Promise<Fundin
       }
       return discovery;
     },
-    historyContext(venue: string, contractId: string): { listing: FundingHistoryLeg['listing'] } | null {
+    historyContext(venue: string, contractId: string): { listing: FundingHistoryLeg['listing']; rules: FundingRuleSegment[] } | null {
       const hits = native.filter((n) => n.venue === venue && n.contractId === contractId && n.live);
-      return hits.length === 1 ? { listing: hits[0]!.listing } : null;
+      if (hits.length !== 1) return null;
+      // Current instrument descriptions do not establish historical cadence.
+      // The official history source adds separately reviewed policies after
+      // this native-contract check; metadata itself is never backdated.
+      const rules: FundingRuleSegment[] = [];
+      return { listing: hits[0]!.listing, rules };
     },
   };
 }

@@ -1,9 +1,9 @@
 /** Shared public-only IO: bounded reads, per-instance quotas and server cooldowns. */
 import axios from 'axios';
 import { bookRequestOptions } from '../estimate/books';
-import { HistoryRateLimitError } from './history-collector';
+import { HistoryQuotaWaitError, HistoryRateLimitError } from './history-collector';
 
-export type PublicRead = (venue: string, url: string, signal: AbortSignal, body?: object) => Promise<unknown>;
+export type PublicRead = (venue: string, url: string, signal: AbortSignal, body?: object, format?: 'binary') => Promise<unknown>;
 export interface PublicReadSample {
   venue: string; url: string; status: number; elapsedMs: number;
   headers: Record<string, string>; estimatedWeight: number;
@@ -25,7 +25,7 @@ export function retryAfterMs(value: string | undefined, now: number): number | n
 export function createOfficialPublicReader(opts: { now?: () => number; sample?: (s: PublicReadSample) => void } = {}): PublicRead {
   const now = opts.now ?? Date.now;
   const states = new Map<string, { until: number; used: number; blockedUntil: number; minuteLimit?: number }>();
-  return async (venue, url, signal, body) => {
+  return async (venue, url, signal, body, format) => {
     const at = now();
     const [capacity, period] = QUOTAS[venue] ?? [10, 60_000];
     let state = states.get(venue);
@@ -33,12 +33,13 @@ export function createOfficialPublicReader(opts: { now?: () => number; sample?: 
     if (at >= state.until) { state.until = at + period; state.used = 0; }
     // Reserve worst-case response weight before starting concurrent HL requests.
     const weight = venue === 'HYPERLIQUID' ? 45 : 1;
-    if (state.blockedUntil > at || state.used + weight > capacity) {
-      throw new HistoryRateLimitError('public-read-cooldown', Math.max(state.blockedUntil, state.used + weight > capacity ? state.until : at) - at);
-    }
+    if (state.blockedUntil > at) throw new HistoryRateLimitError('public-read-cooldown', state.blockedUntil - at);
+    if (state.used + weight > capacity) throw new HistoryQuotaWaitError(state.until - at);
+    const reservationPeriod = state.until;
     state.used += weight;
     const response = await axios.request({ ...bookRequestOptions(), timeout: 5_000, method: body ? 'POST' : 'GET',
-      url, data: body, signal, validateStatus: () => true, maxContentLength: 16 * 1024 * 1024 });
+      url, data: body, signal, validateStatus: () => true, maxContentLength: 16 * 1024 * 1024,
+      ...(format === 'binary' ? { responseType: 'arraybuffer', maxRedirects: 0 } : {}) });
     const headers: Record<string, string> = {};
     for (const name of HEADER_NAMES) {
       const value = response.headers[name];
@@ -46,7 +47,10 @@ export function createOfficialPublicReader(opts: { now?: () => number; sample?: 
     }
     const data = response.data;
     const actualWeight = venue === 'HYPERLIQUID' ? 20 + (Array.isArray(data) ? Math.ceil(data.length / 20) : 0) : 1;
-    if (actualWeight > weight) state.used += actualWeight - weight;
+    // Reserve before concurrent requests, then release unused response weight.
+    // A late response must never refund a reservation made in a newer period.
+    const adjustment = actualWeight - weight;
+    if (adjustment > 0 || state.until === reservationPeriod) state.used += adjustment;
     const numericHeader = (name: string): number | null => {
       const raw = headers[name];
       if (raw === undefined || !/^\d+$/.test(raw)) return null;

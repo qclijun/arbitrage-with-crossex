@@ -9,7 +9,11 @@ const SETTLED_ENDPOINTS: Record<string, string> = {
   HYPERLIQUID: 'info:fundingHistory',
 };
 
+/** REST's three-month limit is retained; this source also reads official monthly files. */
+export const OKX_ARCHIVE_API = '/api/v5/public/funding-rate-history+market-data-history';
+
 export function sourceBoundary(venue: string, api: string, days: HistoryDays): 'verified' | 'unknown' | 'unsupported' {
+  if (venue === 'OKX' && api === OKX_ARCHIVE_API) return 'verified';
   if (SETTLED_ENDPOINTS[venue] !== api) return 'unknown';
   if (venue === 'OKX' && days >= 180) return 'unsupported';
   return 'verified';
@@ -29,16 +33,17 @@ function safeTimestamp(value: unknown): number | null {
   return Number.isSafeInteger(time) ? time : null;
 }
 
-/** Parse only the official final-rate field; the caller proves pages, listing and historical cadence. */
+/** Parse official final rates independently of the caller's pagination, listing and cadence checks. */
 export function normalizeOfficialSettlement(
   source: OfficialHistorySource,
   raw: Record<string, unknown>,
-  intervalHours: number,
+  intervalHours: number | null,
   evidence: string,
   timeMapping?: { settlementAt: number; evidence: string },
 ): SettledFundingEvent | null {
   if (sourceBoundary(source.venue, source.api, 7) !== 'verified'
-    || !source.contractId || !evidence || !Number.isSafeInteger(intervalHours) || intervalHours <= 0) return null;
+    || !source.contractId || !evidence || (intervalHours !== null
+      && (!Number.isSafeInteger(intervalHours) || intervalHours <= 0))) return null;
   let contract: unknown;
   let time: unknown;
   let rate: unknown;
@@ -75,11 +80,10 @@ export function normalizeOfficialSettlement(
   const settledAt = safeTimestamp(time);
   if (contract !== source.contractId || settledAt === null || typeof rate !== 'string'
     || !/^-?\d+(?:\.\d+)?$/.test(rate)) return null;
-  const hour = Math.floor(settledAt / 3_600_000) * 3_600_000;
-  if (settledAt !== hour && (source.venue === 'HYPERLIQUID' || (source.venue === 'BINANCE' && timeMapping))) {
-    // Official HL fundingHistory has time = hour + milliseconds, and Binance fundingTime jitters
-    // milliseconds past the hour.
-    if (!timeMapping?.evidence || timeMapping.settlementAt !== hour) return null;
+  if ((source.venue === 'HYPERLIQUID' || source.venue === 'ASTER') && settledAt % 3_600_000 !== 0) {
+    // Preserve the original processing timestamp and the venue mapping's
+    // evidence, independently of historical cadence and listing checks.
+    if (!timeMapping?.evidence || timeMapping.settlementAt !== Math.floor(settledAt / 3_600_000) * 3_600_000) return null;
     return { settledAt: timeMapping.settlementAt, rawTime: settledAt,
       timeMappingEvidence: timeMapping.evidence, rate, intervalHours, status: 'settled', kind, evidence };
   }

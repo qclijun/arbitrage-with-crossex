@@ -2,6 +2,10 @@
 import { createHash } from 'node:crypto';
 import { createOfficialPublicReader, type PublicRead } from './official-public';
 import type { FundingHistorySource, HistoryCall, HistorySourcePage } from './history-collector';
+import { settlementTimeMapping } from './settlement-time';
+import { withOkxArchive } from './okx-history';
+import { HYPERLIQUID_HOURLY_POLICY, type HyperliquidHourlyPolicy } from './hyperliquid-policy';
+import { createHyperliquidHistoryContext } from './hyperliquid-history';
 
 type Row = Record<string, unknown>;
 interface Endpoint { venue: string; host: string; api: string; limit: number; direction: 'forward' | 'backward'; }
@@ -27,36 +31,43 @@ function timestamp(value: unknown): number {
   return Number(value);
 }
 
-const HOUR = 3_600_000;
-/** User-approved 2026-10-31 from a live read: 249 of 500 Binance BTC/ETH rows had fundingTime = hour + 0..15 ms. */
-const BINANCE_JITTER_MS = 1_000;
-const BINANCE_JITTER = 'Binance fundingTime under 1 s past a UTC hour denotes that hour\'s settlement (user-approved 2026-10-31)';
-function binanceSettlement(row: Row): { settlementAt: number; evidence: string } | undefined {
-  const raw = timestamp(row.fundingTime);
-  const settlementAt = Math.floor(raw / HOUR) * HOUR;
-  return raw - settlementAt < BINANCE_JITTER_MS ? { settlementAt, evidence: BINANCE_JITTER } : undefined;
-}
-
 type HistoryContext = Awaited<ReturnType<FundingHistorySource['context']>>;
 export interface OfficialHistoryOptions {
   now?: () => number;
   read?: PublicRead;
-  /** Independent raw-time to settlement-hour evidence; never inferred by rounding. */
+  /** Trusted reviewed policy dependency; production uses the pinned built-in evidence. */
+  hlPolicy?: HyperliquidHourlyPolicy;
+  /** Optional stricter per-record mapping, overriding the bounded venue default. */
   hlSettlements?: ReadonlyMap<number, { settlementAt: number; evidence: string }>;
   context?: (venue: string, contractId: string, call: HistoryCall) => HistoryContext | Promise<HistoryContext>;
 }
 
 function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions): FundingHistorySource {
+  const hlContext = e.venue === 'HYPERLIQUID' ? createHyperliquidHistoryContext({ read, now: opts.now ?? Date.now, policy: opts.hlPolicy }) : null;
   return {
-    venue: e.venue, api: e.api, version: 'official-v1', ...(e.venue === 'OKX' ? { maxDays: 90 } : {}),
-    ...(e.venue === 'HYPERLIQUID' ? { timeMapping: (row: Row) => opts.hlSettlements?.get(timestamp(row.time)) } : {}),
-    ...(e.venue === 'BINANCE' ? { timeMapping: binanceSettlement } : {}),
-    context: async (id, call) => opts.context?.(e.venue, id, call) ?? null,
+    venue: e.venue, api: e.api,
+    version: hlContext ? `official-v1:${(opts.hlPolicy ?? HYPERLIQUID_HOURLY_POLICY).version}:${(opts.hlPolicy ?? HYPERLIQUID_HOURLY_POLICY).current.sha256}` : 'official-v1',
+    ...(e.venue === 'OKX' ? { maxDays: 90 } : {}),
+    // 20 hourly days fit below the 500-row page cap, retaining 7d coverage
+    // while saving a page per cold leg for the budgeted document proof.
+    ...(hlContext ? { initialReadDays: 20 } : {}),
+    ...(['HYPERLIQUID', 'ASTER'].includes(e.venue) ? { timeMapping: (row: Row) => {
+      const time = e.venue === 'HYPERLIQUID' ? row.time : row.fundingTime;
+      return e.venue === 'HYPERLIQUID' && opts.hlSettlements
+        ? opts.hlSettlements.get(timestamp(time)) : settlementTimeMapping(e.venue, time);
+    } } : {}),
+    // Today's instrument metadata does not prove historical funding cadence.
+    context: async (id, call) => {
+      const native = await opts.context?.(e.venue, id, call) ?? null;
+      return hlContext ? hlContext(id, native, call) : native;
+    },
     async page(contractId, range, cursor, call): Promise<HistorySourcePage> {
       const hl = e.venue === 'HYPERLIQUID';
-      // This is only a raw query bound, never proof of the hour mapping.
-      const rawStart = hl ? range.start + HOUR : range.start + 1;
-      const rawEnd = range.end + (hl ? HOUR - 1 : e.venue === 'BINANCE' ? BINANCE_JITTER_MS - 1 : 0);
+      const delayed = hl || e.venue === 'ASTER' || e.venue === 'BINANCE';
+      // Include sub-second processing timestamps after the settlement cutoff.
+      // Raw query bounds are independent of cadence and listing evidence.
+      const rawStart = hl ? range.start + 3_600_000 : range.start + 1;
+      const rawEnd = delayed ? range.end + 999 : range.end;
       const boundary = cursor === null ? (e.direction === 'forward' ? rawStart : range.end) : timestamp(cursor);
       if (!contractId || !Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end) || range.start >= range.end
         || !Number.isSafeInteger(rawEnd) || boundary < rawStart || boundary > rawEnd) throw new Error('invalid-history-range');
@@ -93,5 +104,8 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
 
 export function createOfficialHistorySources(opts: OfficialHistoryOptions = {}): FundingHistorySource[] {
   const read = opts.read ?? createOfficialPublicReader({ now: opts.now });
-  return ENDPOINTS.map((endpoint) => restSource(endpoint, read, opts));
+  return ENDPOINTS.map((endpoint) => {
+    const source = restSource(endpoint, read, opts);
+    return endpoint.venue === 'OKX' ? withOkxArchive(source, read, opts.now ?? Date.now) : source;
+  });
 }

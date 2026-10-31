@@ -20,6 +20,12 @@ const REASONS: Record<string, string> = {
   'page-incomplete': 'pagination not proven complete',
   'verification-missing': 'not verified',
   'schedule-unverified': 'settlement schedule not proven',
+  'cadence-sample-insufficient': 'not enough consecutive settlements to infer cadence',
+  'historical-policy-changed': 'funding documentation changed; review required',
+  'settlement-interval-unverified': 'historical settlement interval not proven',
+  'budget-exhausted': 'Waiting for the next collection round',
+  'rate-limited': 'The venue paused history reads',
+  'source-error': 'The history source could not be read',
   'invalid-settlement': 'an unreadable settlement',
   'settlement-rule-mismatch': 'settlements off the proven schedule',
   'settlement-conflict': 'conflicting settled values',
@@ -51,10 +57,38 @@ export function coverageLabel(coverage: BoardWindow['coverage']): string {
 }
 
 /** The figure a window shows, or why it has none. */
-export function windowValue(w: BoardWindow | undefined): { text: string; known: boolean } {
+export function windowValue(w: BoardWindow | undefined): { text: string; known: boolean; observed?: boolean } {
   if (!w) return { text: '—', known: false };
+  if (w.netAnnualized === null && w.observed) return { text: pct(w.observed.netAnnualized), known: true, observed: true };
   if (w.netAnnualized === null) return { text: coverageLabel(w.coverage), known: false };
   return { text: pct(w.netAnnualized), known: true };
+}
+
+/** Name the actionable gap instead of collapsing every failure into UNKNOWN. */
+export function windowStatus(w: BoardWindow | undefined): string {
+  if (!w) return 'UNKNOWN';
+  if (w.coverage === 'complete') return `${w.eligible ? 'Complete' : 'STALE'}${inferredWindow(w) ? ' · inferred' : ''}`;
+  if (w.coverage === 'unsupported') return 'UNSUPPORTED';
+  const codes = w.reasons.map((code) => code.replace(/^(short|long):/, ''));
+  if (codes.includes('history-cold-start')) return 'Collecting history';
+  if (codes.includes('history-leg-missing')) return 'History not collected';
+  if (codes.includes('settlement-conflict')) return 'Conflicting settlements';
+  if (codes.includes('page-incomplete')) return 'History incomplete';
+  if (codes.includes('historical-policy-changed')) return 'Policy review required';
+  if (codes.includes('source-unverified')) return 'Source unverified';
+  if (codes.includes('schedule-unverified')) return 'Schedule unverified';
+  if (codes.includes('cadence-sample-insufficient')) return 'Insufficient cadence samples';
+  if (codes.includes('listing-history-insufficient')) return 'Listing history insufficient';
+  if (codes.includes('verification-missing')) return 'History not verified';
+  if (codes.includes('settlement-interval-unverified')) return 'Interval unverified';
+  if (codes.includes('settlement-rule-mismatch')) return 'Schedule mismatch';
+  if (codes.includes('invalid-settlement')) return 'Invalid settlement';
+  if (codes.includes('missing-settlement')) return 'Settlements missing';
+  return coverageLabel(w.coverage);
+}
+
+export function inferredWindow(w: BoardWindow | undefined): boolean {
+  return w?.legs?.short.cadence?.basis === 'inferred' || w?.legs?.long.cadence?.basis === 'inferred';
 }
 
 /** The sign of a decimal string, read from its digits: -1, 0 or 1; null when it is not a decimal. */

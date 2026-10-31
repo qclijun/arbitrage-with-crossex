@@ -50,3 +50,17 @@ __pycache__/
 # Ticket 21 manual browser reruns stay local; curated acceptance captures are force-added.
 .scratch/perp-funding-opportunities/evidence/21-browser-runs/
 .scratch/perp-funding-opportunities/evidence/21-browser-evidence.json
+
+# Funding investigation outputs stay local; retain curated audit summaries.
+/.scratch/perp-funding-opportunities/evidence/**/*.json
+/.scratch/perp-funding-opportunities/evidence/**/*.json.gz
+!/.scratch/perp-funding-opportunities/evidence/2026-10-31-eth-hl-okx-comparison.json
+!/.scratch/perp-funding-opportunities/evidence/hl-btc-eth-20261031/manifest.json
+/.scratch/perp-funding-opportunities/evidence/**/*-browser.ts
+/.scratch/perp-funding-opportunities/evidence/**/*-public.ts
+/.scratch/perp-funding-opportunities/evidence/**/*-tail.ts
+# Intermediate phase notes and the superseded ticket draft remain local.
+/.scratch/perp-funding-opportunities/evidence/2026-10-31-history-*.md
+/.scratch/perp-funding-opportunities/evidence/2026-10-31-funding-unknown-fix.md
+/.scratch/perp-funding-opportunities/evidence/hl-btc-eth-20261031/handoff.md
+/.scratch/funding-hyperliquid-pairs/proposal.md

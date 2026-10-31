@@ -5,7 +5,7 @@ import { fmtTime, toDate } from '../../lib/fmt';
 import { FundingOrderForm } from './FundingOrderForm';
 import { dealSummary } from './FundingReceiptView';
 import { useFundingSubmissions } from './FundingSubmissions';
-import { coverageLabel, micro, pct, pctExact, reasonText, windowValue } from './labels';
+import { coverageLabel, micro, pct, pctExact, reasonText, windowStatus, windowValue } from './labels';
 
 const section = 'mt-4 border-t border-ink-800 pt-3';
 const link = 'text-link underline decoration-link/40 underline-offset-2';
@@ -14,6 +14,8 @@ const goTo = (tab: string) => window.dispatchEvent(new CustomEvent('crossex:open
 
 function Leg({ leg }: { leg: BoardLegHistory | undefined }) {
   if (!leg) return <span className="text-warning">UNKNOWN</span>;
+  if (leg.annualized === null && leg.observed) return <span className="num text-ink-400">{pct(leg.observed.total)} · {pct(leg.observed.annualized)}
+    <span className="block text-[10px] text-warning">Observed · {leg.observed.events} settlements{leg.fresh ? '' : ' · stale'}</span></span>;
   if (leg.annualized === null) return <span className="text-warning">{coverageLabel(leg.coverage)}</span>;
   return <span className="num"><span className="whitespace-nowrap">{pct(leg.total!)} ·</span> <span className="whitespace-nowrap">{pct(leg.annualized)}</span></span>;
 }
@@ -23,11 +25,12 @@ function WindowRow({ w }: { w: BoardWindow }) {
   return (
     <tr className="border-t border-ink-800 align-top">
       <td className="py-1 pr-2">{w.days}d</td>
-      <td className="num whitespace-nowrap py-1 pr-2">{w.netTotal === null ? value.text : pct(w.netTotal)}</td>
-      <td className={`num whitespace-nowrap py-1 pr-2 ${value.known ? '' : 'text-warning'}`}>{value.text}</td>
+      <td className="num whitespace-nowrap py-1 pr-2">{w.netTotal !== null ? pct(w.netTotal) : w.observed ? pct(w.observed.netTotal) : value.text}</td>
+      <td className={`num whitespace-nowrap py-1 pr-2 ${value.known ? '' : 'text-warning'}`}>{value.text}
+        {value.observed && <span className="block text-[10px] text-warning">Observed{w.observed?.fresh ? '' : ' · stale'}</span>}</td>
       <td className="py-1 pr-2"><Leg leg={w.legs?.short} /></td>
       <td className="py-1 pr-2"><Leg leg={w.legs?.long} /></td>
-      <td className="py-1">{coverageLabel(w.coverage)}</td>
+      <td className="py-1">{windowStatus(w)}</td>
     </tr>
   );
 }
@@ -75,6 +78,12 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
         <span className="text-grass">Long {row.long.venue} {row.long.contractId}</span>
       </p>
       <p className={micro}>Direction is fixed: the short leg receives a positive spread. Snapshot {snapshotId ?? 'none'}.</p>
+      {selectedLegs && (selectedLegs.short.cadence || selectedLegs.long.cadence) && <p className={`mt-1 ${micro}`}>
+        Settlement cadence: {(['short', 'long'] as const).map((side) => {
+          const cadence = selectedLegs[side].cadence;
+          return `${side} ${cadence?.intervals.map((hours) => `${hours}h`).join(' / ') || 'unknown'}${cadence?.basis === 'inferred' ? ' (inferred from settled timestamps)' : ''}`;
+        }).join('; ')}.
+      </p>}
 
       <div className="mt-3 overflow-x-auto">
         <table aria-label="History windows" className="w-full">

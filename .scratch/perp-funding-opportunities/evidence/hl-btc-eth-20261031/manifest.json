@@ -1,0 +1,72 @@
+{
+  "scope": [
+    "native HyperCore BTC",
+    "native HyperCore ETH"
+  ],
+  "reviewedOn": "2026-10-31",
+  "reviewedCoverageFrom": "2025-01-25T13:42:03Z",
+  "basis": "Reviewed asset-independent hourly protocol invariant; historical archive predates the supported windows. Runtime requires the pinned current document and reconciles every expected hour. This is not a claim of the rule introduction date.",
+  "claims": [
+    "The funding rate on Hyperliquid is paid every hour.",
+    "The funding cap and funding interval do not depend on the asset."
+  ],
+  "archive": {
+    "url": "https://web.archive.org/web/20250125134203id_/https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding",
+    "cdx": {
+      "urlkey": "io,gitbook,hyperliquid)/hyperliquid-docs/trading/funding",
+      "timestamp": "20250125134203",
+      "original": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding",
+      "mimetype": "text/html",
+      "statuscode": "200",
+      "digest": "36GMRBVHHWZBCRIC5FDT7AAKQRLW5WXW",
+      "length": "29516"
+    },
+    "payloadSha256": "998477d7e90d643ee325f57361a8bff5c3f81232e440c3d94d520b894913c900",
+    "payloadMatchesCdx": true
+  },
+  "current": {
+    "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding.md",
+    "sha256": "126d1a0489517bad351787542d555a0de25339c69fd544a0d8d283ae172d234c"
+  },
+  "listedBy": {
+    "BTC": {
+      "request": {
+        "type": "fundingHistory",
+        "coin": "BTC",
+        "startTime": 0,
+        "endTime": 1735689600000
+      },
+      "responseSha256": "aff6213fba21d02999686abd7f69f427f67233fe856359876c1ff98815db7999",
+      "rows": 500,
+      "first": {
+        "coin": "BTC",
+        "fundingRate": "-0.0006133368",
+        "premium": "-0.0009133368",
+        "time": 1683849600048
+      },
+      "kind": "listed-by",
+      "at": 1683849600048,
+      "artifact": "btc-listed-by.json.gz"
+    },
+    "ETH": {
+      "request": {
+        "type": "fundingHistory",
+        "coin": "ETH",
+        "startTime": 0,
+        "endTime": 1735689600000
+      },
+      "responseSha256": "a90be3d7dd565c3f2a47bca535888d8a5f82f0931eb69ceaf00aab25df19e089",
+      "rows": 500,
+      "first": {
+        "coin": "ETH",
+        "fundingRate": "0.0000863563",
+        "premium": "-0.0002136437",
+        "time": 1683849600048
+      },
+      "kind": "listed-by",
+      "at": 1683849600048,
+      "artifact": "eth-listed-by.json.gz"
+    }
+  },
+  "usage": "Provenance for the optional reviewed-policy path. Production ranking infers cadence from settled data and does not require this document evidence. Listed-by compressed artifacts remain local and are not shipped."
+}

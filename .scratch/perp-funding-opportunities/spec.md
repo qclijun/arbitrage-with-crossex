@@ -1,8 +1,10 @@
 # 永续两腿机会页规格
 
 Status: final — 2026-10-27用户确认最终规格/分票共同理解，06已resolved
-Updated: 2026-10-27 Asia/Taipei
+Updated: 2026-10-31 Asia/Taipei
 Canonical map: [工作地图](map.md)
+
+2026-10-31用户变更：资金费率历史周期优先从实际结算数据推算，不再要求严格的独立历史规则证据；推算来源明确展示，可按覆盖/新鲜度参与排名。详见[当前历史契约](history-and-eligibility.md)。
 
 ## 已确认目标
 

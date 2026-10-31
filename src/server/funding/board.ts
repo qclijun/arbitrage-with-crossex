@@ -6,7 +6,7 @@
  */
 import type { FundingMappingRejection } from '../../core/funding/contract-identity';
 import { isSupportedCoin } from '../../core/coins';
-import { HISTORY_DAYS, type HistoryDays, type LegHistoryResult } from '../../core/funding/history';
+import { divideRounded, HISTORY_DAYS, parseDecimal, scale, type HistoryDays, type LegHistoryResult } from '../../core/funding/history';
 import { legKey, type FundingHistoryCache, type HistoryCacheView } from '../../core/funding/history-cache';
 import { readyListings, type FundingContractListing, type FundingMarketView, type MarketFeedStatus } from '../../core/funding/market';
 import {
@@ -44,6 +44,8 @@ export interface BoardLeg {
 }
 
 export interface BoardLegHistory {
+  cadence?: LegHistoryResult['cadence'];
+  observed?: LegHistoryResult['observed'];
   coverage: LegHistoryResult['coverage'];
   fresh: boolean;
   total: string | null;
@@ -59,6 +61,8 @@ export interface BoardLegHistory {
 }
 
 export interface BoardWindow {
+  /** Returned settlements only. Never used by ranking, filters or admission. */
+  observed?: { netTotal: string; netAnnualized: string; fresh: boolean } | null;
   days: HistoryDays;
   eligible: boolean;
   coverage: RankingWindow['coverage'];
@@ -104,12 +108,29 @@ function legHistory(leg: LegHistoryResult): BoardLegHistory {
     coverage: leg.coverage, fresh: leg.fresh, total: leg.total, annualized: leg.annualized, source: leg.source,
     verifiedAt: leg.verifiedAt, lastAttempt: leg.lastAttempt, reasons: leg.reasons, missingEvents: leg.missingEvents.length,
     missingRanges: leg.missingRanges, conflicts: leg.conflicts.length, specialEvents: leg.specialEvents.length,
+    observed: leg.observed ?? null, cadence: leg.cadence,
   };
+}
+
+function observedWindow(w: RankingWindow): BoardWindow['observed'] {
+  const { result } = w;
+  const short = result?.short.observed;
+  const long = result?.long.observed;
+  if (!short || !long) return null;
+  const a = parseDecimal(short.total)!;
+  const b = parseDecimal(long.total)!;
+  const places = Math.max(a.places, b.places);
+  const amount = { coefficient: scale(a, places) - scale(b, places), places };
+  const aprPlaces = Math.max(places, 18);
+  return { netTotal: divideRounded(amount.coefficient, 1n, places),
+    netAnnualized: divideRounded(scale(amount, aprPlaces) * 365n, BigInt(w.days), aprPlaces),
+    fresh: result!.short.fresh && result!.long.fresh };
 }
 
 function boardWindow(w: RankingWindow): BoardWindow {
   const { result } = w;
   return {
+    observed: observedWindow(w),
     days: w.days, eligible: w.eligible, coverage: w.coverage, netTotal: w.netTotal, netAnnualized: w.netAnnualized, reasons: w.reasons,
     start: result?.start ?? null, cutoff: result?.cutoff ?? null,
     legs: result ? { short: legHistory(result.short), long: legHistory(result.long) } : null,

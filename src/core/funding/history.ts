@@ -2,7 +2,7 @@
 import { sourceBoundary } from './history-sources';
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-export const FRESH_MS = 15 * 60_000;
+const FRESH_MS = 15 * 60_000;
 export const HISTORY_DAYS = [7, 30, 90, 180, 365] as const;
 export type HistoryDays = typeof HISTORY_DAYS[number];
 export type Coverage = 'complete' | 'partial' | 'unknown' | 'unsupported';
@@ -13,7 +13,8 @@ export interface SettledFundingEvent {
   rawTime?: number;
   timeMappingEvidence?: string;
   rate: string;
-  intervalHours: number;
+  /** Null when the historical cadence has not been independently established. */
+  intervalHours: number | null;
   status: 'settled' | 'predicted';
   /** A special economic event can share a timestamp with the regular settlement. */
   kind: 'regular' | 'special';
@@ -41,6 +42,7 @@ export interface HistoryPages {
 }
 
 export interface FundingHistoryLeg {
+  cadence?: { basis: 'inferred' | 'provided' | 'unavailable'; intervals: number[]; samples: number };
   venue: string;
   contractId: string;
   source: { kind: 'settled-history'; api: string; version: string;
@@ -48,13 +50,15 @@ export interface FundingHistoryLeg {
   observedAt: number | null;
   verifiedAt: number | null;
   lastAttempt: { at: number; outcome: 'success' | 'error'; reason?: string } | null;
-  listing: { at: number; evidence: string } | null;
+  /** `listed-by` is an upper bound proved by an old settlement, not an exact listing date. */
+  listing: { at: number; evidence: string; kind?: 'listed-at' | 'listed-by' | 'inferred' } | null;
   pages: HistoryPages;
   rules: FundingRuleSegment[];
   events: SettledFundingEvent[];
 }
 
 export interface LegHistoryResult {
+  cadence?: FundingHistoryLeg['cadence'];
   venue: string;
   contractId: string;
   source: FundingHistoryLeg['source'];
@@ -70,6 +74,8 @@ export interface LegHistoryResult {
   specialEvents: SettledFundingEvent[];
   total: string | null;
   annualized: string | null;
+  /** Actual returned records only; never a ranking value or completeness proof. */
+  observed?: { total: string; annualized: string; events: number; firstAt: number; lastAt: number } | null;
 }
 
 export interface FundingHistoryResult {
@@ -166,7 +172,7 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
   const base = {
     venue: leg.venue, contractId: leg.contractId, source: leg.source,
     observedAt: leg.observedAt, verifiedAt: leg.verifiedAt, lastAttempt: leg.lastAttempt,
-    fresh, reasons, missingEvents, missingRanges, conflicts, specialEvents,
+    fresh, reasons, missingEvents, missingRanges, conflicts, specialEvents, observed: null, cadence: leg.cadence,
   };
   const boundary = sourceBoundary(leg.venue, leg.source.api, days);
   if (boundary === 'unsupported' || (boundary === 'verified' && leg.source.status === 'unsupported')) {
@@ -174,6 +180,7 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
       reasons: [leg.source.reason ?? 'historical-source-unsupported'] };
   }
   if (boundary !== 'verified' || leg.source.status !== 'verified' || !leg.source.version) reasons.push('source-unverified');
+  if (leg.source.reason === 'historical-policy-changed' && leg.cadence?.basis !== 'inferred') reasons.push('historical-policy-changed');
   if (!leg.listing?.evidence || leg.listing.at > start) {
     reasons.push('listing-history-insufficient');
     if (leg.listing && leg.listing.at > start) {
@@ -189,7 +196,7 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
     reasons.push('verification-missing');
   }
   const expected = schedule(leg.rules, start, cutoff);
-  if (expected === null) reasons.push('schedule-unverified');
+  if (expected === null) reasons.push(leg.cadence?.basis === 'unavailable' ? 'cadence-sample-insufficient' : 'schedule-unverified');
   const expectedSet = new Set(expected ?? []);
   const byKey = new Map<string, SettledFundingEvent>();
   const conflictByKey = new Map<string, SettledFundingEvent[]>();
@@ -199,7 +206,8 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
     const existing = byKey.get(key);
     const rate = parseDecimal(event.rate);
     if (!rate || event.status !== 'settled' || !Number.isSafeInteger(event.settledAt)
-      || !Number.isSafeInteger(event.intervalHours) || (event.kind !== 'regular' && event.kind !== 'special')
+      || (event.intervalHours !== null && (!Number.isSafeInteger(event.intervalHours) || event.intervalHours <= 0))
+      || (event.kind !== 'regular' && event.kind !== 'special')
       || !event.evidence || (event.rawTime !== undefined && event.rawTime !== event.settledAt
         && !event.timeMappingEvidence)) {
       reasons.push('invalid-settlement');
@@ -208,11 +216,12 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
     if (existing) {
       const prior = parseDecimal(existing.rate)!;
       const places = Math.max(prior.places, rate.places);
-      if (scale(prior, places) !== scale(rate, places) || existing.intervalHours !== event.intervalHours) {
+      if (scale(prior, places) !== scale(rate, places) || (existing.intervalHours !== null && event.intervalHours !== null
+        && existing.intervalHours !== event.intervalHours)) {
         const variants = conflictByKey.get(key) ?? [existing];
         variants.push(event);
         conflictByKey.set(key, variants);
-      }
+      } else if (existing.intervalHours === null && event.intervalHours !== null) byKey.set(key, event);
     } else byKey.set(key, event);
   }
   for (const time of expected ?? []) if (!byKey.has(`${time}:regular`)) missingEvents.push(time);
@@ -225,7 +234,9 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
       // Other venues have no equivalent proven economic type in the source contract.
       if (leg.venue !== 'BINANCE') reasons.push('special-settlement-semantics-unverified');
     }
-    if (event.kind === 'regular' && (!expectedSet.has(time) || rule?.everyHours !== event.intervalHours)) {
+    if (event.kind === 'regular' && event.intervalHours === null && !reasons.includes('schedule-unverified')
+      && !reasons.includes('settlement-interval-unverified')) reasons.push('settlement-interval-unverified');
+    if (expected !== null && event.kind === 'regular' && (!expectedSet.has(time) || rule?.everyHours !== event.intervalHours)) {
       reasons.push('settlement-rule-mismatch');
     }
   }
@@ -236,11 +247,27 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
   if (missingEvents.length) reasons.push('missing-settlement');
   const coverage: Coverage = conflicts.length || reasons.some((reason) => reason !== 'missing-settlement')
     ? 'unknown' : missingEvents.length ? byKey.size ? 'partial' : 'unknown' : 'complete';
-  if (coverage !== 'complete') return { ...base, coverage, total: null, annualized: null };
   const rates = [...byKey.values()].map((event) => parseDecimal(event.rate)!);
   const places = Math.max(0, ...rates.map((rate) => rate.places));
   const amount: Decimal = { coefficient: rates.reduce((sum, rate) => sum + scale(rate, places), 0n), places };
-  return { ...base, coverage, total: format(amount.coefficient, places), annualized: annualized(amount, (cutoff - start) / DAY) };
+  const total = format(amount.coefficient, places);
+  const apr = annualized(amount, (cutoff - start) / DAY);
+  const times = [...byKey.values()].map((event) => event.settledAt);
+  // A completed raw read can be useful even when listing/cadence is unknown.
+  // Failed pagination, conflicting/invalid records and unverified sources have no figure.
+  const blocked = ['source-unverified', 'page-incomplete', 'verification-missing', 'invalid-settlement',
+    'settlement-conflict', 'special-settlement-semantics-unverified'];
+  const observed = times.length && !reasons.some((reason) => blocked.includes(reason))
+    ? { total, annualized: apr, events: times.length, firstAt: Math.min(...times), lastAt: Math.max(...times) } : null;
+  if (coverage !== 'complete') return { ...base, observed, coverage, total: null, annualized: null };
+  return { ...base, observed, coverage, total, annualized: apr };
+}
+
+/** Single-venue observation uses the same integrity checks as paired admission. */
+export function evaluateFundingLeg(leg: FundingHistoryLeg, cutoff: number, days: HistoryDays, now: number): LegHistoryResult {
+  if (!HISTORY_DAYS.includes(days) || !Number.isSafeInteger(cutoff)
+    || cutoff % HOUR !== 0 || cutoff > snapshotCutoff(now)) throw new Error('Invalid history window');
+  return evaluateLeg(leg, cutoff - days * DAY, cutoff, now, days);
 }
 
 export function evaluateFundingHistory(input: {

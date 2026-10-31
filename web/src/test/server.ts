@@ -4,6 +4,10 @@ import type { ApiMeta } from '../api/types';
 
 /** Shared msw server — tests add handlers per-case with server.use(...). */
 export const server = setupServer(
+  http.get('/api/funding/settlements', () => HttpResponse.json(env({
+    evaluatedAt: Date.now(), snapshotId: null, offset: 0, limit: 20, matched: 0,
+    options: { underlyings: [], venues: [] }, rows: [],
+  }))),
   http.get('/api/boros/agent', () =>
     HttpResponse.json(
       env({

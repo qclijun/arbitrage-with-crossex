@@ -1,6 +1,7 @@
 import nock from 'nock';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createOfficialPublicReader, retryAfterMs, type PublicReadSample } from '../../src/core/funding/official-public';
+import { HistoryQuotaWaitError } from '../../src/core/funding/history-collector';
 
 const now = Date.UTC(2026, 9, 30);
 const signal = () => new AbortController().signal;
@@ -12,6 +13,13 @@ it('parses seconds and HTTP-date Retry-After without interpreting missing header
   expect(retryAfterMs(new Date(now + 120_000).toUTCString(), now)).toBe(120_000);
   expect(retryAfterMs(undefined, now)).toBeNull();
   expect(retryAfterMs('invalid', now)).toBeNull();
+});
+
+it('distinguishes its local preflight quota from a venue rate limit', async () => {
+  const read = createOfficialPublicReader({ now: () => now });
+  nock('https://public.example').get('/history').times(30).reply(200, []);
+  for (let i = 0; i < 30; i += 1) await read('ASTER', 'https://public.example/history', signal());
+  await expect(read('ASTER', 'https://public.example/history', signal())).rejects.toBeInstanceOf(HistoryQuotaWaitError);
 });
 
 it.each([
@@ -38,7 +46,29 @@ it('keeps a successful final Bybit response but blocks reads until its quota res
 it('reserves HL response weight before requests overlap and never borrows unlimited budget', async () => {
   const read = createOfficialPublicReader({ now: () => now });
   nock('https://public.example').post('/info').times(20).reply(200, []);
-  await Promise.all(Array.from({ length: 20 }, () => read('HYPERLIQUID', 'https://public.example/info', signal(), { type: 'fundingHistory' })));
+  const pending = Array.from({ length: 20 }, () => read('HYPERLIQUID', 'https://public.example/info', signal(), { type: 'fundingHistory' }));
+  await expect(read('HYPERLIQUID', 'https://public.example/info', signal(), {})).rejects.toMatchObject({ retryAfterMs: 60_000 });
+  await Promise.all(pending);
+});
+
+it('releases unused HL response reservations so sequential short pages can complete a year', async () => {
+  const read = createOfficialPublicReader({ now: () => now });
+  nock('https://public.example').post('/info').times(21).reply(200, Array(400).fill({}));
+  for (let i = 0; i < 21; i += 1) {
+    expect(await read('HYPERLIQUID', 'https://public.example/info', signal(), { type: 'fundingHistory' })).toHaveLength(400);
+  }
+  expect(nock.isDone()).toBe(true);
+});
+
+it('never refunds an older HL request against reservations in a new quota period', async () => {
+  let at = now;
+  const read = createOfficialPublicReader({ now: () => at });
+  nock('https://public.example').post('/info', { old: true }).delay(20).reply(200, []);
+  const old = read('HYPERLIQUID', 'https://public.example/info', signal(), { old: true });
+  at += 60_000;
+  nock('https://public.example').post('/info', { current: true }).times(20).reply(200, Array(480).fill({}));
+  await Promise.all(Array.from({ length: 20 }, () => read('HYPERLIQUID', 'https://public.example/info', signal(), { current: true })));
+  await old;
   await expect(read('HYPERLIQUID', 'https://public.example/info', signal(), {})).rejects.toMatchObject({ retryAfterMs: 60_000 });
 });
 

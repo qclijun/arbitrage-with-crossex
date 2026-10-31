@@ -10,6 +10,7 @@ import { CoreError } from '../../core/errors';
 import { HISTORY_DAYS } from '../../core/funding/history';
 import type { AppDeps } from '../app';
 import { buildFundingBoard, isHistoryDays, type BoardQuery } from '../funding/board';
+import { buildSettlementBoard } from '../funding/settlements';
 
 const MAX_LIMIT = 200;
 
@@ -48,6 +49,15 @@ function parseQuery(q: Record<string, string | undefined>): BoardQuery {
 
 export function fundingOpportunitiesRoutes(deps: AppDeps) {
   return async function plugin(app: FastifyInstance): Promise<void> {
+    app.get('/funding/settlements', async (req, reply) => {
+      const q = req.query as Record<string, string | undefined>;
+      const query = { underlyings: list(q.underlying), venues: list(q.venue),
+        offset: integer(q.offset, 0, 'offset', 0), limit: integer(q.limit, 20, 'limit', 1, MAX_LIMIT) };
+      const board = deps.opportunities;
+      if (!board) throw new CoreError('funding opportunities are not wired in this mode', 'not-configured');
+      return reply.ok(buildSettlementBoard({ query, history: board.history, market: board.market.view(),
+        now: deps.engine?.clock.now() ?? Date.now() }));
+    });
     app.get('/funding/opportunities', async (req, reply) => {
       const query = parseQuery(req.query as Record<string, string | undefined>);
       const board = deps.opportunities;

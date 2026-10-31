@@ -35,7 +35,7 @@ export interface CachedHistoryLeg {
 const DAY = 24 * 60 * 60_000;
 
 /** The read that proves a window: the newest one covering it, else the wider one. */
-function windowLeg(cached: CachedHistoryLeg, cutoff: number, days: HistoryDays): FundingHistoryLeg {
+export function windowLeg(cached: CachedHistoryLeg, cutoff: number, days: HistoryDays): FundingHistoryLeg {
   const start = cutoff - days * DAY;
   return cached.wider && cached.leg.pages.rangeStart > start ? cached.wider : cached.leg;
 }
