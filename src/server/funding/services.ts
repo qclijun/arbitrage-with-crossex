@@ -20,8 +20,7 @@ export function createFundingServices(opts: { contracts?: FundingMarketDeps['con
     inferCadence: true,
     cache: history,
     sources: opts.sources ?? [],
-    // Finish a cold contract's long window before spending the same venue's
-    // finite quota on another contract. Across venues collection stays parallel.
+    // CEX archives remain serial; HL refreshes peers' recent windows before backfill.
     budget: { venueConcurrency: 1 },
     legs: async () => {
       const rows = listings();
@@ -29,7 +28,8 @@ export function createFundingServices(opts: { contracts?: FundingMarketDeps['con
       preferred = new Set(rows.filter((row) => row.symbol && isSupportedCoin(parseSymbol(row.symbol).base)).map(legKey));
       return rows.map(({ venue, contractId }) => ({ venue, contractId }));
     },
-    priority: (key) => preferred.has(legKey(key)) ? 1 : 0,
+    priority: (key) => key.venue === 'HYPERLIQUID' && ['BTC', 'ETH'].includes(key.contractId)
+      ? 2 : preferred.has(legKey(key)) ? 1 : 0,
   });
   const legOf = (symbol: string): HistoryLegKey | null => {
     const hits = listings().filter((l) => l.symbol === symbol);

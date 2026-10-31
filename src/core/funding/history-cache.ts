@@ -20,7 +20,12 @@ export interface HistoryLegKey {
 
 export const legKey = (key: HistoryLegKey): string => `${key.venue}\u0000${key.contractId}`;
 
+export interface HistoryWindowEvidence { cutoff: number; leg: FundingHistoryLeg; }
+
 export interface CachedHistoryLeg {
+  /** Bounded independent window evidence, kept at its own cutoff and verification time. */
+  retained?: HistoryWindowEvidence[];
+  backfill?: { cutoff: number; completeThroughDays: number; pendingDays: number | null; pagesRead: number };
   /** The cutoff this leg's evidence was collected for; older than the snapshot's when its refresh failed. */
   cutoff: number;
   /** The most recent verified read. */
@@ -38,6 +43,26 @@ const DAY = 24 * 60 * 60_000;
 export function windowLeg(cached: CachedHistoryLeg, cutoff: number, days: HistoryDays): FundingHistoryLeg {
   const start = cutoff - days * DAY;
   return cached.wider && cached.leg.pages.rangeStart > start ? cached.wider : cached.leg;
+}
+
+export function historyReads(cached: CachedHistoryLeg): HistoryWindowEvidence[] {
+  return [{ cutoff: cached.cutoff, leg: cached.leg },
+    ...(cached.wider ? [{ cutoff: cached.cutoff, leg: cached.wider }] : []), ...(cached.retained ?? [])];
+}
+
+/** Shared evidence ordering and range proof for both retention and window reads. */
+export const compareHistoryEvidence = (a: HistoryWindowEvidence, b: HistoryWindowEvidence): number =>
+  b.cutoff - a.cutoff || (b.leg.verifiedAt ?? -Infinity) - (a.leg.verifiedAt ?? -Infinity);
+
+export function coversHistoryWindow({ cutoff, leg }: HistoryWindowEvidence, days: HistoryDays): boolean {
+  return leg.verifiedAt !== null && leg.pages.complete
+    && leg.pages.rangeStart <= cutoff - days * DAY && leg.pages.rangeEnd >= cutoff;
+}
+
+/** Latest complete range for this window, never a splice across cutoffs. */
+export function windowEvidence(cached: CachedHistoryLeg, days: HistoryDays): HistoryWindowEvidence {
+  return historyReads(cached).filter((read) => coversHistoryWindow(read, days)).sort(compareHistoryEvidence)[0]
+    ?? { cutoff: cached.cutoff, leg: windowLeg(cached, cached.cutoff, days) };
 }
 
 export interface HistorySnapshot {
@@ -134,9 +159,12 @@ export class FundingHistoryCache {
     const long = snap?.legs.get(legKey(pair.long));
     // A reader clock behind the snapshot has no window to evaluate.
     if (!snap || !short || !long || snap.cutoff > snapshotCutoff(now)) return null;
-    const cutoff = short.cutoff === long.cutoff ? short.cutoff : snap.cutoff;
+    const a = windowEvidence(short, pair.days);
+    const b = windowEvidence(long, pair.days);
+    const cutoff = a.cutoff === b.cutoff && a.cutoff <= snap.cutoff ? a.cutoff : snap.cutoff;
     return evaluateFundingHistory({ snapshotId: snap.id, underlying: pair.underlying, cutoff, days: pair.days,
-      short: windowLeg(short, cutoff, pair.days), long: windowLeg(long, cutoff, pair.days), now });
+      short: a.cutoff === cutoff ? a.leg : windowLeg(short, cutoff, pair.days),
+      long: b.cutoff === cutoff ? b.leg : windowLeg(long, cutoff, pair.days), now });
   }
 
   /** Server-side history admission: the caller's snapshot must still be current, at the current cutoff, and eligible now. */

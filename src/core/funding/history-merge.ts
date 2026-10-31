@@ -1,5 +1,5 @@
-import type { CachedHistoryLeg, HistoryAttemptReason } from './history-cache';
-import type { FundingHistoryLeg, SettledFundingEvent } from './history';
+import { historyReads, coversHistoryWindow, compareHistoryEvidence, type CachedHistoryLeg, type HistoryAttemptReason, type HistoryWindowEvidence } from './history-cache';
+import { HISTORY_DAYS, type FundingHistoryLeg, type SettledFundingEvent } from './history';
 
 /**
  * Earlier reads of settlements the new read returned differently. Revision rules
@@ -43,4 +43,34 @@ export function mergeHistoryLeg(prior: CachedHistoryLeg | undefined, fresh: Fund
       ...(prior.wider ? { wider: { ...prior.wider, lastAttempt } } : {}) };
   }
   return { cutoff, leg: { ...fresh, lastAttempt } };
+}
+
+/** Keep one newest whole read per window, including older cutoffs during a rolling backfill. */
+export function retainHistoryLeg(prior: CachedHistoryLeg | undefined, fresh: FundingHistoryLeg, cutoff: number,
+  at: number, reason: HistoryAttemptReason | null, maximumCutoff = cutoff): CachedHistoryLeg {
+  const lastAttempt: FundingHistoryLeg['lastAttempt'] = reason ? { at, outcome: 'error', reason } : { at, outcome: 'success' };
+  let reads = prior ? historyReads(prior).filter((read) => read.cutoff <= maximumCutoff) : [];
+  const distinct = (events: SettledFundingEvent[]) => [...new Map(events.map((event) =>
+    [JSON.stringify([event.settledAt, event.kind, event.status, event.rate, event.intervalHours]), event])).values()];
+  if (fresh.source.reason === 'historical-policy-changed') reads = reads.map((read) => ({ ...read, leg: { ...read.leg,
+    rules: read.leg.cadence?.basis === 'inferred' ? read.leg.rules : [],
+    source: { ...read.leg.source, reason: 'historical-policy-changed' } } }));
+  const intervals = (old: FundingHistoryLeg) => old.cadence?.basis !== 'inferred' && fresh.cadence?.basis !== 'inferred';
+  const leg = { ...fresh, lastAttempt, events: distinct([...fresh.events,
+    ...reads.flatMap((read) => revised(read.leg.events, fresh.events, intervals(read.leg)))]) };
+  reads = reads.map((read) => ({ ...read, leg: { ...read.leg, lastAttempt,
+    events: distinct([...read.leg.events, ...revised(leg.events, read.leg.events, intervals(read.leg))]) } }));
+  if (fresh.verifiedAt !== null) reads.push({ cutoff, leg });
+  if (!reads.length) return { cutoff, leg };
+  reads.sort(compareHistoryEvidence);
+  const latest = reads[0]!;
+  const selected = new Set<HistoryWindowEvidence>();
+  for (const days of HISTORY_DAYS) {
+    const read = reads.find((read) => coversHistoryWindow(read, days));
+    if (read) selected.add(read);
+  }
+  const wider = [...selected].filter((read) => read !== latest && read.cutoff === latest.cutoff)
+    .sort((a, b) => a.leg.pages.rangeStart - b.leg.pages.rangeStart)[0];
+  return { cutoff: latest.cutoff, leg: latest.leg, ...(wider ? { wider: wider.leg } : {}),
+    retained: [...selected].filter((read) => read !== latest && read !== wider) };
 }

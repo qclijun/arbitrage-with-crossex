@@ -14,11 +14,10 @@ import {
   type HistoryStopReason,
   type HistoryVenueReport,
 } from './history-cache';
-import { HISTORY_DAYS, snapshotCutoff, type FundingHistoryLeg, type FundingRuleSegment,
-  type HistoryPages, type SettledFundingEvent } from './history';
-import { normalizeOfficialSettlement, sourceBoundary } from './history-sources';
-import { inferFundingCadence, inferSettlementHour } from './cadence-inference';
-import { mergeHistoryLeg as merge } from './history-merge';
+import { snapshotCutoff, type FundingHistoryLeg, type FundingRuleSegment } from './history';
+import { collectLeg, placeholder, RoundStop, withTimeout, type CollectionProgress } from './history-collection';
+import { inferFundingCadence } from './cadence-inference';
+import { mergeHistoryLeg as merge, retainHistoryLeg } from './history-merge';
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -96,11 +95,6 @@ export class HistoryQuotaWaitError extends HistoryRateLimitError {
   constructor(readonly waitMs: number) { super('public-quota-wait', waitMs); }
 }
 
-class RoundStop extends Error {
-  constructor(readonly reason: HistoryStopReason) {
-    super(reason);
-  }
-}
 
 interface RoundState {
   cutoff: number;
@@ -124,23 +118,6 @@ function rateLimited(err: unknown): boolean {
   return status === 429 || status === 418;
 }
 
-/** Bounds a read even when the source ignores the abort signal. */
-async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: number,
-  reason: HistoryStopReason = 'timeout'): Promise<T> {
-  const abort = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      abort.abort();
-      reject(new RoundStop(reason));
-    }, ms);
-  });
-  try {
-    return await Promise.race([run(abort.signal), timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 function makeCall(state: RoundState, venue: string, budget: HistoryBudget, random: () => number): HistoryCall {
   const v = state.venues.get(venue)!;
@@ -193,92 +170,6 @@ function makeCall(state: RoundState, venue: string, budget: HistoryBudget, rando
   };
 }
 
-function placeholder(key: HistoryLegKey, source: FundingHistorySource | undefined): FundingHistoryLeg {
-  return {
-    venue: key.venue, contractId: key.contractId,
-    source: source
-      ? { kind: 'settled-history', api: source.api, version: source.version, status: sourceBoundary(source.venue, source.api, 7) }
-      : { kind: 'settled-history', api: '', version: '', status: 'unknown', reason: 'no-history-source' },
-    observedAt: null, verifiedAt: null, lastAttempt: null, listing: null,
-    pages: { complete: false, rangeStart: 0, rangeEnd: 0, pages: [], termination: '' }, rules: [], events: [],
-  };
-}
-
-/** Window segments newest first, so a budget cut still proves the short windows. */
-function segments(cutoff: number, maxDays: number, listingAt: number | null, initialDays = 7): Array<{ start: number; end: number }> {
-  if (!Number.isSafeInteger(initialDays) || initialDays < 7 || initialDays > 30) throw new Error('invalid-initial-history-days');
-  const out: Array<{ start: number; end: number }> = [];
-  let end = cutoff;
-  const windows = [...new Set([Math.min(initialDays, maxDays), ...HISTORY_DAYS.slice(1)])];
-  for (const days of windows) {
-    if (maxDays < 7) break;
-    if (days > maxDays) break;
-    const start = cutoff - days * DAY;
-    out.push({ start, end });
-    if (listingAt !== null && listingAt > start) break;
-    end = start;
-  }
-  return out;
-}
-
-async function collectLeg(key: HistoryLegKey, source: FundingHistorySource, call: HistoryCall, state: RoundState,
-  budget: HistoryBudget, inferCadence = false): Promise<{ leg: FundingHistoryLeg; reason: HistoryAttemptReason | null }> {
-  const leg = placeholder(key, source);
-  let observedAt: number | null = null;
-  const events: SettledFundingEvent[] = [];
-  const pages: HistoryPages['pages'] = [];
-  let covered = state.cutoff;
-  let reason: HistoryAttemptReason | null = null;
-  try {
-    // Adapter work outside `call` is bounded too, so a hung source cannot pin the round open.
-    const bounded = <T>(run: () => Promise<T>) => withTimeout(run, Math.max(0, state.hardStop - Date.now()), 'deadline');
-    const context = await bounded(() => source.context(key.contractId, call));
-    if (!context) return { leg, reason: 'schedule-unverified' };
-    leg.listing = context.listing;
-    leg.rules = context.rules;
-    if (context.proofRejected) leg.source.reason = context.proofRejected;
-    const ruleAt = (t: number) => context.rules.find((r) => r.from <= t && t < r.until);
-    const ref = { venue: source.venue, api: source.api, contractId: key.contractId };
-    for (const seg of segments(state.cutoff, source.maxDays ?? 365, context.listing?.at ?? null, source.initialReadDays)) {
-      let cursor: string | null = null;
-      for (let pageNo = 0; ; pageNo += 1) {
-        if (pageNo >= budget.maxPagesPerSegment) throw new RoundStop('page-limit');
-        let request = '';
-        const page = await bounded(() => source.page(key.contractId, seg, cursor, (req, run) => {
-          request = req;
-          return call(req, run);
-        }));
-        observedAt ??= Date.now();
-        pages.push({ request, firstAt: page.firstAt, lastAt: page.lastAt, count: page.rows.length, cursor: page.cursor, rawHash: page.rawHash });
-        const evidence = `${request}#${page.rawHash}`;
-        for (const row of page.rows) {
-          const mapping = source.timeMapping?.(row);
-          // The rule (and so the interval) is chosen by the settlement time it parses to.
-          const at = normalizeOfficialSettlement(ref, row, null, evidence, mapping)?.settledAt;
-          const rule = at === undefined ? undefined : ruleAt(at);
-          const normalized = normalizeOfficialSettlement(ref, row, rule?.everyHours ?? null, evidence, mapping);
-          if (!normalized) throw new RoundStop('settlement-unnormalized');
-          const event = inferCadence ? inferSettlementHour(normalized) : normalized;
-          if (event.settledAt > seg.start && event.settledAt <= seg.end) events.push(event);
-        }
-        if (page.done) break;
-        if (page.cursor === null || page.cursor === cursor) throw new RoundStop('pagination-stalled');
-        cursor = page.cursor;
-      }
-      covered = seg.start;
-    }
-  } catch (err) {
-    // A source that throws outside `call` is a broken adapter: this leg fails, the round goes on.
-    reason = err instanceof RoundStop ? err.reason : 'source-error';
-  }
-  if (covered === state.cutoff) return { leg, reason: reason ?? 'no-history-read' };
-  Object.assign(leg, {
-    observedAt, verifiedAt: Date.now(), events,
-    pages: { complete: true, rangeStart: covered, rangeEnd: state.cutoff, pages,
-      termination: reason ? `stopped:${reason}` : 'all-segments-done' },
-  });
-  return { leg, reason };
-}
 
 function failedReport(startedAt: number, reason: NonNullable<HistoryRoundReport['reason']>): HistoryRoundReport {
   return { startedAt, finishedAt: Date.now(), cutoff: snapshotCutoff(startedAt), outcome: 'failed', reason, requests: 0, venues: {} };
@@ -300,6 +191,8 @@ export interface FundingHistoryRefresherDeps {
 export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps) {
   const budget: HistoryBudget = { ...HISTORY_BUDGET, ...deps.budget };
   const sources = new Map(deps.sources.map((s) => [s.venue, s]));
+  const progress = new Map<string, CollectionProgress>();
+  const backfilled = new Map<string, number>();
   let snapshotSeq = 0;
   let inflight: Promise<HistoryRoundReport> | null = null;
 
@@ -316,6 +209,8 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       return failedReport(startedAt, 'leg-list-failed');
     }
     const prior = deps.cache.snapshot()?.legs;
+    const live = new Set(keys.map(legKey));
+    for (const id of progress.keys()) if (!live.has(id) || progress.get(id)!.cutoff > cutoff) { progress.delete(id); backfilled.delete(id); }
     const next = new Map<string, CachedHistoryLeg>();
     const byVenue = new Map<string, HistoryLegKey[]>();
     for (const key of new Map(keys.map((k) => [legKey(k), k])).values()) {
@@ -331,17 +226,44 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       const verified = (key: HistoryLegKey) => prior?.get(legKey(key))?.leg.verifiedAt ?? -Infinity;
       const pending = [...queue].sort((a, b) => (deps.priority?.(b) ?? 0) - (deps.priority?.(a) ?? 0)
         || verified(a) - verified(b) || legKey(a).localeCompare(legKey(b)));
-      const worker = async () => {
-        for (let key = pending.shift(); key; key = pending.shift()) {
-          const collected = await collectLeg(key, source, call, state, budget, deps.inferCadence);
-          const { reason } = collected;
-          const leg = deps.inferCadence ? inferFundingCadence(collected.leg) : collected.leg;
-          if (!reason) tally.refreshed += 1;
-          const id = legKey(key);
-          next.set(id, merge(prior?.get(id), leg, cutoff, Date.now(), reason));
+      const process = async (key: HistoryLegKey, recentOnly = false) => {
+        const id = legKey(key);
+        const staged = venue === 'HYPERLIQUID';
+        const saved = staged && !recentOnly ? progress.get(id) : undefined;
+        const before = tally.requests;
+        const collected = await collectLeg(key, source, call, state, budget, deps.inferCadence, saved, recentOnly);
+        if (staged && (!recentOnly || !progress.has(id) || progress.get(id)!.segment === 0 || progress.get(id)!.done)) {
+          progress.set(id, collected.progress);
         }
+        if (staged && !recentOnly && tally.requests > before) backfilled.set(id, snapshotSeq + 1);
+        const { reason } = collected;
+        const leg = deps.inferCadence ? inferFundingCadence(collected.leg) : collected.leg;
+        if (!reason && !recentOnly) tally.refreshed += 1;
+        const previous = next.get(id) ?? prior?.get(id);
+        const entry = staged ? retainHistoryLeg(previous, leg, collected.progress.cutoff, Date.now(), reason, cutoff)
+          : merge(previous, leg, collected.progress.cutoff, Date.now(), reason);
+        const job = staged ? progress.get(id) : undefined;
+        if (job) {
+          const pending = job.ranges?.[job.segment];
+          entry.backfill = { cutoff: job.cutoff, completeThroughDays: (job.cutoff - job.covered) / DAY,
+            pendingDays: pending ? (job.cutoff - pending.start) / DAY : null, pagesRead: job.pages.length };
+        }
+        next.set(id, entry);
       };
-      await Promise.all(Array.from({ length: budget.venueConcurrency }, worker));
+      const workers = async (keys: HistoryLegKey[], recentOnly = false) => {
+        const worker = async () => {
+          for (let key = keys.shift(); key; key = keys.shift()) await process(key, recentOnly);
+        };
+        await Promise.all(Array.from({ length: budget.venueConcurrency }, worker));
+      };
+      if (venue === 'HYPERLIQUID') {
+        const tiers = [...new Set(pending.map((key) => deps.priority?.(key) ?? 0))];
+        for (const priority of tiers) {
+          const tier = pending.filter((key) => (deps.priority?.(key) ?? 0) === priority);
+          await workers([...tier], true);
+          await workers([...tier].sort((a, b) => (backfilled.get(legKey(a)) ?? 0) - (backfilled.get(legKey(b)) ?? 0)));
+        }
+      } else await workers(pending);
     }));
     snapshotSeq += 1;
     const finished: HistoryRoundReport = { startedAt, finishedAt: Date.now(), cutoff, outcome: 'published', requests: state.requests,

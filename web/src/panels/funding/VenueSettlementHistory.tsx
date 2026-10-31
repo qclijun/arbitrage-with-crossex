@@ -17,6 +17,15 @@ function Metric({ window, cumulative }: { window: SettlementWindow; cumulative: 
       {value == null ? 'Not collected' : `${window.observed?.events ?? 0} settlements${window.cadence?.basis === 'inferred'
         ? ` · Inferred ${window.cadence.intervals.map((hours) => `${hours}h`).join('/')}` : ''}${unverified ? ' · Unverified' : ''}${!window.fresh ? ' · Stale' : ''}`}
     </span>
+    <span className={`block text-[10px] ${window.fresh ? 'text-ink-400' : 'text-warning'}`}>
+      {window.fresh ? 'Fresh' : window.verifiedAt ? 'Stale' : 'Not verified'}
+    </span>
+    {window.cutoff !== null && <span className={`block whitespace-nowrap ${micro}`}>Cutoff {fmtTime(toDate(window.cutoff))}</span>}
+    {window.verifiedAt !== null && <span className={`block whitespace-nowrap ${micro}`}>Verified {fmtTime(toDate(window.verifiedAt))}</span>}
+    {window.lastAttempt && <span className={`block whitespace-nowrap ${micro}`}>Last try {fmtTime(toDate(window.lastAttempt.at))}</span>}
+    {window.reasons.length > 0 && <span className="block max-w-56 text-[10px] text-warning">
+      {window.reasons.map((reason) => reasonText(reason)).join('; ')}
+    </span>}
   </td>;
 }
 
@@ -61,6 +70,11 @@ export function VenueSettlementHistory() {
               <span className="num text-ink-100">{row.contractId}</span></span>
               <span className={`mt-0.5 block ${micro}`}>{cutoff ? `Cutoff ${fmtTime(toDate(cutoff))}`
                 : row.lastAttempt?.reason ? reasonText(row.lastAttempt.reason) : 'Waiting for history collection'}</span>
+              {row.lastAttempt && <span className={`block ${micro}`}>Last try {fmtTime(toDate(row.lastAttempt.at))}
+                {row.lastAttempt.reason ? ` · ${reasonText(row.lastAttempt.reason)}` : ''}</span>}
+              {row.backfill && <span className={`block ${micro}`}>Read through {row.backfill.completeThroughDays}d
+                {row.backfill.pendingDays !== null ? ` · Next ${row.backfill.pendingDays}d` : ' · Backfill complete'}
+                {` · ${row.backfill.pagesRead} batches saved`}</span>}
             </td>
             {row.windows.map((window) => <Metric key={window.days} window={window} cumulative={cumulative} />)}
           </tr>;
