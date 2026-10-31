@@ -20,6 +20,8 @@ Aster BTC 365 天首 1000、重叠末时间后次页 97；HL BTC 首/次页均 5
 
 Aster 样本 BTC 约 8h、HYPE 约 4h、新品 XTEN 约 1h；OKX 本次 BTC/HYPE/新品 MPWR 均观察到约 8h，未覆盖第二种周期。观察间距不是历史规则生效证明。Aster 与 HL 均存在毫秒偏移，不得由此推导已证明的 UTC 结算整点映射。上市仅以官方 onboardDate/listTime/launchTime 字段为依据；缺失不猜测。
 
+> 2026-10-31修订：历史周期改按“双重证明”（规则结算记录 + 当前官方周期）判定，见[历史证据与资格契约](../history-and-eligibility.md)末节“修订 2026-10-31：周期双重证明”；同节记录Binance不足1秒的fundingTime抖动映射，Aster仍不映射。
+
 新增官方证据：[HL info endpoint Pagination](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)明确时间范围最多返回 500 elements 或 distinct blocks，并以最后时间作为下一 startTime。本次连续满页及短页与其一致，修正07“未见条数上限”的旧结论。它只支持分页，不证明历史周期、上市或 rawTime 的整点经济语义。实际完整性仍由逐期检查独立决定。
 
 ## 响应头和预算

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FundingHistoryCache } from '../../src/core/funding/history-cache';
 import { createFundingHistoryRefresher } from '../../src/core/funding/history-collector';
-import { BTC, H, M, T, pair, run, setup, stubSource } from '../helpers/funding-history-stub';
+import { BTC, H, M, T, currentFor, pair, run, setup, stubSource } from '../helpers/funding-history-stub';
 
 beforeEach(() => {
   vi.useFakeTimers({ now: T + M });
@@ -23,6 +23,7 @@ describe('funding history cache reads', () => {
       cache,
       sources: [binance.source, bybit.source],
       legs: async () => [BTC.binance, BTC.bybit],
+      currentSchedules: currentFor([BTC.binance, BTC.bybit]),
     });
     const report = await refresher.runOnce();
     expect(report).toMatchObject({ outcome: 'published', cutoff: T });
@@ -88,7 +89,7 @@ describe('funding history cache reads', () => {
     const bybit = stubSource('BYBIT');
     const cache = new FundingHistoryCache();
     const refresher = createFundingHistoryRefresher({ cache, sources: [binance.source, bybit.source],
-      legs: async () => [BTC.binance, BTC.bybit], random: () => 0 });
+      legs: async () => [BTC.binance, BTC.bybit], currentSchedules: currentFor([BTC.binance, BTC.bybit]), random: () => 0 });
 
     hold = true;
     const first = refresher.runOnce();

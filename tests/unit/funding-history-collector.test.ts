@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FundingHistoryCache } from '../../src/core/funding/history-cache';
+import { FundingHistoryCache, legKey } from '../../src/core/funding/history-cache';
 import { createFundingHistoryRefresher, type FundingHistorySource } from '../../src/core/funding/history-collector';
-import { BTC, D, H, M, T, leg, pair, run, setup, stubSource } from '../helpers/funding-history-stub';
+import { BTC, D, H, M, T, currentFor, leg, pair, run, setup, stubSource } from '../helpers/funding-history-stub';
 
 beforeEach(() => {
   vi.useFakeTimers({ now: T + M });
@@ -72,16 +72,15 @@ describe('funding history refresher', () => {
     const cache = new FundingHistoryCache();
     const binance = stubSource('BINANCE');
     const failing = createFundingHistoryRefresher({ cache, sources: [binance.source],
-      legs: async () => { throw new Error('rules down'); } });
+      legs: async () => { throw new Error('rules down'); }, currentSchedules: currentFor([]) });
     expect(await run(failing)).toMatchObject({ outcome: 'failed', reason: 'leg-list-failed' });
     expect(cache.view(Date.now())).toMatchObject({ state: 'cold', lastRound: { outcome: 'failed', reason: 'leg-list-failed' } });
 
     const throwing = stubSource('BYBIT');
     throwing.source.page = async () => { throw new Error('adapter bug outside call'); };
-    binance.source.context = async () => null;
     const gate = { venue: 'GATE', contractId: 'BTC_USDT' };
     const refresher = createFundingHistoryRefresher({ cache, sources: [binance.source, throwing.source],
-      legs: async () => [BTC.binance, gate, BTC.bybit] });
+      legs: async () => [BTC.binance, gate, BTC.bybit], currentSchedules: currentFor([BTC.bybit]) });
     expect(await run(refresher)).toMatchObject({ outcome: 'published' });
     expect(cache.evaluate(pair(7), Date.now())!.long.lastAttempt).toMatchObject({ reason: 'source-error' });
     expect(binance.calls).toHaveLength(0);
@@ -93,16 +92,30 @@ describe('funding history refresher', () => {
     expect(result.long.source).toMatchObject({ status: 'unknown', reason: 'no-history-source' });
   });
 
-  it('publishes a fresh partial leg when the venue misses a settlement, and pages through cursors', async () => {
-    const { cache, binance, refresher } = setup({ binance: { pageSize: 10 }, bybit: { drop: T - 2 * H } });
+  it('ends the proven run at a missed settlement: windows spanning it are UNKNOWN, never partial; pages through cursors', async () => {
+    const { cache, binance, refresher } = setup({ binance: { pageSize: 10 }, bybit: { drop: T - 10 * D - 2 * H } });
     await run(refresher);
     // 21 settlements in 7 days (first at 16:00) at 10 a page: three pages for the first segment.
     expect(binance.calls.slice(0, 3)).toEqual([`BTCUSDT:${T - 7 * D}:`, `BTCUSDT:${T - 7 * D}:${T - 7 * D + 78 * H}`,
       `BTCUSDT:${T - 7 * D}:${T - 7 * D + 158 * H}`]);
+    const week = cache.evaluate(pair(7), Date.now())!;
+    expect(week.short).toMatchObject({ coverage: 'complete', fresh: true, total: '0.0021' });
+    expect(week).toMatchObject({ coverage: 'complete', historyEligible: true });
+    const month = cache.evaluate(pair(30), Date.now())!;
+    expect(month.long).toMatchObject({ coverage: 'unknown', fresh: true, missingEvents: [], total: null });
+    expect(month.long.reasons).toContain('schedule-unverified');
+    expect(month).toMatchObject({ coverage: 'unknown', historyEligible: false, netTotal: null });
+  });
+
+  it('refuses the cadence while the newest settlement has not posted, publishing no events', async () => {
+    const { cache, refresher } = setup({ bybit: { drop: T - 2 * H } });
+    await run(refresher);
     const result = cache.evaluate(pair(7), Date.now())!;
-    expect(result.short).toMatchObject({ coverage: 'complete', fresh: true, total: '0.0021' });
-    expect(result.long).toMatchObject({ coverage: 'partial', fresh: true, missingEvents: [T - 2 * H], total: null });
-    expect(result).toMatchObject({ coverage: 'partial', historyEligible: false, netTotal: null });
+    expect(result.long).toMatchObject({ coverage: 'unknown', missingEvents: [], lastAttempt: { reason: 'schedule-unverified' } });
+    expect(result.long.reasons).toContain('schedule-unverified');
+    const published = cache.snapshot()!.legs.get(legKey(BTC.bybit))!.leg;
+    expect(published).toMatchObject({ rules: [], events: [], verifiedAt: T + M,
+      pages: { termination: 'all-segments-done;schedule:newest-settlement-missing' } });
   });
 
   it('shares one global request budget across venues', async () => {
@@ -150,8 +163,7 @@ describe('funding history refresher', () => {
   it('counts Hyperliquid rows stamped off the hour only through a proven settlement-hour mapping', async () => {
     const hl = (mapped: boolean): FundingHistorySource => ({
       venue: 'HYPERLIQUID', api: 'info:fundingHistory', version: 'stub-v1', maxDays: 7,
-      context: async () => ({ listing: { at: 0, evidence: 'hl/listing' },
-        rules: [{ from: 0, until: T + D, everyHours: 1, anchor: 0, evidence: 'hl/hourly' }] }),
+      context: async () => ({ listing: { at: 0, evidence: 'hl/listing' } }),
       page: (coin, range, _cursor, call) => call(`HL ${coin} ${range.start}`, async () => {
         const rows = [];
         for (let t = range.start + H; t <= range.end; t += H) rows.push({ coin, time: t + 76, fundingRate: '0.00001' });
@@ -165,7 +177,8 @@ describe('funding history refresher', () => {
     for (const mapped of [true, false]) {
       const cache = new FundingHistoryCache();
       const binance = stubSource('BINANCE');
-      await run(createFundingHistoryRefresher({ cache, sources: [hl(mapped), binance.source], legs: async () => [key, BTC.binance] }));
+      await run(createFundingHistoryRefresher({ cache, sources: [hl(mapped), binance.source], legs: async () => [key, BTC.binance],
+        currentSchedules: currentFor([key, BTC.binance]) }));
       const result = cache.evaluate(hlPair, Date.now())!;
       if (mapped) expect(result.short).toMatchObject({ coverage: 'complete', total: '0.00168' });
       else expect(result.short).toMatchObject({ coverage: 'unknown', lastAttempt: { reason: 'settlement-unnormalized' } });
@@ -195,7 +208,7 @@ describe('funding history refresher', () => {
     const binance = stubSource('BINANCE');
     let hangList = true;
     const refresher = createFundingHistoryRefresher({ cache, sources: [binance.source],
-      legs: () => (hangList ? new Promise(() => undefined) : Promise.resolve([BTC.binance])) });
+      legs: () => (hangList ? new Promise(() => undefined) : Promise.resolve([BTC.binance])), currentSchedules: currentFor([BTC.binance]) });
     expect(await run(refresher)).toMatchObject({ outcome: 'failed', reason: 'leg-list-failed' });
     expect(cache.view(Date.now()).refreshing).toBe(false);
 

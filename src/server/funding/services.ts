@@ -5,9 +5,18 @@
  * supplies official sources and the corroborated contract catalog (ticket 22).
  */
 import { FUNDING_FEEDS } from '../../core/funding/feeds';
-import { FundingHistoryCache, type HistoryLegKey } from '../../core/funding/history-cache';
+import { FundingHistoryCache, legKey, type HistoryLegKey } from '../../core/funding/history-cache';
 import { createFundingHistoryRefresher, type FundingHistorySource } from '../../core/funding/history-collector';
+import { enumerateFundingCandidates } from '../../core/funding/ranking';
 import { createFundingMarket, readyListings, type FundingMarketDeps } from '../../core/funding/market';
+
+function candidateLegs(listings: ReturnType<typeof readyListings>): HistoryLegKey[] {
+  const legs = new Map<string, HistoryLegKey>();
+  for (const { short, long } of enumerateFundingCandidates(listings).candidates) {
+    for (const { venue, contractId } of [short, long]) legs.set(legKey({ venue, contractId }), { venue, contractId });
+  }
+  return [...legs.values()];
+}
 
 export function createFundingServices(opts: { contracts?: FundingMarketDeps['contracts']; sources?: FundingHistorySource[] } = {}) {
   const history = new FundingHistoryCache();
@@ -16,7 +25,8 @@ export function createFundingServices(opts: { contracts?: FundingMarketDeps['con
   const refresher = createFundingHistoryRefresher({
     cache: history,
     sources: opts.sources ?? [],
-    legs: async () => listings().map(({ venue, contractId }) => ({ venue, contractId })),
+    legs: async () => candidateLegs(listings()),
+    currentSchedules: () => market.view().current,
   });
   const legOf = (symbol: string): HistoryLegKey | null => {
     const hits = listings().filter((l) => l.symbol === symbol);
