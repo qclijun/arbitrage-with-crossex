@@ -15,11 +15,13 @@ describe('FundingOrderForm', () => {
     renderForm();
     const preview = screen.getByRole('button', { name: 'Preview' });
     expect(preview).toBeDisabled();
+    expect(preview).toHaveAccessibleDescription('Preview needs: Quantity (BTC), Short leverage, Long leverage, Hold days, Maker leg');
     expect(screen.getByLabelText('Maker: short BINANCE')).not.toBeChecked();
     expect(screen.getByLabelText('Maker: long BYBIT')).not.toBeChecked();
     expect(screen.getByLabelText('Short leverage')).toHaveValue('');
     expect(screen.getByLabelText('Maker timeout (s)')).toHaveValue('300');
     fill();
+    expect(preview).not.toHaveAccessibleDescription();
     fireEvent.click(preview);
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({

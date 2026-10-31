@@ -2,9 +2,7 @@ import { FINAL_MODES, type FundingReceipt } from '../../api/fundingIntents';
 import { fmtTime, toDate } from '../../lib/fmt';
 import { useTradeFlowOptional } from '../../trade/TradeFlow';
 import type { Submission } from './FundingSubmissions';
-import { decimalSign } from './labels';
-
-const micro = 'text-[11px] text-ink-400';
+import { decimalSign, micro } from './labels';
 
 type Order = FundingReceipt['deal']['orders'][number];
 
@@ -38,7 +36,7 @@ export function FundingReceiptView({ receipt, onDismiss }: { receipt: FundingRec
   ];
   return (
     <div className="mt-2">
-      <p role="status" className="text-emerald-300">Accepted as intent {receipt.intentId} · deal {receipt.dealId}</p>
+      <p role="status" className="text-grass">Accepted as intent {receipt.intentId} · deal {receipt.dealId}</p>
       <table aria-label="Deal" className="mt-1">
         <tbody>
           {rows.map(([k, v]) => <tr key={k}><td className={`pr-3 ${micro}`}>{k}</td><td className="num">{v}</td></tr>)}
@@ -50,7 +48,7 @@ export function FundingReceiptView({ receipt, onDismiss }: { receipt: FundingRec
         <table aria-label="Orders" className={`mt-1 ${micro}`}>
           <tbody>
             {deal.orders.map((o) => (
-              <tr key={o.clientId} className={o.quarantinedStatus !== null ? 'text-rose-300' : ''}>
+              <tr key={o.clientId} className={o.quarantinedStatus !== null ? 'text-guava' : ''}>
                 <td className="pr-2">{o.leg === 'A' ? 'maker leg' : 'hedge leg'} {o.kind}</td>
                 <td className="num pr-2">{o.cumQty}/{o.qty}</td>
                 <td className="pr-2">{o.state}</td>
@@ -61,9 +59,9 @@ export function FundingReceiptView({ receipt, onDismiss }: { receipt: FundingRec
         </table>
       )}
       {done && decimalSign(deal.filledGap) !== 0 && (
-        <p role="alert" className="mt-1 text-amber-300">Finished with {deal.filledGap} filled but not hedged (residual or dust): this deal trades no more.</p>
+        <p role="alert" className="mt-1 text-warning">Finished with {deal.filledGap} filled but not hedged (residual or dust): this deal trades no more.</p>
       )}
-      {done && decimalSign(deal.aUnfilled) === 1 && <p className="mt-1 text-amber-300">Finished {deal.aUnfilled} short of the target.</p>}
+      {done && decimalSign(deal.aUnfilled) === 1 && <p className="mt-1 text-warning">Finished {deal.aUnfilled} short of the target.</p>}
       {!done && <p className={micro}>{deal.mode === 'STOPPING' || deal.mode === 'HALTED' ? 'Stopping: fills can still land until it is DONE.' : 'Running: fills can still change.'}</p>}
       <p className={micro}>
         Accepted is not filled, and DONE is not proof of a full fill: compare both legs above. Nothing here adds or unwinds orders; the engine
@@ -89,5 +87,5 @@ export function SubmissionCard({ submission, onDismiss }: { submission: Submissi
       state.kind === 'pending' && state.until !== null ? ` until ${fmtTime(toDate(state.until))}` : ''}. Looking it up by its id; nothing is resent.`,
     'lookup-failed': `Intent ${id}: its result could not be looked up (${state.kind === 'lookup-failed' ? state.error : ''}). Retrying; nothing new may open until it is known.`,
   }[state.kind];
-  return <p role="alert" className="mt-2 text-amber-300">{text}</p>;
+  return <p role="alert" className="mt-2 text-warning">{text}</p>;
 }

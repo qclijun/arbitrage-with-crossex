@@ -1,6 +1,9 @@
 /** Plain-language text for the opportunities page's reason codes; an unknown code is shown verbatim. */
 import type { BoardWindow } from '../../api/fundingOpportunities';
 
+/** Secondary 11px text shared by the funding panels. */
+export const micro = 'text-[11px] text-ink-400';
+
 const REASONS: Record<string, string> = {
   'history-cold-start': 'no history published yet (cold start)',
   'history-clock-behind': 'this clock is behind the snapshot',

@@ -1,6 +1,5 @@
 import type { FundingPreview } from '../../api/fundingIntents';
-
-const micro = 'text-[11px] text-ink-400';
+import { micro } from './labels';
 
 const WARNINGS: Record<string, string> = {
   'maker-expiry-converts-remainder-to-taker': 'At the maker deadline, the unfilled maker remainder converts to taker.',
@@ -66,7 +65,7 @@ export function PreviewSummary({ preview }: { preview: FundingPreview }) {
         The conversion row assumes the whole maker leg converts.
       </p>
       {preview.blockers.length > 0 && (
-        <div role="alert" className="mt-2 text-rose-300">
+        <div role="alert" className="mt-2 text-guava">
           <p className="font-semibold">Cannot be accepted:</p>
           <ul className="list-disc pl-4">{preview.blockers.map((b) => <li key={b.code}>{b.message}</li>)}</ul>
         </div>

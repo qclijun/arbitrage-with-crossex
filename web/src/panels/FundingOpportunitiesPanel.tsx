@@ -1,17 +1,18 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { HISTORY_DAYS } from '../../../src/core/funding/history';
+import { HISTORY_DAYS, type HistoryDays } from '../../../src/core/funding/history';
 import { useFundingOpportunities, type BoardParams, type FundingBoard } from '../api/fundingOpportunities';
 import { Chip } from '../components/Chip';
 import { QueryError } from '../components/QueryError';
+import { SegmentedToggle } from '../components/SegmentedToggle';
 import { TableSkeleton } from '../components/Skeleton';
 import { fmtTime, toDate } from '../lib/fmt';
 import { CandidateDetail } from './funding/CandidateDetail';
 import { CandidateTable } from './funding/CandidateTable';
 import { dealSummary } from './funding/FundingReceiptView';
 import { FundingSubmissionsProvider, useFundingSubmissions } from './funding/FundingSubmissions';
-import { UNPAIRED } from './funding/labels';
+import { micro, UNPAIRED } from './funding/labels';
 
-const micro = 'text-[11px] text-ink-400';
 
 /** Why the page shows less than a full market, in the server's own terms. */
 function Notices({ board }: { board: FundingBoard }) {
@@ -49,14 +50,9 @@ function Notices({ board }: { board: FundingBoard }) {
 function Filters({ board, params, set }: { board: FundingBoard | undefined; params: BoardParams; set: (p: Partial<BoardParams>) => void }) {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-3">
-      <span className="inline-flex gap-1" role="group" aria-label="History window">
-        {HISTORY_DAYS.map((d) => (
-          <button key={d} type="button" aria-pressed={params.days === d} onClick={() => set({ days: d })}
-            className={`rounded px-2 py-0.5 text-[11px] ${params.days === d ? 'bg-ink-700 text-ink-50' : 'text-ink-400'}`}>
-            {d}d
-          </button>
-        ))}
-      </span>
+      <SegmentedToggle ariaLabel="History window" value={String(params.days)}
+        options={HISTORY_DAYS.map((d) => ({ value: String(d), label: `${d}d` }))}
+        onChange={(v) => set({ days: Number(v) as HistoryDays })} />
       <label className={`flex items-center gap-1.5 ${micro}`}>
         Coin
         <select className="input h-[26px] !py-0 text-[11px]" value={params.underlying ?? ''} onChange={(e) => set({ underlying: e.target.value || null })}>
@@ -148,7 +144,7 @@ function Board() {
   return (
     <section aria-label="Funding opportunities">
       <h2 className="mb-1 text-[14px] font-semibold text-ink-50">
-        Perp funding opportunities <span className="normal-case text-ink-500">— every directed pair, ranked by settled history</span>
+        Perp funding opportunities <span className="text-ink-500">— every directed pair, ranked by settled history</span>
       </h2>
       <p className="mb-3 text-[12px] text-ink-400">
         Short leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as
@@ -161,7 +157,7 @@ function Board() {
       {data && (
         <>
           <Notices board={data} />
-          {changed && <p className="mb-2 text-[12px] text-amber-300/90">The ranking changed while you were paging — showing page 1 of the new ranking.</p>}
+          {changed && <p className="mb-2 text-[12px] text-warning">The ranking changed while you were paging — showing page 1 of the new ranking.</p>}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div>
               {data.rows.length ? (
@@ -174,12 +170,17 @@ function Board() {
                   {data.matched} of {data.candidateCount} pairs · {data.rankedCount} ranked · as of {fmtTime(toDate(data.evaluatedAt))}
                 </span>
                 <span className="ml-auto" />
-                <button type="button" aria-label="Previous page" disabled={data.offset === 0} onClick={() => page(Math.max(0, data.offset - data.limit))}>‹</button>
+                <button type="button" className="btn-ghost-xs" aria-label="Previous page" disabled={data.offset === 0}
+                  onClick={() => page(Math.max(0, data.offset - data.limit))}>
+                  <ChevronLeft size={14} aria-hidden />
+                </button>
                 <span>Page {current} of {pages}</span>
-                <button type="button" aria-label="Next page" disabled={current >= pages} onClick={() => page(data.offset + data.limit)}>›</button>
+                <button type="button" className="btn-ghost-xs" aria-label="Next page" disabled={current >= pages} onClick={() => page(data.offset + data.limit)}>
+                  <ChevronRight size={14} aria-hidden />
+                </button>
               </div>
               {!!data.contracts.rejected?.length && (
-                <details className="mt-2 text-amber-400">
+                <details className="mt-2 text-warning">
                   <summary>{data.contracts.rejected.length} CrossEx contracts could not be mapped</summary>
                   <ul className="mt-1">
                     {data.contracts.rejected.map((r, i) => <li key={`${r.symbol}/${i}`}>{r.symbol}: {r.reason}</li>)}

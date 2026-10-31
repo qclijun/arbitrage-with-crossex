@@ -5,31 +5,29 @@ import { fmtTime, toDate } from '../../lib/fmt';
 import { FundingOrderForm } from './FundingOrderForm';
 import { dealSummary } from './FundingReceiptView';
 import { useFundingSubmissions } from './FundingSubmissions';
-import { coverageLabel, pct, pctExact, reasonText, windowValue } from './labels';
+import { coverageLabel, micro, pct, pctExact, reasonText, windowValue } from './labels';
 
-const micro = 'text-[11px] text-ink-400';
 const section = 'mt-4 border-t border-ink-800 pt-3';
 const link = 'text-link underline decoration-link/40 underline-offset-2';
 
 const goTo = (tab: string) => window.dispatchEvent(new CustomEvent('crossex:open-tab', { detail: tab }));
 
 function Leg({ leg }: { leg: BoardLegHistory | undefined }) {
-  if (!leg) return <span className="text-amber-300/90">UNKNOWN</span>;
-  if (leg.annualized === null) return <span className="text-amber-300/90">{coverageLabel(leg.coverage)}</span>;
-  return <span className="num">{pct(leg.total!)} · {pct(leg.annualized)}</span>;
+  if (!leg) return <span className="text-warning">UNKNOWN</span>;
+  if (leg.annualized === null) return <span className="text-warning">{coverageLabel(leg.coverage)}</span>;
+  return <span className="num"><span className="whitespace-nowrap">{pct(leg.total!)} ·</span> <span className="whitespace-nowrap">{pct(leg.annualized)}</span></span>;
 }
 
-function WindowRow({ w, underlying }: { w: BoardWindow; underlying: string }) {
+function WindowRow({ w }: { w: BoardWindow }) {
   const value = windowValue(w);
   return (
     <tr className="border-t border-ink-800 align-top">
       <td className="py-1 pr-2">{w.days}d</td>
-      <td className="num py-1 pr-2">{w.netTotal === null ? value.text : pct(w.netTotal)}</td>
-      <td className={`num py-1 pr-2 ${value.known ? '' : 'text-amber-300/90'}`}>{value.text}</td>
+      <td className="num whitespace-nowrap py-1 pr-2">{w.netTotal === null ? value.text : pct(w.netTotal)}</td>
+      <td className={`num whitespace-nowrap py-1 pr-2 ${value.known ? '' : 'text-warning'}`}>{value.text}</td>
       <td className="py-1 pr-2"><Leg leg={w.legs?.short} /></td>
       <td className="py-1 pr-2"><Leg leg={w.legs?.long} /></td>
-      <td className="py-1 pr-2">{coverageLabel(w.coverage)}</td>
-      <td className="whitespace-normal py-1 text-[11px] text-ink-400">{w.reasons.map((r) => reasonText(r, underlying)).join('; ') || '—'}</td>
+      <td className="py-1">{coverageLabel(w.coverage)}</td>
     </tr>
   );
 }
@@ -67,24 +65,34 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
   row: BoardRow; days: HistoryDays; snapshotId: string | null; admissionOpen: boolean;
 }) {
   const selectedLegs = row.windows.find((w) => w.days === days)?.legs;
+  const unranked = row.windows.filter((w) => w.reasons.length > 0);
   return (
     <aside aria-label="Candidate detail" className="min-w-0 rounded border border-ink-800 p-3 text-[12px]">
       <h3 className="text-[14px] font-semibold text-ink-50">{row.underlying}</h3>
       <p className="mt-1">
-        <span className="text-emerald-400">Short {row.short.venue} {row.short.contractId}</span>
+        <span className="text-guava">Short {row.short.venue} {row.short.contractId}</span>
         <span className="mx-1 text-ink-500">→</span>
-        <span className="text-rose-400">Long {row.long.venue} {row.long.contractId}</span>
+        <span className="text-grass">Long {row.long.venue} {row.long.contractId}</span>
       </p>
       <p className={micro}>Direction is fixed: the short leg receives a positive spread. Snapshot {snapshotId ?? 'none'}.</p>
 
       <div className="mt-3 overflow-x-auto">
-      <table aria-label="History windows" className="w-full whitespace-nowrap">
-        <thead className={`text-left ${micro}`}>
-          <tr><th>Window</th><th>Net total</th><th>Net APR</th><th>Short total · APR</th><th>Long total · APR</th><th>Coverage</th><th>Why not ranked</th></tr>
-        </thead>
-        <tbody>{row.windows.map((w) => <WindowRow key={w.days} w={w} underlying={row.underlying} />)}</tbody>
-      </table>
+        <table aria-label="History windows" className="w-full">
+          <thead className={`text-left ${micro}`}>
+            <tr className="[&>th]:pb-1 [&>th]:pr-2 [&>th]:font-normal">
+              <th>Window</th><th>Net total</th><th>Net APR</th><th>Short total · APR</th><th>Long total · APR</th><th>Coverage</th>
+            </tr>
+          </thead>
+          <tbody>{row.windows.map((w) => <WindowRow key={w.days} w={w} />)}</tbody>
+        </table>
       </div>
+      {unranked.length > 0 && (
+        <ul aria-label="Why not ranked" className={`mt-1 ${micro}`}>
+          {unranked.map((w) => (
+            <li key={w.days}>{w.days}d not ranked: {w.reasons.map((r) => reasonText(r, row.underlying)).join('; ')}</li>
+          ))}
+        </ul>
+      )}
       {selectedLegs && (
         <p className={`mt-1 ${micro}`}>
           Verified {fmtTime(toDate(selectedLegs.short.verifiedAt))} (short) / {fmtTime(toDate(selectedLegs.long.verifiedAt))} (long)
@@ -105,7 +113,7 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
             })}
             <p className="num">Net {pct(row.current.netAnnualized)} APR at each leg&apos;s own interval</p>
             {row.current.reversed && (
-              <p className="text-amber-300/90">Current spread runs opposite to the {days}d history — a hint only; the pair is not swapped or re-ranked.</p>
+              <p className="text-warning">Current spread runs opposite to the {days}d history — a hint only; the pair is not swapped or re-ranked.</p>
             )}
           </>
         ) : (

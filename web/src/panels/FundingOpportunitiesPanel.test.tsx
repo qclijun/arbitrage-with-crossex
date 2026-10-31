@@ -89,7 +89,7 @@ describe('FundingOpportunitiesPanel', () => {
     renderWithClient(<FundingOpportunitiesPanel />);
     await screen.findByRole('table', { name: 'Directed funding pairs' });
     expect(urls.at(-1)?.searchParams.get('days')).toBe('30');
-    fireEvent.click(screen.getByRole('button', { name: '7d' }));
+    fireEvent.click(screen.getByRole('radio', { name: '7d' }));
     await waitFor(() => expect(urls.at(-1)?.searchParams.get('days')).toBe('7'));
     fireEvent.change(screen.getByLabelText('Coin'), { target: { value: 'BTC' } });
     fireEvent.change(screen.getByLabelText('Venue'), { target: { value: 'OKX' } });
