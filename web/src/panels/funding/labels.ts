@@ -4,8 +4,23 @@ import type { BoardWindow } from '../../api/fundingOpportunities';
 /** Secondary 11px text shared by the funding panels. */
 export const micro = 'text-[11px] text-ink-400';
 
+/** How a pair's APR is formed; carried by the window control and the APR column. */
+export const RANKING_TIP = `Directed pair APR
+Short leg minus long leg, settled funding only, annualised (× 365 ÷ window days). No costs are included.
+* Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as zero. History-eligible is not permission to open.`;
+
+/** What a row's status can say; carried by the Status column. */
+export const STATUS_TIP = `Status
+Settlement cadence is inferred from settled timestamps when sufficient data is available. Inferred schedules can rank; gaps, conflicts and incomplete reads still block ranking.
+Observed figures use returned settlements from the same window; completeness is unverified. They do not receive a rank, pass the positive-spread filter or enable opening.`;
+
+/** The cross-basis caveat behind a 费率差估算 figure. */
+export const ESTIMATE_TIP = `费率差估算
+同一截止点、同一窗口，按相同名义金额将空腿结算费率总和减去多腿，再乘 365 ÷ 窗口天数。
+金额按 1 USDC = 1 USDT = 1 USD 计（同机会页）。
+* 未计入各期 oracle/mark 价差、基差或费用，并非实际现金收益或权益收益。`;
+
 const REASONS: Record<string, string> = {
-  'funding-valuation-unnormalized': '费率差估算：现金流计价尚未统一（oracle/mark、USDC/USDT），无法开仓',
   'history-cold-start': 'no history published yet (cold start)',
   'history-clock-behind': 'this clock is behind the snapshot',
   'history-cutoff-behind': 'the snapshot is behind the current UTC hour',

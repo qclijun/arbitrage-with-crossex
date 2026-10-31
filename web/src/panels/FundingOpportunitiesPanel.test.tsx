@@ -58,14 +58,14 @@ describe('FundingOpportunitiesPanel', () => {
     const d = detail();
     expect(d).toHaveTextContent('Short BINANCE BTCUSDT');
     expect(d).toHaveTextContent('Long BYBIT BTCUSDT');
-    expect(d).toHaveTextContent('Direction is fixed');
+    expect(within(d).getByTitle(/Direction is fixed/)).toBeInTheDocument();
     expect(within(d).getAllByRole('row').slice(1).map((r) => r.firstChild?.textContent)).toEqual(['7d', '30d', '90d', '180d', '365d']);
     expect(d).toHaveTextContent('-10.95%');
     // A current quote shows its exact rate and when it was read.
     expect(d).toHaveTextContent('Short 0.00125% / 1h');
     expect(d).toHaveTextContent(/read (\d\d-\d\d )?\d\d:\d\d:\d\d/);
     expect(d).toHaveTextContent('a hint only');
-    expect(d).toHaveTextContent('Costs, sizing and admission are known only from a preview');
+    expect(within(d).getByTitle(/Costs, sizing and admission are known only from a preview/)).toBeInTheDocument();
     expect(screen.getByText(/Manual opening is not enabled/)).toBeInTheDocument();
     // Opening goes only through the preview form of this exact pair; nothing is holdable before a preview.
     expect(within(d).getByRole('group', { name: 'Open this pair' })).toBeInTheDocument();

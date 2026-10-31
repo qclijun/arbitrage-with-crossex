@@ -1,6 +1,7 @@
 import type { BoardRow, FundingBoard } from '../../api/fundingOpportunities';
+import { TipLabel } from '../../components/Th';
 import { VenueChip } from '../../components/VenueChip';
-import { decimalSign, inferredWindow, reasonText, windowStatus, windowValue } from './labels';
+import { decimalSign, ESTIMATE_TIP, inferredWindow, RANKING_TIP, reasonText, STATUS_TIP, windowStatus, windowValue } from './labels';
 
 /** A window's figure; only an eligible one is coloured, so stale evidence never reads as a live ranking. */
 function Rate({ row, days }: { row: BoardRow; days: number }) {
@@ -32,9 +33,9 @@ export function CandidateTable({ board, selectedId, onSelect }: { board: Funding
         <tr>
           <th className="th text-left"># / Coin</th>
           <th className="th text-left">Short → Long</th>
-          <th className="th text-right">{board.days}d APR</th>
+          <th className="th text-right"><TipLabel title={RANKING_TIP}>{board.days}d APR</TipLabel></th>
           {compare && <th className="th text-right">{board.compareDays}d APR</th>}
-          <th className="th text-left">Status</th>
+          <th className="th text-left"><TipLabel title={STATUS_TIP}>Status</TipLabel></th>
         </tr>
       </thead>
       <tbody>
@@ -51,8 +52,10 @@ export function CandidateTable({ board, selectedId, onSelect }: { board: Funding
                 <span className="inline-flex items-center gap-1.5">
                   <VenueChip exchange={row.short.venue} /> <span className="text-ink-500">→</span> <VenueChip exchange={row.long.venue} />
                 </span>
-                <span className="num text-[11px] text-ink-400">{row.short.contractId} / {row.long.contractId}</span>
-                {row.rateEstimate && <span className="text-[10px] text-warning">费率差估算</span>}
+                <span className="text-[11px] text-ink-400">
+                  <span className="num">{row.short.contractId} / {row.long.contractId}</span>
+                  {row.rateEstimate && <> · <TipLabel title={ESTIMATE_TIP}>费率差估算</TipLabel></>}
+                </span>
               </button>
             </td>
             <td className="px-2.5 py-1.5 text-right"><Rate row={row} days={board.days} /></td>

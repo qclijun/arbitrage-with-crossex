@@ -38,6 +38,6 @@ it('explains observed figures and schedule gaps in the list and detail without a
   const windows = within(screen.getByRole('complementary', { name: 'Candidate detail' })).getByRole('table', { name: 'History windows' });
   expect(windows).toHaveTextContent('0.21%');
   expect(windows).toHaveTextContent('21 settlements');
-  expect(screen.getByText(/Observed figures use returned settlements/)).toBeInTheDocument();
+  expect(screen.getByTitle(/Observed figures use returned settlements/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Hold to open' })).not.toBeInTheDocument();
 });

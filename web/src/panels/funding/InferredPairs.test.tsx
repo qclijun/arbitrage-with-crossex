@@ -19,8 +19,7 @@ it('labels ranked inferred schedules and displays the inferred leg intervals', a
   const table = await screen.findByRole('table', { name: 'Directed funding pairs' });
   expect(table).toHaveTextContent('Ranked · inferred');
   const detail = screen.getByRole('complementary', { name: 'Candidate detail' });
-  expect(detail).toHaveTextContent('short 8h (inferred from settled timestamps)');
-  expect(detail).toHaveTextContent('long 8h (inferred from settled timestamps)');
+  expect(detail).toHaveTextContent('Cadence short 8h (inferred) · long 8h (inferred)');
   expect(within(detail).getByRole('table', { name: 'History windows' })).toHaveTextContent('Complete · inferred');
   expect(screen.getByText(/Manual opening is not enabled/)).toBeInTheDocument();
 });

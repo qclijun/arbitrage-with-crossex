@@ -19,7 +19,7 @@ const board = (): SettlementBoard => ({ evaluatedAt: cutoff + 60_000, snapshotId
 function show(data = board()) {
   server.use(http.get('/api/funding/settlements', () => HttpResponse.json(env(data))));
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <VenueSettlementHistory />
+    <VenueSettlementHistory initialOpen />
   </QueryClientProvider>);
 }
 
@@ -33,8 +33,9 @@ it('shows unverified native history values, including zero/negative and OKX long
   expect(within(rows[2]).getAllByText('0.00%')).toHaveLength(5);
   expect(rows[3]).toHaveTextContent('BTC-USDT-SWAP');
   expect(within(rows[3]).getAllByText('-12.00%')).toHaveLength(5);
-  expect(screen.getByText(/completeness is not proven/)).toBeInTheDocument();
-  expect(rows[1]).toHaveTextContent('21 settlements · Unverified');
+  expect(screen.getByTitle(/completeness is not proven/)).toBeInTheDocument();
+  expect(rows[1]).toHaveTextContent('Fresh · Unverified');
+  expect(rows[1].querySelectorAll('td')[1]).toHaveAttribute('title', expect.stringContaining('Settlements\t21'));
   expect(screen.queryByRole('button', { name: /open|preview/i })).not.toBeInTheDocument();
   fireEvent.click(screen.getByLabelText('Cumulative totals'));
   expect(within(rows[1]).getAllByText('-1.00%')).toHaveLength(5);
@@ -49,7 +50,7 @@ it('keeps missing data empty and marks old observations stale', async () => {
   const table = await screen.findByRole('table', { name: 'Venue historical settlements' });
   const row = within(table).getAllByRole('row')[1];
   expect(row).toHaveTextContent('Not collected');
-  expect(row).toHaveTextContent('Unverified · Stale');
+  expect(row).toHaveTextContent('Stale · Unverified');
   expect(within(row).getAllByText('-12.00%')).toHaveLength(4);
 });
 
@@ -76,7 +77,7 @@ it('filters and pages native history independently of the directed-pair ranking'
     const url = new URL(request.url); urls.push(url);
     return HttpResponse.json(env({ ...data, offset: Number(url.searchParams.get('offset')) }));
   }));
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><VenueSettlementHistory /></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><VenueSettlementHistory initialOpen /></QueryClientProvider>);
   await screen.findByRole('table', { name: 'Venue historical settlements' });
   await waitFor(() => expect(screen.getByRole('button', { name: 'Next history page' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Next history page' }));
@@ -86,4 +87,26 @@ it('filters and pages native history independently of the directed-pair ranking'
   expect(urls.at(-1)?.searchParams.get('offset')).toBe('0');
   fireEvent.change(screen.getByLabelText('Native asset code'), { target: { value: 'BTC' } });
   await waitFor(() => expect(urls.at(-1)?.searchParams.get('underlying')).toBe('BTC'));
+});
+
+it('stays folded until asked, reads nothing while folded, and remembers the choice', async () => {
+  localStorage.removeItem('funding.venueHistoryOpen');
+  let reads = 0;
+  server.use(http.get('/api/funding/settlements', () => { reads += 1; return HttpResponse.json(env(board())); }));
+  const { unmount } = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <VenueSettlementHistory />
+  </QueryClientProvider>);
+  const toggle = screen.getByRole('button', { name: 'Venue settlement history' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('table', { name: 'Venue historical settlements' })).not.toBeInTheDocument();
+  expect(reads).toBe(0);
+  fireEvent.click(toggle);
+  await screen.findByRole('table', { name: 'Venue historical settlements' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  unmount();
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <VenueSettlementHistory />
+  </QueryClientProvider>);
+  expect(screen.getByRole('button', { name: 'Venue settlement history' })).toHaveAttribute('aria-expanded', 'true');
+  localStorage.removeItem('funding.venueHistoryOpen');
 });

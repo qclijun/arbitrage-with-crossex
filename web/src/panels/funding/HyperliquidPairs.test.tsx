@@ -7,16 +7,14 @@ import { boardRow, fundingBoard } from '../../test/fundingBoard';
 import { env, server } from '../../test/server';
 import { FundingOpportunitiesPanel } from '../FundingOpportunitiesPanel';
 
-it('shows the HL/OKX estimates in both directions and explains why a ranked pair cannot open', async () => {
+it('shows the HL/OKX estimates in both directions and lets a ranked pair open with USDC valued at par', async () => {
   const forward = boardRow('ETH', 'HYPERLIQUID ETH', 'OKX ETH-USDT-SWAP', 1, '0.0657', {
     short: { venue: 'HYPERLIQUID', contractId: 'ETH', symbol: 'HYPERLIQUID_FUTURE_ETH_USDC' },
     rateEstimate: { short: { price: 'oracle', settlement: 'USDC' }, long: { price: 'mark', settlement: 'USDT' } },
-    executionBlockers: ['funding-valuation-unnormalized'],
   });
   const reverse = boardRow('ETH', 'OKX ETH-USDT-SWAP', 'HYPERLIQUID ETH', 2, '-0.0657', {
     long: forward.short,
     rateEstimate: { short: { price: 'mark', settlement: 'USDT' }, long: { price: 'oracle', settlement: 'USDC' } },
-    executionBlockers: ['funding-valuation-unnormalized'],
   });
   const board = fundingBoard({ rows: [forward, reverse], candidateCount: 12, matched: 2, rankedCount: 2,
     admission: { open: true, generation: 1, reason: 'open', changedAt: 1, enabledVersion: '9.9.9' } });
@@ -37,13 +35,12 @@ it('shows the HL/OKX estimates in both directions and explains why a ranked pair
     expect(row).toHaveTextContent('Ranked');
   }
   const detail = screen.getByRole('complementary', { name: 'Candidate detail' });
-  expect(detail).toHaveTextContent('相同名义金额');
+  expect(within(detail).getByTitle(/相同名义金额/)).toHaveTextContent('费率差估算');
   expect(detail).toHaveTextContent('oracle · USDC');
   expect(detail).toHaveTextContent('mark · USDT');
-  expect(detail).toHaveTextContent('并非实际现金收益或权益收益');
-  expect(detail).toHaveTextContent('现金流计价尚未统一');
-  expect(within(detail).queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument();
-  expect(within(detail).queryByRole('textbox', { name: 'Quantity (ETH)' })).not.toBeInTheDocument();
+  expect(within(detail).getByTitle(/并非实际现金收益或权益收益/)).toHaveAttribute('title', expect.stringContaining('1 USDC = 1 USDT = 1 USD'));
+  expect(detail).not.toHaveTextContent('无法开仓');
+  expect(within(detail).getByRole('textbox', { name: 'Quantity (ETH)' })).toBeInTheDocument();
   await userEvent.click(within(rows[1]!).getByRole('button'));
   expect(detail).toHaveTextContent('Short OKX ETH-USDT-SWAP');
   expect(detail).toHaveTextContent('Long HYPERLIQUID ETH');

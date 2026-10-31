@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { HISTORY_DAYS, type HistoryDays } from '../../../src/core/funding/history';
 import { useFundingOpportunities, type BoardParams, type FundingBoard } from '../api/fundingOpportunities';
 import { Chip } from '../components/Chip';
+import { microLabelClass, TipLabel } from '../components/Th';
 import { QueryError } from '../components/QueryError';
 import { SegmentedToggle } from '../components/SegmentedToggle';
 import { TableSkeleton } from '../components/Skeleton';
@@ -12,7 +13,7 @@ import { CandidateTable } from './funding/CandidateTable';
 import { HistoryDiagnostics } from './funding/HistoryDiagnostics';
 import { dealSummary } from './funding/FundingReceiptView';
 import { FundingSubmissionsProvider, useFundingSubmissions } from './funding/FundingSubmissions';
-import { micro, UNPAIRED } from './funding/labels';
+import { micro, RANKING_TIP, UNPAIRED } from './funding/labels';
 import { VenueSettlementHistory } from './funding/VenueSettlementHistory';
 
 
@@ -21,7 +22,7 @@ function Notices({ board }: { board: FundingBoard }) {
   const { history, contracts } = board;
   const failedFeeds = board.feeds.filter((f) => !f.ok);
   return (
-    <div className="mb-3 flex flex-wrap gap-2">
+    <div className="mb-3 flex flex-wrap gap-2 empty:hidden">
       {!board.admission?.open && <Chip sm tone="amber">Manual opening is not enabled — previews can only be observed.</Chip>}
       {contracts.state === 'unwired' && <Chip sm tone="amber">No proven contract mapping is wired yet — no candidates can be formed.</Chip>}
       {contracts.state === 'cold' && (
@@ -53,6 +54,7 @@ function Notices({ board }: { board: FundingBoard }) {
           The last history refresh failed{history.publishedAt !== null ? ` — showing history published ${fmtTime(toDate(history.publishedAt))}` : ''}.
         </Chip>
       )}
+      <HistoryDiagnostics board={board} />
       {failedFeeds.map((f) => (
         <Chip key={f.venue} sm tone="amber" title={`Feed status: ${f.error ?? 'unknown'}`}>
           {f.venue} current rate {f.error === 'no-feed' ? 'has no public feed' : 'unavailable'}
@@ -63,30 +65,35 @@ function Notices({ board }: { board: FundingBoard }) {
   );
 }
 
+/** One card of controls, as on Opportunities: a 12px label over each control, the clock on the right. */
 function Filters({ board, params, set }: { board: FundingBoard | undefined; params: BoardParams; set: (p: Partial<BoardParams>) => void }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-3">
-      <SegmentedToggle ariaLabel="History window" value={String(params.days)}
-        options={HISTORY_DAYS.map((d) => ({ value: String(d), label: `${d}d` }))}
-        onChange={(v) => set({ days: Number(v) as HistoryDays })} />
-      <label className={`flex items-center gap-1.5 ${micro}`}>
-        Coin
-        <select className="input h-[26px] !py-0 text-[11px]" value={params.underlying ?? ''} onChange={(e) => set({ underlying: e.target.value || null })}>
+    <div className="mb-4 flex flex-wrap items-end gap-x-8 gap-y-4 rounded border border-wash/[0.14] bg-wash/[0.07] px-5 py-4">
+      <div className="flex flex-col items-start gap-1.5">
+        <TipLabel className={microLabelClass} title={RANKING_TIP}>History window</TipLabel>
+        <SegmentedToggle className="seg-info seg-lg" ariaLabel="History window" value={String(params.days)}
+          options={HISTORY_DAYS.map((d) => ({ value: String(d), label: `${d}d` }))}
+          onChange={(v) => set({ days: Number(v) as HistoryDays })} />
+      </div>
+      <label className="flex flex-col items-start gap-1.5">
+        <span className={microLabelClass}>Coin</span>
+        <select className="input h-9 !py-0 text-[12px]" value={params.underlying ?? ''} onChange={(e) => set({ underlying: e.target.value || null })}>
           <option value="">All coins</option>
           {board?.options.underlyings.map((u) => <option key={u}>{u}</option>)}
         </select>
       </label>
-      <label className={`flex items-center gap-1.5 ${micro}`}>
-        Venue
-        <select className="input h-[26px] !py-0 text-[11px]" value={params.venue ?? ''} onChange={(e) => set({ venue: e.target.value || null })}>
+      <label className="flex flex-col items-start gap-1.5">
+        <span className={microLabelClass}>Venue</span>
+        <select className="input h-9 !py-0 text-[12px]" value={params.venue ?? ''} onChange={(e) => set({ venue: e.target.value || null })}>
           <option value="">Any venue</option>
           {board?.options.venues.map((v) => <option key={v}>{v}</option>)}
         </select>
       </label>
-      <label className={`flex items-center gap-1.5 ${micro}`}>
+      <label className="flex h-9 cursor-pointer items-center gap-2 text-[12px] text-ink-200">
         <input type="checkbox" className="chk" checked={params.positive} onChange={(e) => set({ positive: e.target.checked })} />
         Positive spread only
       </label>
+      {board && <span className="num ml-auto flex h-9 items-center text-[12px] text-ink-400">As of {fmtTime(toDate(board.evaluatedAt))}</span>}
     </div>
   );
 }
@@ -159,28 +166,14 @@ function Board() {
 
   return (
     <section aria-label="Funding opportunities">
-      <h2 className="mb-1 text-[14px] font-semibold text-ink-50">
-        Perp funding opportunities <span className="text-ink-500">— every directed pair, ranked by settled history</span>
-      </h2>
-      <p className="mb-3 text-[12px] text-ink-400">
-        Short leg minus long leg, settled funding only, annualised. Zero, negative and UNKNOWN pairs stay listed; UNKNOWN is never scored as
-        zero. History-eligible is not permission to open, and no costs are included.
-      </p>
       <SentIntents />
-      <VenueSettlementHistory />
-      <h3 className="mb-2 text-[13px] font-semibold text-ink-100">Directed pair rankings</h3>
-      <p className="mb-2 text-[12px] text-ink-400">Settlement cadence is inferred from settled timestamps when sufficient data is available.
-        Inferred schedules can rank; gaps, conflicts and incomplete reads still block ranking.</p>
-      <p className="mb-2 text-[12px] text-ink-400">Observed figures use returned settlements from the same window; completeness is unverified.
-        They do not receive a rank, pass the positive-spread filter or enable opening. Status names the missing evidence.</p>
       <Filters board={data} params={params} set={filter} />
       {isPending && <TableSkeleton rows={8} cols={5} />}
       {isError && !data && <QueryError title="Couldn't load funding opportunities" error={error} />}
       {data && (
         <>
           <Notices board={data} />
-          <HistoryDiagnostics board={data} />
-          {changed && <p className="mb-2 text-[12px] text-warning">The ranking changed while you were paging — showing page 1 of the new ranking.</p>}
+          {changed && <p role="status" className="mb-2 text-[12px] text-warning">The ranking changed while you were paging — showing page 1 of the new ranking.</p>}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div className="min-w-0">
               {data.rows.length ? (
@@ -189,9 +182,7 @@ function Board() {
                 <p className="py-6 text-center text-[12px] text-ink-400">No candidates match — missing data is not counted as zero.</p>
               )}
               <div className={`mt-2 flex items-center gap-3 ${micro}`}>
-                <span>
-                  {data.matched} of {data.candidateCount} pairs · {data.rankedCount} ranked · as of {fmtTime(toDate(data.evaluatedAt))}
-                </span>
+                <span className="num">{data.matched} of {data.candidateCount} pairs · {data.rankedCount} ranked</span>
                 <span className="ml-auto" />
                 <button type="button" className="btn-ghost-xs" aria-label="Previous page" disabled={data.offset === 0}
                   onClick={() => page(Math.max(0, data.offset - data.limit))}>
@@ -225,6 +216,7 @@ function Board() {
           </div>
         </>
       )}
+      <VenueSettlementHistory />
     </section>
   );
 }

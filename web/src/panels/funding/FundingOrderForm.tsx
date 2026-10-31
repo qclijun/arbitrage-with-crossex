@@ -2,6 +2,7 @@ import { useId } from 'react';
 import type { HistoryDays } from '../../../../src/core/funding/history';
 import type { BoardRow } from '../../api/fundingOpportunities';
 import { HoldToConfirmButton } from '../../components/HoldToConfirmButton';
+import { TipLabel } from '../../components/Th';
 import { SubmissionCard } from './FundingReceiptView';
 import { useFundingSubmissions } from './FundingSubmissions';
 import { decimalSign, micro } from './labels';
@@ -11,12 +12,12 @@ import { useFundingOrder } from './useFundingOrder';
 
 const input = 'input num h-[26px] w-24 !px-2 !py-0 text-[11px]';
 
-function Field({ label, value, error, disabled, onChange, placeholder }: {
-  label: string; value: string; error?: string; disabled: boolean; onChange: (v: string) => void; placeholder?: string;
+function Field({ label, value, error, disabled, onChange, placeholder, tip }: {
+  label: string; value: string; error?: string; disabled: boolean; onChange: (v: string) => void; placeholder?: string; tip?: string;
 }) {
   return (
     <label className={`flex flex-col gap-0.5 ${micro}`}>
-      {label}
+      {tip ? <TipLabel className="self-start" title={tip}>{label}</TipLabel> : label}
       <input type="text" inputMode="decimal" autoComplete="off" aria-label={label} value={value} disabled={disabled} placeholder={placeholder}
         aria-invalid={value !== '' && !!error} onChange={(e) => onChange(e.target.value)} className={input} />
       {value !== '' && error && <span className="text-guava">{error}</span>}
@@ -27,13 +28,13 @@ function Field({ label, value, error, disabled, onChange, placeholder }: {
 type TextField = Exclude<keyof OrderDraft, 'makerLeg'>;
 
 /** The typed fields in form order; `makerLeg` is the radio pair below them. */
-const fieldsFor = (underlying: string): { key: TextField; label: string; placeholder?: string }[] => [
+const fieldsFor = (underlying: string): { key: TextField; label: string; placeholder?: string; tip?: string }[] => [
   { key: 'quantity', label: `Quantity (${underlying})` },
   { key: 'leverageShort', label: 'Short leverage' },
   { key: 'leverageLong', label: 'Long leverage' },
   { key: 'makerPrice', label: 'Maker price', placeholder: 'best' },
-  { key: 'timeoutSec', label: 'Maker timeout (s)' },
-  { key: 'holdDays', label: 'Hold days' },
+  { key: 'timeoutSec', label: 'Maker timeout (s)', tip: `${TIMEOUT_RANGE.min}–${TIMEOUT_RANGE.max} s, ${TIMEOUT_RANGE.default} by default.` },
+  { key: 'holdDays', label: 'Hold days', tip: 'Only shapes the cost scenarios below.' },
 ];
 
 /**
@@ -71,10 +72,9 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs,
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         {fields.map((f) => (
           <Field key={f.key} label={f.label} value={draft[f.key]} error={errors[f.key]} disabled={frozen} placeholder={f.placeholder}
-            onChange={(v) => order.edit(f.key, v)} />
+            tip={f.tip} onChange={(v) => order.edit(f.key, v)} />
         ))}
       </div>
-      <p className={`mt-1 ${micro}`}>Maker timeout {TIMEOUT_RANGE.min}–{TIMEOUT_RANGE.max} s ({TIMEOUT_RANGE.default} default). Hold days only shape the scenarios below.</p>
       <fieldset className="mt-2 flex gap-4" disabled={frozen}>
         <legend className={micro}>Maker leg (the other leg hedges as taker)</legend>
         {(['short', 'long'] as const).map((side) => (

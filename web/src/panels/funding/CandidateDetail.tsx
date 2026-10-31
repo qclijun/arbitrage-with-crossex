@@ -1,11 +1,12 @@
 import type { HistoryDays } from '../../../../src/core/funding/history';
 import { useCandidateIntents } from '../../api/fundingIntents';
 import type { BoardLegHistory, BoardRow, BoardWindow } from '../../api/fundingOpportunities';
+import { TipLabel } from '../../components/Th';
 import { fmtTime, toDate } from '../../lib/fmt';
 import { FundingOrderForm } from './FundingOrderForm';
 import { dealSummary } from './FundingReceiptView';
 import { useFundingSubmissions } from './FundingSubmissions';
-import { coverageLabel, micro, pct, pctExact, reasonText, windowStatus, windowValue } from './labels';
+import { coverageLabel, ESTIMATE_TIP, micro, pct, pctExact, reasonText, windowStatus, windowValue } from './labels';
 
 const section = 'mt-4 border-t border-ink-800 pt-3';
 const link = 'text-link underline decoration-link/40 underline-offset-2';
@@ -71,30 +72,34 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
   const unranked = row.windows.filter((w) => w.reasons.length > 0);
   return (
     <aside aria-label="Candidate detail" className="min-w-0 rounded border border-ink-800 p-3 text-[12px]">
-      <h3 className="text-[14px] font-semibold text-ink-50">{row.underlying}</h3>
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-[14px] font-semibold text-ink-50">{row.underlying}</h3>
+        <TipLabel className={`ml-auto ${micro}`} title={`Direction is fixed: the short leg receives a positive spread.\nSnapshot\t${snapshotId ?? 'none'}`}>
+          Snapshot
+        </TipLabel>
+      </div>
       <p className="mt-1">
         <span className="text-guava">Short {row.short.venue} {row.short.contractId}</span>
         <span className="mx-1 text-ink-500">→</span>
         <span className="text-grass">Long {row.long.venue} {row.long.contractId}</span>
       </p>
-      <p className={micro}>Direction is fixed: the short leg receives a positive spread. Snapshot {snapshotId ?? 'none'}.</p>
-      {row.rateEstimate && <div role="note" aria-label="Funding rate estimate" className="mt-2 rounded border border-warning/40 p-2 text-warning">
-        <p>费率差估算：同一截止点、同一窗口，按相同名义金额将空腿结算费率总和减去多腿，再乘 365 ÷ 窗口天数。</p>
-        <p>空腿 {row.rateEstimate.short.price} · {row.rateEstimate.short.settlement} 结算；多腿 {row.rateEstimate.long.price} · {row.rateEstimate.long.settlement} 结算。</p>
-        <p>未计入各期价格差、USDC/USDT 汇率、基差或费用，并非实际现金收益或权益收益。现金流计价尚未统一，无法开仓。</p>
-      </div>}
-      {selectedLegs && (selectedLegs.short.cadence || selectedLegs.long.cadence) && <p className={`mt-1 ${micro}`}>
-        Settlement cadence: {(['short', 'long'] as const).map((side) => {
+      {row.rateEstimate && <p role="note" aria-label="Funding rate estimate" className="mt-1 text-warning">
+        <TipLabel title={ESTIMATE_TIP}>费率差估算</TipLabel>
+        {' '}· 空腿 {row.rateEstimate.short.price} · {row.rateEstimate.short.settlement}；多腿 {row.rateEstimate.long.price} · {row.rateEstimate.long.settlement}
+      </p>}
+      {selectedLegs && (selectedLegs.short.cadence || selectedLegs.long.cadence) && <p className={`mt-1 ${micro}`}
+        title="Inferred cadences come from settled timestamps.">
+        Cadence {(['short', 'long'] as const).map((side) => {
           const cadence = selectedLegs[side].cadence;
-          return `${side} ${cadence?.intervals.map((hours) => `${hours}h`).join(' / ') || 'unknown'}${cadence?.basis === 'inferred' ? ' (inferred from settled timestamps)' : ''}`;
-        }).join('; ')}.
+          return `${side} ${cadence?.intervals.map((hours) => `${hours}h`).join(' / ') || 'unknown'}${cadence?.basis === 'inferred' ? ' (inferred)' : ''}`;
+        }).join(' · ')}
       </p>}
 
       <div className="mt-3 overflow-x-auto">
         <table aria-label="History windows" className="w-full">
           <thead className={`text-left ${micro}`}>
             <tr className="[&>th]:pb-1 [&>th]:pr-2 [&>th]:font-normal">
-              <th>Window</th><th>{row.rateEstimate ? 'Rate spread total' : 'Net total'}</th><th>{row.rateEstimate ? 'Rate spread APR' : 'Net APR'}</th><th>Short total · APR</th><th>Long total · APR</th><th>Coverage</th>
+              <th>Window</th><th>{row.rateEstimate ? 'Spread total' : 'Net total'}</th><th>{row.rateEstimate ? 'Spread APR' : 'Net APR'}</th><th>Short total · APR</th><th>Long total · APR</th><th>Coverage</th>
             </tr>
           </thead>
           <tbody>{row.windows.map((w) => <WindowRow key={w.days} w={w} />)}</tbody>
@@ -135,21 +140,18 @@ export function CandidateDetail({ row, days, snapshotId, admissionOpen }: {
         )}
       </div>
 
-      <div className={section}>
+      {row.executionBlockers.length > 0 && <div className={section}>
         <h4 className="font-semibold text-ink-100">Execution limits</h4>
-        {row.executionBlockers.length ? (
-          <ul className="list-disc pl-4">{row.executionBlockers.map((b) => <li key={b}>{reasonText(b, row.underlying)}</li>)}</ul>
-        ) : (
-          <p className={micro}>None known from the listing. Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.</p>
-        )}
-      </div>
+        <ul className="list-disc pl-4">{row.executionBlockers.map((b) => <li key={b}>{reasonText(b, row.underlying)}</li>)}</ul>
+      </div>}
 
       <div className={section}>
-        <h4 className="font-semibold text-ink-100">Open this pair</h4>
-        <p className={micro}>Costs, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.</p>
-        {row.rateEstimate ? (
-          <p className="text-warning">仅供观察：现金流计价尚未统一，无法开仓。</p>
-        ) : snapshotId ? (
+        <h4 className="font-semibold text-ink-100">
+          <TipLabel title={'Costs, sizing and admission are known only from a preview: every figure is read fresh and checked again on acceptance.\n* Fees, FX, margin and positions are checked only at preview; history-eligible is not permission to open.'}>
+            Open this pair
+          </TipLabel>
+        </h4>
+        {snapshotId ? (
           // A new pair or window is a new draft; nothing typed carries over.
           <FundingOrderForm key={`${row.id}/${days}`} row={row} days={days} snapshotId={snapshotId} admissionOpen={admissionOpen} />
         ) : (
