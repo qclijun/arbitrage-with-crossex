@@ -77,23 +77,6 @@ it('collects actual official settlements when production has no historical sched
       reasons: expect.arrayContaining(['schedule-unverified']) } });
 });
 
-it('uses the same bounded budget for a preferred dashboard contract before unrelated cold contracts', async () => {
-  vi.useFakeTimers({ now: cutoff + 60_000 });
-  const reads: string[] = [];
-  const sources = createOfficialHistorySources({ context: () => ({ listing: null, rules: [] }),
-    read: async (_venue, url) => {
-      const symbol = new URL(url).searchParams.get('symbol')!; reads.push(symbol);
-      return [{ symbol, fundingTime: cutoff, fundingRate: '0.0001' }];
-    } });
-  const cache = new FundingHistoryCache();
-  const keys = ['AAAUSDT', 'HYPEUSDT', 'ETHUSDT', 'BTCUSDT'].map((contractId) => ({ venue: 'BINANCE', contractId }));
-  const report = await run(createFundingHistoryRefresher({ sources, cache, legs: async () => keys,
-    priority: (key) => key.contractId !== 'AAAUSDT' ? 1 : 0, budget: { globalRequests: 1, venueRequests: 1, venueConcurrency: 1 } }));
-  expect(reads).toEqual(['BTCUSDT']);
-  expect(report.requests).toBe(1);
-  expect(cache.snapshot()!.legs.get(legKey(keys[3]))!.leg.events).toHaveLength(1);
-});
-
 it.each([1_000, 60_000])('waits %dms for local quota without stopping the venue or spending a request', async (delay) => {
   vi.useFakeTimers({ now: cutoff + 60_000 });
   let attempts = 0;

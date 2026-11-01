@@ -19,18 +19,16 @@ const TOP = id('BTC', 'BINANCE BTCUSDT', 'BYBIT BTCUSDT');
 const row = (body: any, rowId: string) => body.data.rows.find((r: any) => r.id === rowId);
 
 describe('funding opportunities evidence', () => {
-  it('stale history stops ranking but keeps the old evidence at its original time, and a failed refresh is named', async () => {
+  it('a read stays fresh until the next settlement hour, so a failed refresh within the hour only names itself', async () => {
     w = await boardWorld();
-    w.clock.t = CUTOFF + 17 * M;
+    w.clock.t = CUTOFF + 59 * M;
     const failed = { startedAt: w.clock.t, finishedAt: w.clock.t, cutoff: CUTOFF, outcome: 'failed' as const, reason: 'round-error' as const, requests: 0, venues: {} };
     w.history.publish(null, failed);
     const res = await w.get();
-    expect(res.body.data.rankedCount).toBe(0);
+    expect(res.body.data.rankedCount).toBe(10);
     const top = row(res.body, TOP);
-    expect(top.rank).toBeNull();
-    expect(top.windows[1]).toMatchObject({ eligible: false, coverage: 'complete', netTotal: '0.036' });
-    expect(top.windows[1].reasons).toEqual(['short:history-stale', 'long:history-stale']);
-    expect(top.windows[1].legs.short).toMatchObject({ fresh: false, verifiedAt: CUTOFF + M });
+    expect(top.rank).toBe(1);
+    expect(top.windows[1].legs.short).toMatchObject({ fresh: true, verifiedAt: CUTOFF + M });
     expect(res.body.data.history).toMatchObject({ publishedAt: CUTOFF + M, lastRound: { outcome: 'failed' } });
   });
 

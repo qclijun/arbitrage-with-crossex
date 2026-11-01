@@ -29,6 +29,6 @@ it.each(['conflict', 'invalid', 'pagination', 'source', 'empty'] as const)('does
 
 it('keeps old observations visibly stale and refuses a different cutoff', () => {
   const leg = unverified();
-  expect(evaluateFundingLeg(leg, CUTOFF, 365, CUTOFF + 20 * M)).toMatchObject({ fresh: false, observed: { events: 1095 } });
+  expect(evaluateFundingLeg(leg, CUTOFF, 365, CUTOFF + 60 * M)).toMatchObject({ fresh: false, observed: { events: 1095 } });
   expect(evaluateFundingLeg(leg, CUTOFF + 3_600_000, 365, CUTOFF + 3_600_000 + M).observed).toBeNull();
 });

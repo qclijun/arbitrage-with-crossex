@@ -110,15 +110,14 @@ it('rechecks the current document across UTC cutoffs and never grants a future r
   expect(w.docReads()).toBe(2);
 });
 
-it('revokes cached and wider eligibility on a document change even when only the document fits the budget', async () => {
+it('revokes every cached read on a document change at the next due read, even when only the document fits the budget', async () => {
   const control = { document };
   const w = world(control); await run(w.refresher);
   const limited = () => createFundingHistoryRefresher({ sources: w.sources, cache: w.cache, legs: async () => w.keys,
     budget: { venueConcurrency: 1, venueRequests: 1, globalRequests: 1 } });
-  await run(limited());
-  expect([...w.cache.snapshot()!.legs.values()].some((leg) => leg.wider)).toBe(true);
-  vi.setSystemTime(T + 8 * 60_000);
   control.document += ' unreviewed change';
+  // The next hourly settlement makes the legs due; the document is the one read that fits.
+  vi.setSystemTime(T + H + 60_000);
   await run(limited());
   for (const key of w.keys) {
     expect(w.cache.evaluate({ short: key, long: key, underlying: key.contractId, days: 365 }, Date.now()))

@@ -6,6 +6,7 @@
  * tick) and then places the maker. A refused acceptance mutates nothing.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { reconcileContract } from '../../src/engine/slice-reconcile';
 import { confirm, CROSS_LONG, fundingWorld, LONG_SYMBOL, SHORT_SYMBOL, type FundingWorld } from '../helpers/funding-intent-fixture';
 
 let w: FundingWorld;
@@ -105,6 +106,20 @@ describe('funding acceptance', () => {
     expect(preview.body.data.content).toMatchObject({ currency: 'USDT', fx: 'parity:USDC=USDT' });
     expect((await w.accept(confirm(preview))).status).toBe(202);
     expect(w.store.getPair('fi-intent-001')).toMatchObject({ a: { contract: CROSS_LONG, side: 'BUY' }, b: { contract: SHORT_SYMBOL, side: 'SELL' } });
+  });
+
+  it('opens beside a same-side position no slice owns, which stays unattributed', async () => {
+    w = fundingWorld();
+    w.state.positions = [{ symbol: SHORT_SYMBOL, positionQty: '-8.025' }];
+    const preview = await w.preview();
+    expect(preview.body.data.blockers).toEqual([]);
+    expect((await w.accept(confirm(preview))).status).toBe(202);
+    w.store.updatePair('fi-intent-001', { mode: 'DONE' }); // ended unfilled
+    expect(reconcileContract(w.store.slices.contractState(SHORT_SYMBOL), '-8.025'))
+      .toMatchObject({ status: 'reconciled', attributed: '0', unattributed: '-8.025' });
+    // A change outside the ledger since then still blocks new risk there.
+    w.state.positions = [{ symbol: SHORT_SYMBOL, positionQty: '-7' }];
+    expect((await w.preview()).body.data.blockers.map((b: { code: string }) => b.code)).toContain('contract-unreconciled');
   });
 
   it('returns a new preview, without accepting, when what was confirmed changed', async () => {

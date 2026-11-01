@@ -87,12 +87,12 @@ describe('funding preview', () => {
     expect(codes(await w.preview({ long: { venue: 'HYPERLIQUID', contractId: 'BTC', symbol: LONG_SYMBOL } }))).toContain('symbol-unmapped');
   });
 
-  it('blocks an opposite position, an unattributed same-side one, an open order and an active deal', async () => {
+  it('blocks an opposite position, an open order and an active deal, but shares an unattributed same-side one', async () => {
     w = fundingWorld();
     w.state.positions = [{ symbol: LONG_SYMBOL, positionQty: '-0.2' }];
     expect(codes(await w.preview())).toContain('opposite-position');
-    w.state.positions = [{ symbol: LONG_SYMBOL, positionQty: '0.2' }];
-    expect(codes(await w.preview())).toContain('unattributed-position');
+    w.state.positions = [{ symbol: LONG_SYMBOL, positionQty: '0.2' }, { symbol: SHORT_SYMBOL, positionQty: '-8.025' }];
+    expect(codes(await w.preview())).toEqual([]);
     w.state.positions = [];
     w.state.openOrders = [{ symbol: SHORT_SYMBOL }];
     expect(codes(await w.preview())).toContain('open-order');

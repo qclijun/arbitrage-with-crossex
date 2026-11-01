@@ -44,7 +44,10 @@ it.each(['pagination', 'conflict', 'source', 'missing-leg'] as const)('withholds
 
 it('keeps stale observations at their original cutoff with an explicit freshness flag', async () => {
   world = await boardWorld({ history: publish(histories()) });
+  // A read stays fresh within its hour; the next hour may hold a settlement it has not seen.
   world.clock.t += 20 * 60_000;
+  expect((await world.get('?days=7')).body.data.rows.find(isForward).windows[0].observed).toMatchObject({ fresh: true });
+  world.clock.t += 60 * 60_000;
   const { body } = await world.get('?days=7');
   const row = body.data.rows.find(isForward);
   expect(row.windows[0].observed).toMatchObject({ netAnnualized: '0.1095', fresh: false });

@@ -118,6 +118,8 @@ export interface CurrentFundingRate {
   rate: string;
   intervalHours: number;
   at: number;
+  /** The venue's next settlement time, when its feed says. */
+  nextAt?: number;
 }
 
 export interface CurrentContrast {
@@ -162,6 +164,12 @@ export interface RankingPage {
   offset: number;
   limit: number;
   rows: RankingRow[];
+  /**
+   * The `pinned` candidate when it is not on this page: placed in the filtered
+   * order (rank null when ineligible or filtered out); null when it is no
+   * longer a candidate. Absent unless asked for, or when it is on this page.
+   */
+  pinned?: RankingRow | null;
 }
 
 type HistoryReader = Pick<FundingHistoryCache, 'evaluate' | 'snapshot'>;
@@ -248,6 +256,8 @@ export function rankFundingCandidates(input: {
   /** Current-period rates by `legKey`, for contrast only. */
   current?: ReadonlyMap<string, CurrentFundingRate>;
   executionBlockers?: (candidate: FundingCandidate) => string[];
+  /** A candidate id the caller keeps selected, returned even when it is off this page. */
+  pinned?: string;
 }): RankingPage {
   const days = input.days ?? 30;
   const compareDays = input.compareDays ?? 7;
@@ -266,13 +276,21 @@ export function rankFundingCandidates(input: {
     || (a.selected.eligible ? compareTotals(b.selected.netTotal!, a.selected.netTotal!) : 0)
     || compareCandidates(a.candidate, b.candidate));
   const rankedCount = scored.filter((row) => row.selected.eligible).length;
-  const rows = scored.slice(offset, offset + limit).map(({ candidate, selected }, index) => ({
+  const toRow = ({ candidate, selected }: (typeof scored)[number], place: number | null): RankingRow => ({
     candidate,
-    rank: selected.eligible ? offset + index + 1 : null,
+    rank: selected.eligible && place !== null ? place + 1 : null,
     windows: HISTORY_DAYS.map((d) => (d === days ? selected : readWindow(input.history, candidate, d, input.now))),
     current: contrast(candidate, input.current, selected, input.now),
     executionBlockers: [...(input.executionBlockers?.(candidate) ?? [])],
-  }));
+  });
+  const rows = scored.slice(offset, offset + limit).map((row, index) => toRow(row, offset + index));
+  let pinned: RankingRow | null | undefined;
+  if (input.pinned !== undefined && !rows.some((row) => row.candidate.id === input.pinned)) {
+    const place = scored.findIndex((row) => row.candidate.id === input.pinned);
+    const candidate = place >= 0 ? null : input.candidates.find((c) => c.id === input.pinned);
+    pinned = place >= 0 ? toRow(scored[place]!, place)
+      : candidate ? toRow({ candidate, selected: readWindow(input.history, candidate, days, input.now) }, null) : null;
+  }
   const snapshotId = input.history.snapshot()?.id ?? null;
   const fingerprint = createHash('sha256')
     .update(JSON.stringify([snapshotId, days, underlyings ?? null, venues ?? null, !!positiveOnly,
@@ -289,5 +307,6 @@ export function rankFundingCandidates(input: {
     offset,
     limit,
     rows,
+    ...(pinned !== undefined ? { pinned } : {}),
   };
 }

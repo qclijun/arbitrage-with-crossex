@@ -57,6 +57,12 @@ code allowed to mutate state or call venue-mutating endpoints.
   `server/funding/board.ts`): the published history cache and
   `core/funding/market.ts`, both filled by background pollers
   (`server/funding/services.ts`), so a browser request never reaches a venue.
+  Only `FUNDING_ASSETS` (`core/coins.ts`, ETH and BTC) are collected, ranked
+  and listed, to stay inside venue rate limits. The refresher reads a leg only
+  when a settlement is due since its last read (`legDue`, by its cadence and
+  its venue feed's next settlement time) or that read failed; otherwise it
+  carries the read to the new hour's cutoff (`CachedHistoryLeg.carried`), and a
+  round with nothing due keeps the published snapshot.
   The history refresher also saves each round to `data/funding-history.sqlite`
   (`server/funding/history-store.ts`): a rebuildable cache outside the ledger's
   version, migrations and backups. A restart shows it at once as `restored` reads,

@@ -112,22 +112,35 @@ describe('funding history refresher', () => {
     expect(Object.values(report.venues).map((v) => v.stopped)).toContain('budget-exhausted');
   });
 
-  it('runs every ten minutes plus one minute, never two rounds at once, until stopped', async () => {
+  it('checks every ten minutes plus one minute, but reads a leg again only after its next settlement', async () => {
     vi.setSystemTime(T + 3 * M);
     const { cache, binance, refresher } = setup();
     refresher.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(cache.view(Date.now()).state).toBe('ready');
-    const rounds = () => binance.calls.filter((c) => c.endsWith(`:${T - 7 * D}:`)).length;
-    expect(rounds()).toBe(1);
+    const published = cache.view(Date.now()).snapshotId;
+    const reads = () => binance.calls.length;
+    const first = reads();
+    expect(first).toBeGreaterThan(0);
     await vi.advanceTimersByTimeAsync(8 * M - 1);
-    expect(rounds()).toBe(1);
+    expect(cache.view(Date.now()).lastRound!.startedAt).toBe(T + 3 * M);
     await vi.advanceTimersByTimeAsync(1);
-    expect(rounds()).toBe(2);
-    expect(cache.view(Date.now()).lastRound!.startedAt).toBe(T + 11 * M);
-    refresher.stop();
+    // Nothing settled since the read: the round sends nothing and the snapshot stands.
+    expect(cache.view(Date.now()).lastRound).toMatchObject({ startedAt: T + 11 * M, outcome: 'unchanged', requests: 0 });
+    expect(cache.view(Date.now()).snapshotId).toBe(published);
+    // Each new hour republishes the read carried to its cutoff, still without a request, until 16:00 settles.
     await vi.advanceTimersByTimeAsync(H);
-    expect(rounds()).toBe(2);
+    expect(cache.view(Date.now())).toMatchObject({ cutoff: T + H, lastRound: { requests: 0 } });
+    expect(cache.evaluate(pair(), Date.now())).toMatchObject({ cutoff: T + H, fresh: true, historyEligible: true });
+    await vi.advanceTimersByTimeAsync(T + 6 * H - Date.now());
+    expect(reads()).toBe(first);
+    await vi.advanceTimersByTimeAsync(M);
+    expect(reads()).toBeGreaterThan(first);
+    expect(cache.evaluate(pair(), Date.now())).toMatchObject({ cutoff: T + 6 * H, fresh: true });
+    const second = reads();
+    refresher.stop();
+    await vi.advanceTimersByTimeAsync(8 * H);
+    expect(reads()).toBe(second);
   });
 
   it('keeps a leg re-read every round fresh between publishes, not only at them', async () => {
@@ -181,7 +194,8 @@ describe('funding history refresher', () => {
       return { ...result, rows: result.rows.map((row) =>
         (Number(row.fundingRateTimestamp) === T - 2 * H ? { ...row, fundingRate: '0.0005' } : row)) };
     };
-    vi.setSystemTime(T + 5 * M);
+    // The next settlement (16:00) makes the legs due again.
+    vi.setSystemTime(T + 6 * H + M);
     await run(refresher);
     const result = cache.evaluate(pair(7), Date.now())!;
     expect(result.long).toMatchObject({ coverage: 'unknown', fresh: true, total: null });

@@ -86,6 +86,17 @@ describe('funding opportunities ranking', () => {
     expect(ids(next.body)).toEqual(BTC_ORDER.slice(0, 4));
   });
 
+  it('returns the selected pair with current figures when re-ranking or a filter moves it off the page', async () => {
+    w = await boardWorld();
+    const sel = (row: string) => `selected=${encodeURIComponent(row)}`;
+    const off = await w.get(`?limit=4&${sel(BTC_ORDER[6])}`);
+    expect(ids(off.body)).toEqual(BTC_ORDER.slice(0, 4));
+    expect(off.body.data.selected).toMatchObject({ id: BTC_ORDER[6], rank: 7, windows: expect.any(Array) });
+    expect((await w.get(`?limit=4&${sel(BTC_ORDER[1])}`)).body.data.selected).toBeUndefined();
+    expect((await w.get(`?underlying=ETH&${sel(BTC_ORDER[0])}`)).body.data.selected).toMatchObject({ id: BTC_ORDER[0], rank: null });
+    expect((await w.get(`?${sel('["DOGE","A","x","B","y"]')}`)).body.data.selected).toBeNull();
+  });
+
   it.each([
     ['?days=14', 'days'],
     ['?compare=0', 'compare'],
@@ -94,6 +105,7 @@ describe('funding opportunities ranking', () => {
     ['?offset=-1', 'offset'],
     ['?positive=yes', 'positive'],
     ['?rankingId=abc', 'rankingId'],
+    ['?selected=', 'selected'],
   ])('refuses %s rather than clamping it', async (query, field) => {
     w = await boardWorld();
     const res = await w.get(query);

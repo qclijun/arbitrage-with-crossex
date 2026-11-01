@@ -9,14 +9,30 @@ import { FUNDING_FEEDS } from '../../core/funding/feeds';
 import { FundingHistoryCache, legKey, type HistoryLegKey } from '../../core/funding/history-cache';
 import { createFundingHistoryRefresher, type FundingHistorySource } from '../../core/funding/history-collector';
 import { captureHistory, restoredSnapshot, type HistoryPersistence, type PersistedHistory } from '../../core/funding/history-persistence';
-import { createFundingMarket, readyListings, type FundingMarketDeps } from '../../core/funding/market';
-import { isSupportedCoin } from '../../core/coins';
+import { createFundingMarket, readyListings, type FundingContractListing, type FundingContractsView, type FundingMarketDeps, type FundingMarketView } from '../../core/funding/market';
+import { underlyingOf } from '../../core/funding/spreads';
+import { FUNDING_ASSETS } from '../../core/coins';
 import { parseSymbol } from '../../core/numbers';
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** A listing's asset: its proven underlying, else its CrossEx symbol's base; null when neither is known. */
+export function listingAsset(listing: Pick<FundingContractListing, 'underlying' | 'symbol'>): string | null {
+  if (listing.underlying?.id) return listing.underlying.id.toUpperCase();
+  return listing.symbol ? underlyingOf(parseSymbol(listing.symbol).base).underlying : null;
+}
+
+/** The contracts as the page, the refresher and admission see them: only the listed assets'. */
+export function scopeContracts(contracts: FundingContractsView, assets: readonly string[]): FundingContractsView {
+  if (contracts.state !== 'ready') return contracts;
+  const keep = (listing: Pick<FundingContractListing, 'underlying' | 'symbol'>) => assets.includes(listingAsset(listing) ?? '');
+  return { ...contracts, listings: contracts.listings.filter(keep),
+    ...(contracts.rejected ? { rejected: contracts.rejected.filter((r) => keep({ underlying: null, symbol: r.symbol })) } : {}) };
+}
+
 export function createFundingServices(opts: { contracts?: FundingMarketDeps['contracts']; sources?: FundingHistorySource[];
-  persistence?: HistoryPersistence } = {}) {
+  persistence?: HistoryPersistence; assets?: readonly string[] } = {}) {
+  const assets = opts.assets ?? FUNDING_ASSETS;
   const history = new FundingHistoryCache();
   const { persistence } = opts;
   // Latest round wins: a save still running when the next round publishes is followed by one more, never a queue.
@@ -40,23 +56,31 @@ export function createFundingServices(opts: { contracts?: FundingMarketDeps['con
       saving = false;
     }
   }
-  const market = createFundingMarket({ contracts: opts.contracts, feeds: FUNDING_FEEDS });
-  const listings = () => readyListings(market.view().contracts);
-  let preferred = new Set<string>();
+  const allMarket = createFundingMarket({ contracts: opts.contracts, feeds: FUNDING_FEEDS });
+  // The catalog is replaced, never mutated, so its scoped copy is made once per catalog read.
+  let scoped: { from: FundingContractsView; to: FundingContractsView } | null = null;
+  const contracts = () => {
+    const from = allMarket.contracts();
+    if (scoped?.from !== from) scoped = { from, to: scopeContracts(from, assets) };
+    return scoped.to;
+  };
+  const market = { ...allMarket, view: (): FundingMarketView => ({ ...allMarket.view(), contracts: contracts() }) };
+  const listings = () => readyListings(contracts());
   const refresher = createFundingHistoryRefresher({
     inferCadence: true,
     cache: history,
     sources: opts.sources ?? [],
     // CEX archives remain serial; HL refreshes peers' recent windows before backfill.
     budget: { venueConcurrency: 1 },
-    legs: async () => {
-      const rows = listings();
-      // Scheduling preference only: a native asset code does not prove economic identity.
-      preferred = new Set(rows.filter((row) => row.symbol && isSupportedCoin(parseSymbol(row.symbol).base)).map(legKey));
-      return rows.map(({ venue, contractId }) => ({ venue, contractId }));
+    legs: async () => listings().map(({ venue, contractId }) => ({ venue, contractId })),
+    // A feed's next settlement time catches a cadence change before history shows it.
+    settlementHints: () => {
+      const { current } = allMarket.view();
+      return (key) => {
+        const quote = current.get(legKey(key));
+        return quote ? { intervalHours: quote.intervalHours, nextAt: quote.nextAt ?? null } : null;
+      };
     },
-    priority: (key) => key.venue === 'HYPERLIQUID' && ['BTC', 'ETH'].includes(key.contractId)
-      ? 2 : preferred.has(legKey(key)) ? 1 : 0,
     ...(persistence ? { persist: (snapshot, progress, backfilled) => {
       pending = captureHistory(snapshot, progress, backfilled);
       void drain();

@@ -36,7 +36,7 @@ it('keeps mapped candidates UNKNOWN when cadence samples are insufficient and ma
     return { retCode: 0, result: { list: Number(query.get('endTime')) === cutoff
       ? [{ symbol: 'BTCUSDT', fundingRateTimestamp: String(cutoff), fundingRate: '0.0002' }] : [] } };
   });
-  const services = createFundingServices({ contracts: catalog.contracts,
+  const services = createFundingServices({ contracts: catalog.contracts, assets: ['BTC', 'XBT'],
     sources: createOfficialHistorySources({ context: (venue, id) => catalog.historyContext(venue, id) }) });
   await services.runOnce();
   expect(services.funding.legOf('BINANCE_FUTURE_BTC_USDT')).toEqual({ venue: 'BINANCE', contractId: 'BTCUSDT' });

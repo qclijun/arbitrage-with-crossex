@@ -109,8 +109,8 @@ describe('historical funding ranking', () => {
     expect(page.rows.map((row) => legs(row.candidate)))
       .toEqual(rankFundingCandidates({ candidates: btc, history: cache, now: NOW }).rows.map((row) => legs(row.candidate)));
 
-    // Stale history is not an established window to contrast with.
-    const stale = rankFundingCandidates({ candidates: btc, history: cache, now: C + 17 * M, current });
+    // Stale history (into the next hour) is not an established window to contrast with.
+    const stale = rankFundingCandidates({ candidates: btc, history: cache, now: C + 60 * M, current });
     expect(stale.rows.find((row) => legs(row.candidate) === 'BINANCE:BTCUSDT>BYBIT:BTCUSDT')!.current)
       .toMatchObject({ netAnnualized: '-0.5475', reversed: null });
     // Bybit's 4-hour period quoted four hours ago is a past period, not the current one.
@@ -173,17 +173,16 @@ describe('observation rows', () => {
   });
 
   it('stops ranking stale or cold history but keeps every candidate observable', () => {
-    const stale = rankFundingCandidates({ candidates, history: cache, now: C + 17 * M });
+    // A read stays fresh to its hour's end; into the next UTC hour the snapshot's cutoff is behind.
+    expect(rankFundingCandidates({ candidates, history: cache, now: C + 59 * M }).rankedCount).toBeGreaterThan(0);
+    const stale = rankFundingCandidates({ candidates, history: cache, now: C + 60 * M });
     expect(stale.rankedCount).toBe(0);
     expect(stale.rows.map((row) => summary(row)).slice(0, 2)).toEqual([
       ['ASTER:BTCUSDT>BINANCE:BTCUSDT', null, ['short:history-leg-missing']],
       ['ASTER:BTCUSDT>BYBIT:BTCUSDT', null, ['short:history-leg-missing']],
     ]);
     expect(windowOf(stale.rows[3], 30)).toMatchObject({ coverage: 'complete', netTotal: '0', eligible: false,
-      reasons: ['short:history-stale', 'long:history-stale'] });
-    // Into the next UTC hour the snapshot's cutoff is behind, whatever the verification age.
-    expect(windowOf(rankFundingCandidates({ candidates, history: cache, now: C + 60 * M }).rows[3], 30).reasons)
-      .toEqual(['history-cutoff-behind', 'short:history-stale', 'long:history-stale']);
+      reasons: ['history-cutoff-behind', 'short:history-stale', 'long:history-stale'] });
     // A reader clock behind the snapshot has no window to evaluate.
     expect(windowOf(rankFundingCandidates({ candidates, history: cache, now: C - M }).rows[3], 30).reasons)
       .toEqual(['history-clock-behind']);
@@ -205,15 +204,17 @@ describe('observation rows', () => {
   });
 });
 
-it('ranks a short window on a fresh re-read after the wider older read serving long windows goes stale', () => {
+it('ranks long windows from the wider older read and short ones from the narrower re-read at the same cutoff', () => {
   const pair = btc.filter((c) => c.short.venue !== 'ASTER' && c.long.venue !== 'ASTER');
   const leg = (venue: string) => historyLeg(venue, 'BTCUSDT', flat('0.0001'));
   const history = publish(['BINANCE', 'BYBIT'].map((venue) => ({ leg: reread(leg(venue), 7, C + 10 * M), wider: leg(venue) })));
-  const later = C + 16 * M + 1;
+  const later = C + 59 * M;
   const month = rankFundingCandidates({ candidates: pair, history, now: later });
-  expect(month.rankedCount).toBe(0);
-  expect(windowOf(month.rows[0], 30)).toMatchObject({ coverage: 'complete', reasons: ['short:history-stale', 'long:history-stale'] });
-  expect(rankFundingCandidates({ candidates: pair, history, now: later, days: 7 }).rankedCount).toBe(2);
+  expect(month.rankedCount).toBe(2);
+  expect(windowOf(month.rows[0], 30).result!.short.verifiedAt).toBe(leg('BINANCE').verifiedAt);
+  const week = rankFundingCandidates({ candidates: pair, history, now: later, days: 7 });
+  expect(week.rankedCount).toBe(2);
+  expect(windowOf(week.rows[0], 7).result!.short.verifiedAt).toBe(C + 10 * M);
 });
 
 describe('exact order, filters and pages', () => {

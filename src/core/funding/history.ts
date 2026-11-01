@@ -2,7 +2,6 @@
 import { sourceBoundary } from './history-sources';
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const FRESH_MS = 15 * 60_000;
 export const HISTORY_DAYS = [7, 30, 90, 180, 365] as const;
 export type HistoryDays = typeof HISTORY_DAYS[number];
 export type Coverage = 'complete' | 'partial' | 'unknown' | 'unsupported';
@@ -102,6 +101,42 @@ export interface FundingHistoryResult {
   /** Independent execution checks (fees, units, whitelist, balance) belong to the caller. */
 }
 
+/**
+ * The refresher's proof that a read made at cutoff `from` still covers a later
+ * cutoff: the leg's next settlement after `from` is at `next`, past that cutoff,
+ * so nothing settled in between and the read need not be repeated.
+ */
+export interface HistoryCarry { from: number; next: number }
+
+/** Whether a carry from an earlier read covers `cutoff`: nothing settled in (from, cutoff]. */
+export const carryCovers = (carry: HistoryCarry, cutoff: number): boolean => carry.from < cutoff && carry.next > cutoff;
+
+/** The leg's latest rule, when valid. */
+function latestRule(leg: Pick<FundingHistoryLeg, 'rules'>): FundingRuleSegment | null {
+  const rule = [...leg.rules].sort((a, b) => b.from - a.from)[0];
+  return rule && Number.isSafeInteger(rule.everyHours) && rule.everyHours > 0 && Number.isSafeInteger(rule.anchor) ? rule : null;
+}
+
+/**
+ * The first settlement after `after` on the leg's latest rule, extrapolated past
+ * its read; null without a valid rule reaching `after`.
+ */
+export function nextSettlement(leg: Pick<FundingHistoryLeg, 'rules'>, after: number): number | null {
+  const rule = latestRule(leg);
+  if (!rule || rule.until <= after) return null;
+  const period = rule.everyHours * HOUR;
+  return rule.anchor + (Math.floor((after - rule.anchor) / period) + 1) * period;
+}
+
+/** The last settlement at or before `at` on the leg's latest rule; null outside that rule. */
+export function lastSettlement(leg: Pick<FundingHistoryLeg, 'rules'>, at: number): number | null {
+  const rule = latestRule(leg);
+  if (!rule || rule.until <= at) return null;
+  const period = rule.everyHours * HOUR;
+  const last = rule.anchor + Math.floor((at - rule.anchor) / period) * period;
+  return last >= rule.from ? last : null;
+}
+
 export function snapshotCutoff(now: number): number {
   if (!Number.isSafeInteger(now)) throw new Error('Invalid snapshot time');
   return Math.floor(now / HOUR) * HOUR;
@@ -166,16 +201,22 @@ function schedule(rules: FundingRuleSegment[], start: number, cutoff: number): n
   return coveredUntil > cutoff ? expected : null;
 }
 
-function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now: number, days: HistoryDays): LegHistoryResult {
+function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now: number, days: HistoryDays,
+  carry?: HistoryCarry): LegHistoryResult {
   const reasons: string[] = [];
   const conflicts: LegHistoryResult['conflicts'] = [];
   const specialEvents: SettledFundingEvent[] = [];
   const missingEvents: number[] = [];
   const missingRanges: LegHistoryResult['missingRanges'] = [];
+  // A carried read proves (start, from]; its carry proves nothing settled in (from, cutoff].
+  const carried = carry !== undefined && carryCovers(carry, cutoff);
+  if (carry !== undefined && !carried) reasons.push('history-carry-invalid');
+  const read = carried ? carry.from : cutoff;
+  // Settlements happen on the hour, so a read at this hour's cutoff (or carried to it)
+  // stays fresh until the next hour, when a settlement may be due.
   const fresh = !leg.restored && leg.verifiedAt !== null && leg.verifiedAt <= now
-    && leg.verifiedAt >= cutoff && leg.observedAt !== null && leg.observedAt >= cutoff
-    && leg.verifiedAt >= leg.observedAt
-    && now - leg.verifiedAt <= FRESH_MS && snapshotCutoff(now) === cutoff;
+    && leg.verifiedAt >= read && leg.observedAt !== null && leg.observedAt >= read
+    && leg.verifiedAt >= leg.observedAt && snapshotCutoff(now) === cutoff && (carry === undefined || carried);
   const base = {
     venue: leg.venue, contractId: leg.contractId, source: leg.source,
     observedAt: leg.observedAt, verifiedAt: leg.verifiedAt, lastAttempt: leg.lastAttempt,
@@ -196,14 +237,14 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
     }
   }
   if (!leg.pages.complete || !leg.pages.termination || leg.pages.rangeStart > start
-    || leg.pages.rangeEnd < cutoff || !leg.pages.pages.length
+    || leg.pages.rangeEnd < read || !leg.pages.pages.length
     || leg.pages.pages.some((page) => !page.request || !page.rawHash
       || !Number.isSafeInteger(page.count) || page.count < 0)) reasons.push('page-incomplete');
   if (leg.observedAt === null || leg.verifiedAt === null || leg.observedAt > now
-    || leg.verifiedAt > now || leg.observedAt < cutoff || leg.verifiedAt < leg.observedAt) {
+    || leg.verifiedAt > now || leg.observedAt < read || leg.verifiedAt < leg.observedAt) {
     reasons.push('verification-missing');
   }
-  const expected = schedule(leg.rules, start, cutoff);
+  const expected = schedule(leg.rules, start, read);
   if (expected === null) reasons.push(leg.cadence?.basis === 'unavailable' ? 'cadence-sample-insufficient' : 'schedule-unverified');
   const expectedSet = new Set(expected ?? []);
   const byKey = new Map<string, SettledFundingEvent>();
@@ -272,10 +313,11 @@ function evaluateLeg(leg: FundingHistoryLeg, start: number, cutoff: number, now:
 }
 
 /** Single-venue observation uses the same integrity checks as paired admission. */
-export function evaluateFundingLeg(leg: FundingHistoryLeg, cutoff: number, days: HistoryDays, now: number): LegHistoryResult {
+export function evaluateFundingLeg(leg: FundingHistoryLeg, cutoff: number, days: HistoryDays, now: number,
+  carry?: HistoryCarry): LegHistoryResult {
   if (!HISTORY_DAYS.includes(days) || !Number.isSafeInteger(cutoff)
     || cutoff % HOUR !== 0 || cutoff > snapshotCutoff(now)) throw new Error('Invalid history window');
-  return evaluateLeg(leg, cutoff - days * DAY, cutoff, now, days);
+  return evaluateLeg(leg, cutoff - days * DAY, cutoff, now, days, carry);
 }
 
 export function evaluateFundingHistory(input: {
@@ -287,12 +329,14 @@ export function evaluateFundingHistory(input: {
   long: FundingHistoryLeg;
   now: number;
   executionBlockers?: string[];
+  /** Per side, a read made at an earlier cutoff that nothing has settled since. */
+  carry?: { short?: HistoryCarry; long?: HistoryCarry };
 }): FundingHistoryResult {
   if (!HISTORY_DAYS.includes(input.days) || !Number.isSafeInteger(input.cutoff)
     || input.cutoff % HOUR !== 0 || input.cutoff > snapshotCutoff(input.now)) throw new Error('Invalid history window');
   const start = input.cutoff - input.days * DAY;
-  const short = evaluateLeg(input.short, start, input.cutoff, input.now, input.days);
-  const long = evaluateLeg(input.long, start, input.cutoff, input.now, input.days);
+  const short = evaluateLeg(input.short, start, input.cutoff, input.now, input.days, input.carry?.short);
+  const long = evaluateLeg(input.long, start, input.cutoff, input.now, input.days, input.carry?.long);
   const coverage: Coverage = short.coverage === 'complete' && long.coverage === 'complete' ? 'complete'
     : short.coverage === 'unsupported' || long.coverage === 'unsupported' ? 'unsupported'
       : short.coverage === 'unknown' || long.coverage === 'unknown' ? 'unknown' : 'partial';

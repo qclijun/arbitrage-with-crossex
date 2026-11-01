@@ -31,7 +31,8 @@ it('serves each window at its own retained cutoff with freshness, attempt and ba
       verifiedAt: old.short.verifiedAt, lastAttempt: { outcome: 'error', reason: 'timeout' } });
     expect(row.windows[4].reasons).toContain('timeout');
     expect(row.windows[4].reasons).toContain('history-cutoff-behind');
-    expect(row.backfill).toMatchObject({ cutoff: old.cutoff, pagesRead: expect.any(Number) });
+    // The finished job is not restarted within its hour; the new hour's job is the one backfilling.
+    expect(row.backfill).toMatchObject({ cutoff, pendingDays: expect.any(Number) });
   }
   expect(w.calls).toHaveLength(before);
   w.control.failure = null;

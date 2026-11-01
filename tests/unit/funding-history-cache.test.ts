@@ -37,29 +37,34 @@ describe('funding history cache reads', () => {
     expect(cache.recheck({ snapshotId: view.snapshotId!, ...pair() }, Date.now())).toMatchObject({ admitted: true });
   });
 
-  it('expires 15 minutes after the last success; a failed refresh keeps the old time and does not extend it', async () => {
+  it('reads nothing until a settlement is due; a failed due read keeps the old time and goes stale', async () => {
     let failing = false;
     const fail = () => (failing ? 'error' as const : null);
-    const { cache, refresher } = setup({ binance: { fail }, bybit: { fail } });
+    const { cache, binance, refresher } = setup({ binance: { fail }, bybit: { fail } });
     await run(refresher);
     const verifiedAt = cache.evaluate(pair(), Date.now())!.short.verifiedAt!;
     const snapshotId = cache.view(Date.now()).snapshotId!;
 
     vi.setSystemTime(T + 10 * M);
+    const calls = binance.calls.length;
+    await run(refresher);
+    expect(binance.calls).toHaveLength(calls);
+    expect(cache.view(Date.now()).snapshotId).toBe(snapshotId);
+    // Settlements fall on the hour: the read stays fresh to the hour's end.
+    expect(cache.evaluate(pair(), T + H - 1)).toMatchObject({ fresh: true, historyEligible: true });
+
+    // 16:00 settles: the due read fails, so the old read stays at its own cutoff, stale.
+    vi.setSystemTime(T + 6 * H + M);
     failing = true;
     await run(refresher);
-    const retried = cache.evaluate(pair(), verifiedAt + 15 * M)!;
-    expect(retried.short).toMatchObject({ verifiedAt, coverage: 'complete', fresh: true });
+    const retried = cache.evaluate(pair(), Date.now())!;
+    expect(retried).toMatchObject({ cutoff: T, coverage: 'complete', fresh: false, historyEligible: false });
+    expect(retried.short.verifiedAt).toBe(verifiedAt);
     expect(retried.short.lastAttempt).toMatchObject({ outcome: 'error', reason: 'error' });
     expect(retried.short.lastAttempt!.at).toBeGreaterThan(verifiedAt);
-
-    const late = cache.evaluate(pair(), verifiedAt + 15 * M + 1)!;
-    expect(late).toMatchObject({ coverage: 'complete', fresh: false, historyEligible: false });
-    expect(late.short.verifiedAt).toBe(verifiedAt);
     const current = cache.view(Date.now()).snapshotId!;
     expect(current).not.toBe(snapshotId);
-    expect(cache.recheck({ snapshotId: current, ...pair() }, verifiedAt + 15 * M + 1))
-      .toMatchObject({ admitted: false, reason: 'history-ineligible' });
+    expect(cache.recheck({ snapshotId: current, ...pair() }, Date.now())).toMatchObject({ admitted: false, reason: 'history-ineligible' });
   });
 
   it('goes stale across a UTC hour even one minute after verification', async () => {
@@ -107,7 +112,7 @@ describe('funding history cache reads', () => {
       await gateAgain;
       return page(...args);
     };
-    vi.setSystemTime(T + 5 * M);
+    vi.setSystemTime(T + 6 * H + M); // 16:00 settled: both legs are due
     const second = refresher.runOnce();
     expect(refresher.runOnce()).toBe(second);
     await vi.advanceTimersByTimeAsync(0);
@@ -120,11 +125,11 @@ describe('funding history cache reads', () => {
     releaseAgain();
     await second;
     expect(cache.view(Date.now()).snapshotId).not.toBe(published);
-    expect(cache.evaluate(pair(), Date.now())!.long.verifiedAt).toBeGreaterThanOrEqual(T + 5 * M);
+    expect(cache.evaluate(pair(), Date.now())!.long.verifiedAt).toBeGreaterThanOrEqual(T + 6 * H + M);
   });
 
-  it('never splices legs from different cutoffs, and keeps wider old evidence over a narrower re-read', async () => {
-    let binanceFail: (n: number) => boolean = () => false;
+  it('never splices legs from different cutoffs, and keeps wider old evidence over a narrower retry', async () => {
+    let binanceFail: (n: number) => boolean = (n) => n >= 4; // the 365-day segment fails
     let bybitFails = false;
     let binanceCalls = 0;
     const { cache, refresher } = setup({
@@ -132,65 +137,50 @@ describe('funding history cache reads', () => {
       bybit: { fail: () => (bybitFails ? 'error' : null) },
     });
     await run(refresher);
+    expect(cache.evaluate(pair(180), Date.now())!.short).toMatchObject({ coverage: 'complete', lastAttempt: { outcome: 'error' } });
 
-    // Same cutoff: Binance re-reads only the 7-day segment before failing; its full year stays.
+    // Same cutoff: the failed attempt is retried; it reads only the 7-day segment before failing, and the wider read stays.
     vi.setSystemTime(T + 5 * M);
     const start = binanceCalls;
     binanceFail = (n) => n > start;
     await run(refresher);
-    const kept = cache.evaluate(pair(365), Date.now())!;
-    expect(kept.short).toMatchObject({ coverage: 'complete', verifiedAt: T + M, lastAttempt: { outcome: 'error', reason: 'error' } });
+    const reread = cache.evaluate(pair(7), Date.now())!.short;
+    expect(reread).toMatchObject({ coverage: 'complete', fresh: true, lastAttempt: { outcome: 'error', reason: 'error' } });
+    expect(reread.verifiedAt).toBeGreaterThanOrEqual(T + 5 * M);
+    expect(cache.evaluate(pair(180), Date.now())!.short).toMatchObject({ coverage: 'complete', fresh: true, verifiedAt: T + M,
+      lastAttempt: { outcome: 'error', reason: 'error' } });
+    expect(cache.recheck({ snapshotId: cache.view(Date.now()).snapshotId!, ...pair(7) }, Date.now())).toMatchObject({ admitted: true });
 
-    // Next hour both venues fail: the legs share the old cutoff, readable as complete but stale.
-    vi.setSystemTime(T + H + M);
+    // 16:00 settles and both venues fail: the legs share the old cutoff, readable as complete but stale.
+    vi.setSystemTime(T + 6 * H + M);
     binanceFail = () => true;
     bybitFails = true;
     await run(refresher);
     const old = cache.evaluate(pair(), Date.now())!;
     expect(old).toMatchObject({ cutoff: T, coverage: 'complete', fresh: false, historyEligible: false });
     const snapshotId = cache.view(Date.now()).snapshotId!;
-    expect(cache.view(Date.now()).cutoff).toBe(T + H);
+    expect(cache.view(Date.now()).cutoff).toBe(T + 6 * H);
     expect(cache.recheck({ snapshotId, ...pair() }, Date.now())).toMatchObject({ admitted: false, reason: 'history-ineligible' });
 
     // Binance recovers, Bybit does not: evaluated at the new cutoff, never spliced with Bybit's old one.
-    vi.setSystemTime(T + 2 * H + M);
+    vi.setSystemTime(T + 7 * H + M);
     binanceFail = () => false;
     await run(refresher);
     const split = cache.evaluate(pair(), Date.now())!;
-    expect(split).toMatchObject({ cutoff: T + 2 * H, coverage: 'unknown', historyEligible: false, netTotal: null });
+    expect(split).toMatchObject({ cutoff: T + 7 * H, coverage: 'unknown', historyEligible: false, netTotal: null });
     expect(split.short).toMatchObject({ coverage: 'complete', fresh: true });
-    expect(split.long).toMatchObject({ verifiedAt: T + 5 * M, lastAttempt: { outcome: 'error' } });
-  });
-
-
-  it('keeps short windows fresh on a narrower re-read while the wider old read still serves long ones', async () => {
-    let binanceCalls = 0;
-    let failAfter = Infinity;
-    const { cache, refresher } = setup({ binance: { fail: () => (binanceCalls++ > failAfter ? 'error' : null) } });
-    await run(refresher);
-
-    // Same cutoff: Binance re-reads only its 7-day segment, then fails.
-    vi.setSystemTime(T + 5 * M);
-    failAfter = binanceCalls;
-    await run(refresher);
-    const reread = cache.evaluate(pair(7), Date.now())!.short;
-    expect(reread).toMatchObject({ coverage: 'complete', fresh: true, lastAttempt: { outcome: 'error', reason: 'error' } });
-    expect(reread.verifiedAt).toBeGreaterThanOrEqual(T + 5 * M);
-    expect(cache.evaluate(pair(365), Date.now())!.short).toMatchObject({ coverage: 'complete', fresh: true, verifiedAt: T + M });
-
-    // Past the full read's 15 minutes: only the windows the re-read proved stay fresh.
-    const later = T + 16 * M + 1;
-    expect(cache.evaluate(pair(7), later)).toMatchObject({ coverage: 'complete', fresh: true, historyEligible: true });
-    expect(cache.evaluate(pair(30), later)).toMatchObject({ coverage: 'complete', fresh: false, historyEligible: false });
-    const snapshotId = cache.view(later).snapshotId!;
-    expect(cache.recheck({ snapshotId, ...pair(7) }, later)).toMatchObject({ admitted: true });
+    expect(split.long).toMatchObject({ verifiedAt: T + M, lastAttempt: { outcome: 'error' } });
   });
 
   it('rejects a preview bound to a superseded snapshot even when the new one is eligible', async () => {
     const { cache, refresher } = setup();
     await run(refresher);
     const previewed = cache.view(Date.now()).snapshotId!;
+    // A round with nothing due leaves the snapshot, and previews bound to it, in place.
     vi.setSystemTime(T + 5 * M);
+    await run(refresher);
+    expect(cache.view(Date.now()).snapshotId).toBe(previewed);
+    vi.setSystemTime(T + 6 * H + M);
     await run(refresher);
     const current = cache.view(Date.now()).snapshotId!;
     expect(cache.recheck({ snapshotId: previewed, ...pair() }, Date.now())).toMatchObject({ admitted: false, reason: 'history-snapshot-superseded' });

@@ -31,14 +31,17 @@ it('re-estimates cadence across refreshes without confusing derived intervals wi
   await run(refresher);
   expect(evaluate()).toMatchObject({ coverage: 'complete', short: { cadence: { intervals: [8] } } });
   changed = true;
+  vi.setSystemTime(T + 6 * H + 60_000); // the next 8-hour settlement makes the leg due
   await run(refresher);
   expect(evaluate()).toMatchObject({ coverage: 'complete', short: { cadence: { intervals: [8, 4] }, conflicts: [] } });
   const verifiedAt = evaluate()!.short.verifiedAt;
   fail = true;
+  vi.setSystemTime(T + 10 * H + 60_000); // the next settlement on the inferred 4-hour cadence
   await run(refresher);
   expect(evaluate()).toMatchObject({ coverage: 'complete', short: { verifiedAt, cadence: { basis: 'inferred' },
     source: { reason: 'historical-policy-changed' } } });
   fail = false; revised = true;
+  vi.setSystemTime(T + 10 * H + 11 * 60_000); // the failed read is retried
   await run(refresher);
   expect(evaluate()).toMatchObject({ coverage: 'unknown', historyEligible: false,
     short: { conflicts: [expect.objectContaining({ settledAt: pivot })] } });

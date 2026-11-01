@@ -15,7 +15,7 @@ import {
   type HistoryStopReason,
   type HistoryVenueReport,
 } from './history-cache';
-import { snapshotCutoff, type FundingHistoryLeg, type FundingRuleSegment } from './history';
+import { lastSettlement, nextSettlement, snapshotCutoff, type FundingHistoryLeg, type FundingRuleSegment } from './history';
 import { collectLeg, placeholder, RoundStop, withTimeout, type CollectionProgress } from './history-collection';
 import { inferFundingCadence } from './cadence-inference';
 import { mergeHistoryLeg as merge, retainHistoryLeg } from './history-merge';
@@ -30,8 +30,9 @@ const DAY = 24 * 60 * MINUTE;
  */
 export const HISTORY_BUDGET = {
   /**
-   * Interval plus a round's hard stop stays under the 15-minute freshness limit,
-   * so a leg re-read every round is never stale while the next round runs.
+   * How often a round checks which legs are due. A leg is read only when a
+   * settlement is due since its last read (or that read failed or is pending),
+   * so most rounds send nothing.
    */
   intervalMs: 10 * MINUTE,
   /** Rounds start this long after each interval, so the hour's settlement has posted. */
@@ -172,6 +173,38 @@ function makeCall(state: RoundState, venue: string, budget: HistoryBudget, rando
 }
 
 
+/** A venue's own word on a leg's settlement timing, from its current-rate feed. */
+export interface SettlementHint { intervalHours: number; nextAt: number | null }
+
+/**
+ * Whether a leg needs a read this round. Not due: read at this cutoff already,
+ * or nothing has settled since its read — then `carried` proves the read still
+ * covers this cutoff. Due: never read, restored, a failed or partial attempt,
+ * a read missing the settlement due at its cutoff, an unknown cadence, or a
+ * settlement by its cadence or its venue's feed since. `resumes`: the leg has an
+ * unfinished staged backfill, which continues by itself, so its failure alone
+ * does not repeat a recent read already made at this cutoff.
+ */
+export function legDue(prior: CachedHistoryLeg | undefined, cutoff: number, hint: SettlementHint | null, now: number,
+  resumes = false): { due: true } | { due: false; carried?: NonNullable<CachedHistoryLeg['carried']> } {
+  const leg = prior?.leg;
+  if (!prior || !leg || leg.restored || leg.verifiedAt === null) return { due: true };
+  if (leg.lastAttempt?.outcome !== 'success' && !(resumes && prior.cutoff >= cutoff)) return { due: true };
+  // The venue had not posted the settlement at the read's cutoff yet: read until it shows.
+  const last = lastSettlement(leg, prior.cutoff);
+  if (last !== null && !leg.events.some((event) => event.settledAt === last && event.kind === 'regular')) return { due: true };
+  if (prior.cutoff >= cutoff) return { due: false };
+  const byRule = nextSettlement(leg, prior.cutoff);
+  if (byRule === null) return { due: true };
+  const feedNext = hint?.nextAt != null && hint.nextAt > prior.cutoff ? hint.nextAt : null;
+  // The feed's last settlement, when it is after the read: the cadence changed under it.
+  if (feedNext !== null && feedNext - hint!.intervalHours * 60 * MINUTE > prior.cutoff) return { due: true };
+  const next = Math.min(byRule, feedNext ?? Infinity);
+  if (next <= cutoff) return { due: true };
+  return { due: false, carried: { from: prior.cutoff, cutoff, next, at: now,
+    evidence: `next-settlement-v1;rule=${byRule}${feedNext !== null ? `;feed=${feedNext}/${hint!.intervalHours}h` : ''}` } };
+}
+
 function failedReport(startedAt: number, reason: NonNullable<HistoryRoundReport['reason']>): HistoryRoundReport {
   return { startedAt, finishedAt: Date.now(), cutoff: snapshotCutoff(startedAt), outcome: 'failed', reason, requests: 0, venues: {} };
 }
@@ -185,8 +218,8 @@ export interface FundingHistoryRefresherDeps {
   legs(): Promise<HistoryLegKey[]>;
   budget?: Partial<HistoryBudget>;
   random?: () => number;
-  /** Reserve the bounded budget for dashboard assets first; equal-priority legs still rotate. */
-  priority?(key: HistoryLegKey): number;
+  /** The venue feeds' current settlement timing, read once per round: a lookup by leg. */
+  settlementHints?(): (key: HistoryLegKey) => SettlementHint | null;
   /**
    * Called after each published round. The jobs keep changing in place, so the
    * callee copies what it keeps (`captureHistory`); a throw never fails the round.
@@ -218,7 +251,10 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
     const live = new Set(keys.map(legKey));
     for (const id of progress.keys()) if (!live.has(id) || progress.get(id)!.cutoff > cutoff) { progress.delete(id); backfilled.delete(id); }
     const next = new Map<string, CachedHistoryLeg>();
+    const due = new Set<string>();
     const byVenue = new Map<string, HistoryLegKey[]>();
+    const hint = deps.settlementHints?.() ?? (() => null);
+    let attempted = 0;
     for (const key of new Map(keys.map((k) => [legKey(k), k])).values()) {
       if (sources.has(key.venue)) byVenue.set(key.venue, [...(byVenue.get(key.venue) ?? []), key]);
       else next.set(legKey(key), merge(prior?.get(legKey(key)), placeholder(key, undefined), cutoff, startedAt, 'no-history-source'));
@@ -228,16 +264,24 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       state.venues.set(venue, tally);
       const source = sources.get(venue)!;
       const call = makeCall(state, venue, budget, deps.random ?? Math.random);
+      for (const key of queue) {
+        const id = legKey(key);
+        const resumes = venue === 'HYPERLIQUID' && progress.get(id)?.done === false;
+        const verdict = legDue(prior?.get(id), cutoff, hint(key), startedAt, resumes);
+        if (verdict.due) due.add(id);
+        else next.set(id, verdict.carried ? { ...prior!.get(id)!, carried: verdict.carried } : prior!.get(id)!);
+      }
+      const isDue = (key: HistoryLegKey) => due.has(legKey(key));
       // Least recently verified first, so a budget cut rotates instead of starving the same legs.
       // A restored read is never fresh, so it waits with the never-read ones, not behind fresh legs.
       const verified = (key: HistoryLegKey) => {
         const leg = prior?.get(legKey(key))?.leg;
         return leg?.restored ? -Infinity : leg?.verifiedAt ?? -Infinity;
       };
-      const pending = [...queue].sort((a, b) => (deps.priority?.(b) ?? 0) - (deps.priority?.(a) ?? 0)
-        || verified(a) - verified(b) || legKey(a).localeCompare(legKey(b)));
+      const pending = [...queue].sort((a, b) => verified(a) - verified(b) || legKey(a).localeCompare(legKey(b)));
       const process = async (key: HistoryLegKey, recentOnly = false) => {
         const id = legKey(key);
+        attempted += 1;
         const staged = venue === 'HYPERLIQUID';
         const saved = staged && !recentOnly ? progress.get(id) : undefined;
         const before = tally.requests;
@@ -267,17 +311,24 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
         await Promise.all(Array.from({ length: budget.venueConcurrency }, worker));
       };
       if (venue === 'HYPERLIQUID') {
-        const tiers = [...new Set(pending.map((key) => deps.priority?.(key) ?? 0))];
-        for (const priority of tiers) {
-          const tier = pending.filter((key) => (deps.priority?.(key) ?? 0) === priority);
-          await workers([...tier], true);
-          await workers([...tier].sort((a, b) => (backfilled.get(legKey(a)) ?? 0) - (backfilled.get(legKey(b)) ?? 0)));
-        }
-      } else await workers(pending);
+        await workers(pending.filter(isDue), true);
+        // Due legs start a new job above; a job left unfinished by an earlier round continues.
+        await workers(pending.filter((key) => isDue(key) || progress.get(legKey(key))?.done === false)
+          .sort((a, b) => (backfilled.get(legKey(a)) ?? 0) - (backfilled.get(legKey(b)) ?? 0)));
+      } else await workers(pending.filter(isDue));
     }));
+    const venues = Object.fromEntries([...state.venues].map(([venue, { left: _l, nextAt: _n, ...tally }]) => [venue, tally]));
+    const before = deps.cache.snapshot();
+    // No leg was attempted and none moved: keep the published snapshot (and the previews bound to it).
+    // An attempt that failed before sending anything still publishes its failure.
+    if (!attempted && before && !before.restored && before.cutoff === cutoff
+      && before.legs.size === next.size && [...next.keys()].every((id) => before.legs.has(id))) {
+      const unchanged: HistoryRoundReport = { startedAt, finishedAt: Date.now(), cutoff, outcome: 'unchanged', requests: 0, venues };
+      deps.cache.publish(null, unchanged);
+      return unchanged;
+    }
     snapshotSeq += 1;
-    const finished: HistoryRoundReport = { startedAt, finishedAt: Date.now(), cutoff, outcome: 'published', requests: state.requests,
-      venues: Object.fromEntries([...state.venues].map(([venue, { left: _l, nextAt: _n, ...tally }]) => [venue, tally])) };
+    const finished: HistoryRoundReport = { startedAt, finishedAt: Date.now(), cutoff, outcome: 'published', requests: state.requests, venues };
     const snapshot: HistorySnapshot = { id: `fh-${cutoff}-${startedAt}-${snapshotSeq}`, cutoff, publishedAt: finished.finishedAt, legs: next };
     deps.cache.publish(snapshot, finished);
     try { deps.persist?.(snapshot, progress, backfilled); } catch { /* the cache file is optional; the round stands */ }

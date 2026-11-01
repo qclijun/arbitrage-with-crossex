@@ -15,6 +15,7 @@ import {
   type CurrentContrast,
   type FundingCandidate,
   type RankingPage,
+  type RankingRow,
   type RankingWindow,
   type UnpairedContract,
 } from '../../core/funding/ranking';
@@ -34,6 +35,8 @@ export interface BoardQuery {
   limit: number;
   /** The fingerprint of the ranking the caller is paging through. */
   rankingId?: string;
+  /** The candidate the caller has selected; returned as `selected` when it is off the page. */
+  selectedId?: string;
 }
 
 export interface BoardLeg {
@@ -87,8 +90,14 @@ export interface BoardRow {
   executionBlockers: string[];
 }
 
-export interface FundingBoard extends Omit<RankingPage, 'rows' | 'fingerprint'> {
+export interface FundingBoard extends Omit<RankingPage, 'rows' | 'fingerprint' | 'pinned'> {
   evaluatedAt: number;
+  /**
+   * The caller's selected pair when it is not among `rows` (re-ranked off the
+   * page or filtered out), with current figures; null when it is no longer a
+   * candidate. Absent when nothing is selected or it is on this page.
+   */
+  selected?: BoardRow | null;
   rankingId: string;
   /** The caller's `rankingId` no longer matches: this is page one of the new ranking. */
   rankingChanged: boolean;
@@ -169,23 +178,26 @@ export function buildFundingBoard(input: {
     filter: { underlyings: query.underlyings, venues: query.venues, positiveOnly: query.positiveOnly },
     page: { offset, limit: query.limit }, current: market.current,
     executionBlockers: (c) => executionBlockers(c, byLeg),
+    pinned: query.selectedId,
   });
   let page = rank(query.offset);
   const rankingChanged = query.rankingId !== undefined && query.rankingId !== page.fingerprint;
   if (rankingChanged && query.offset !== 0) page = rank(0);
-  const { rows, fingerprint, ...summary } = page;
+  const { rows, fingerprint, pinned, ...summary } = page;
   const leg = (key: FundingCandidate['short']): BoardLeg => ({ ...key, symbol: byLeg.get(legKey(key))?.symbol ?? null });
+  const boardRow = (row: RankingRow): BoardRow => ({
+    ...(row.candidate.rateEstimate ? { rateEstimate: row.candidate.rateEstimate } : {}),
+    id: row.candidate.id, underlying: row.candidate.underlying, short: leg(row.candidate.short), long: leg(row.candidate.long),
+    rank: row.rank, windows: row.windows.map(boardWindow), current: row.current, executionBlockers: row.executionBlockers,
+  });
   const contracts = market.contracts;
   return {
     ...summary,
     evaluatedAt: now,
     rankingId: fingerprint,
     rankingChanged,
-    rows: rows.map((row) => ({
-      ...(row.candidate.rateEstimate ? { rateEstimate: row.candidate.rateEstimate } : {}),
-      id: row.candidate.id, underlying: row.candidate.underlying, short: leg(row.candidate.short), long: leg(row.candidate.long),
-      rank: row.rank, windows: row.windows.map(boardWindow), current: row.current, executionBlockers: row.executionBlockers,
-    })),
+    rows: rows.map(boardRow),
+    ...(pinned !== undefined ? { selected: pinned && boardRow(pinned) } : {}),
     options: {
       underlyings: [...new Set(candidates.map((c) => c.underlying))].sort(),
       venues: [...new Set(candidates.flatMap((c) => [c.short.venue, c.long.venue]))].sort(),

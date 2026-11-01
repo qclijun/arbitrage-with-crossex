@@ -35,6 +35,7 @@ const list = (raw: string | undefined): string[] | undefined => {
 function parseQuery(q: Record<string, string | undefined>): BoardQuery {
   if (q.positive !== undefined && q.positive !== '0' && q.positive !== '1') throw new CoreError('positive must be 0 or 1', 'validation');
   if (q.rankingId !== undefined && !/^[0-9a-f]{64}$/.test(q.rankingId)) throw new CoreError('rankingId is not a ranking fingerprint', 'validation');
+  if (q.selected !== undefined && (q.selected === '' || q.selected.length > 512)) throw new CoreError('selected is not a candidate id', 'validation');
   return {
     days: days(q.days, 30, 'days'),
     compareDays: days(q.compare, 7, 'compare'),
@@ -44,6 +45,7 @@ function parseQuery(q: Record<string, string | undefined>): BoardQuery {
     offset: integer(q.offset, 0, 'offset', 0),
     limit: integer(q.limit, 50, 'limit', 1, MAX_LIMIT),
     rankingId: q.rankingId,
+    selectedId: q.selected,
   };
 }
 

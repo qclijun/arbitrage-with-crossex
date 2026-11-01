@@ -2,7 +2,7 @@
 import { isSupportedCoin } from '../../core/coins';
 import { parseSymbol } from '../../core/numbers';
 import { evaluateFundingLeg, HISTORY_DAYS, snapshotCutoff, type HistoryDays, type LegHistoryResult } from '../../core/funding/history';
-import { legKey, windowEvidence, type FundingHistoryCache, type CachedHistoryLeg } from '../../core/funding/history-cache';
+import { carriedEvidence, legKey, type FundingHistoryCache, type CachedHistoryLeg } from '../../core/funding/history-cache';
 import { readyListings, type FundingMarketView } from '../../core/funding/market';
 
 export interface SettlementQuery { underlyings?: string[]; venues?: string[]; offset: number; limit: number; }
@@ -44,8 +44,8 @@ export function buildSettlementBoard(input: { query: SettlementQuery; history: P
       return { venue: row.venue, contractId: row.contractId, symbol: row.symbol!, assetCode: row.assetCode,
         lastAttempt: cached?.leg.lastAttempt ?? null, backfill: cached?.backfill,
         windows: HISTORY_DAYS.map((days) => {
-          const read = cached ? windowEvidence(cached, days) : null;
-          const result = read && read.cutoff <= snapshotCutoff(now) ? evaluateFundingLeg(read.leg, read.cutoff, days, now) : null;
+          const read = cached && snapshot ? carriedEvidence(cached, days, snapshot.cutoff) : null;
+          const result = read && read.cutoff <= snapshotCutoff(now) ? evaluateFundingLeg(read.leg, read.cutoff, days, now, read.carry) : null;
           const lastAttempt = cached?.leg.lastAttempt ?? null;
           const pending = result?.fresh && result.coverage === 'complete' ? null : lastAttempt?.reason;
           const reasons = [...(result?.reasons ?? ['history-leg-missing']), ...(result?.restored ? ['history-restored'] : []),

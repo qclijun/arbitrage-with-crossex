@@ -10,9 +10,13 @@ import { seedSubmission } from '../test/fundingOrderForm';
 import { env, server } from '../test/server';
 import { FundingOpportunitiesPanel } from './FundingOpportunitiesPanel';
 
+let client: QueryClient;
 function renderWithClient(ui: ReactElement) {
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
+/** The board's next poll. */
+const poll = () => client.invalidateQueries({ queryKey: ['funding', 'opportunities'] });
 
 /** Serves `board` (or a per-request answer) and records every request the page makes. */
 function serve(board: FundingBoard | ((url: URL) => FundingBoard) = fundingBoard()) {
@@ -95,10 +99,43 @@ describe('FundingOpportunitiesPanel', () => {
     fireEvent.change(screen.getByLabelText('Coin'), { target: { value: 'BTC' } });
     fireEvent.change(screen.getByLabelText('Venue'), { target: { value: 'OKX' } });
     fireEvent.click(screen.getByLabelText('Positive spread only'));
-    await waitFor(() => expect(urls.at(-1)?.search).toBe('?days=7&offset=0&underlying=BTC&venue=OKX&positive=1'));
+    await waitFor(() => {
+      const last = new URLSearchParams(urls.at(-1)?.search);
+      last.delete('selected');
+      expect(`?${last}`).toBe('?days=7&offset=0&underlying=BTC&venue=OKX&positive=1');
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     await waitFor(() => expect(urls.at(-1)?.searchParams.get('offset')).toBe('50'));
     expect(urls.at(-1)?.searchParams.get('rankingId')).toBe('a'.repeat(64));
+  });
+
+  it('keeps the selected pair, detail and draft when a re-rank moves it off the page', async () => {
+    const board = fundingBoard();
+    const [first, , third] = board.rows;
+    // After the third pair is selected, the next poll re-ranks it off the page; the server returns it as `selected`.
+    const { urls } = serve((url) => url.searchParams.get('selected') === third.id
+      ? { ...board, rows: board.rows.filter((r) => r !== third), selected: third } : board);
+    renderWithClient(<FundingOpportunitiesPanel />);
+    await screen.findByRole('table', { name: 'Directed funding pairs' });
+    const reads = urls.length;
+    fireEvent.click(within(table()).getAllByRole('row')[3]);
+    expect(detail()).toHaveTextContent(`Short ${third.short.venue} ${third.short.contractId}`);
+    expect(urls).toHaveLength(reads); // selecting reads nothing
+    await poll();
+    expect(await within(table()).findByText('Selected · not on this page')).toBeInTheDocument();
+    expect(within(table()).getAllByRole('row')).toHaveLength(5);
+    expect(detail()).toHaveTextContent(`Short ${third.short.venue} ${third.short.contractId}`);
+    expect(detail()).not.toHaveTextContent(`Short ${first.short.venue} ${first.short.contractId}`);
+  });
+
+  it('says so, rather than switching pairs, when the selected pair is no longer listed', async () => {
+    const board = fundingBoard();
+    serve((url) => url.searchParams.has('selected') ? { ...board, rows: board.rows.slice(1), selected: null } : board);
+    renderWithClient(<FundingOpportunitiesPanel />);
+    await screen.findByRole('table', { name: 'Directed funding pairs' });
+    await poll();
+    expect(await screen.findByText(/The selected pair is no longer listed/)).toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Candidate detail' })).not.toBeInTheDocument();
   });
 
   it('when the ranking changed under a page, says so and shows page one', async () => {

@@ -24,8 +24,12 @@ function Status({ row, days }: { row: BoardRow; days: number }) {
   );
 }
 
-/** Every directed pair of the page, in the server's global order; a row picks the detail, never an order. */
-export function CandidateTable({ board, selectedId, onSelect }: { board: FundingBoard; selectedId: string | null; onSelect: (id: string) => void }) {
+/**
+ * Every directed pair of the page, in the server's global order; a row picks the detail, never an order.
+ * `pinned` is the selected pair when the ranking moved it off this page: it heads the table, marked.
+ */
+export function CandidateTable({ board, pinned, selectedId, onSelect }: { board: FundingBoard; pinned?: BoardRow;
+  selectedId: string | null; onSelect: (id: string) => void }) {
   const compare = board.compareDays !== board.days;
   return (
     <table aria-label="Directed funding pairs" className="w-full text-[12px]">
@@ -39,13 +43,14 @@ export function CandidateTable({ board, selectedId, onSelect }: { board: Funding
         </tr>
       </thead>
       <tbody>
-        {board.rows.map((row) => (
+        {(pinned ? [pinned, ...board.rows] : board.rows).map((row) => (
           // The whole row selects; the leg button is its keyboard target, and its click bubbles here.
           <tr key={row.id} onClick={() => onSelect(row.id)}
             className={`cursor-pointer border-t border-ink-850 ${row.id === selectedId ? 'bg-ink-800' : 'hover:bg-ink-800/50'}`}>
             <td className="px-2.5 py-1.5">
               <span className="num mr-2 text-ink-400">{row.rank ?? '—'}</span>
               <span className="num text-ink-50">{row.underlying}</span>
+              {row === pinned && <span className="block text-[10px] text-ink-400">Selected · not on this page</span>}
             </td>
             <td className="px-2.5 py-1.5">
               <button type="button" className="flex flex-col items-start text-left" aria-pressed={row.id === selectedId}>

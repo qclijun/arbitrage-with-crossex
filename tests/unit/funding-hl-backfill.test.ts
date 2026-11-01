@@ -81,6 +81,8 @@ it('quarantines a conflicting returned page immediately even if its older segmen
   const w = hlBackfillWorld();
   for (let i = 0; i < 6; i += 1) await run(w.services);
   w.control.reviseBefore = snapshotCutoff(Date.now()) - 7 * D;
+  // The next hourly settlement makes the legs due; the new job's older segment returns the revision.
+  vi.setSystemTime(snapshotCutoff(Date.now()) + H + 60_000);
   w.control.failBefore = w.control.reviseBefore;
   w.control.allowBeforeFailure = 1;
   w.control.failure = 'rate-limited';

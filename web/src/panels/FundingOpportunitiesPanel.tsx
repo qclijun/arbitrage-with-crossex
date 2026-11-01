@@ -142,7 +142,12 @@ function Board() {
   const [params, setParams] = useState<BoardParams>({ days: 30, underlying: null, venue: null, positive: false, offset: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
-  const { data, isPending, isError, error } = useFundingOpportunities(params);
+  const { data, isPending, isError, error, isPlaceholderData } = useFundingOpportunities(params, selectedId);
+
+  // Pin the pair shown by default too, so a re-rank never swaps the detail (and its order form) to another pair.
+  useEffect(() => {
+    if (!selectedId && !isPlaceholderData && data?.rows[0]) setSelectedId(data.rows[0].id);
+  }, [data, selectedId, isPlaceholderData]);
 
   // The server answered page one of a new ranking: follow it, and say so.
   useEffect(() => {
@@ -153,6 +158,7 @@ function Board() {
 
   const filter = (next: Partial<BoardParams>) => {
     setChanged(false);
+    setSelectedId(null);
     setParams((p) => ({ ...p, ...next, offset: 0, rankingId: undefined }));
   };
   const page = (offset: number) => {
@@ -160,7 +166,11 @@ function Board() {
     setParams((p) => ({ ...p, offset, rankingId: data?.rankingId }));
   };
 
-  const selected = data?.rows.find((r) => r.id === selectedId) ?? data?.rows[0];
+  // The selected pair stays selected wherever the ranking moves it; the server returns it when it is off this page.
+  const onPage = data?.rows.find((r) => r.id === selectedId);
+  const pinned = !onPage && selectedId && data?.selected?.id === selectedId ? data.selected : undefined;
+  const selected = onPage ?? pinned ?? (selectedId ? undefined : data?.rows[0]);
+  const gone = !!selectedId && !selected && data?.selected === null && !isPlaceholderData;
   const pages = data ? Math.max(1, Math.ceil(data.matched / data.limit)) : 1;
   const current = data ? Math.floor(data.offset / data.limit) + 1 : 1;
 
@@ -177,7 +187,7 @@ function Board() {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div className="min-w-0">
               {data.rows.length ? (
-                <div className="overflow-x-auto"><CandidateTable board={data} selectedId={selected?.id ?? null} onSelect={setSelectedId} /></div>
+                <div className="overflow-x-auto"><CandidateTable board={data} pinned={pinned} selectedId={selected?.id ?? null} onSelect={setSelectedId} /></div>
               ) : (
                 <p className="py-6 text-center text-[12px] text-ink-400">No candidates match — missing data is not counted as zero.</p>
               )}
@@ -213,6 +223,7 @@ function Board() {
             {selected && (
               <CandidateDetail row={selected} days={data.days} snapshotId={data.snapshotId} admissionOpen={!!data.admission?.open} />
             )}
+            {gone && <p role="status" className="py-6 text-center text-[12px] text-warning">The selected pair is no longer listed — pick another pair.</p>}
           </div>
         </>
       )}

@@ -93,7 +93,7 @@ export function createFundingMarket(deps: FundingMarketDeps) {
     if (!rows.length) return { venue, ok: false, ...kept, error: 'empty' };
     const at = now();
     quotes.set(venue, { at, quotes: new Map(rows.map((r) => [legKey({ venue, contractId: r.contractId }),
-      { rate: r.rateText, intervalHours: r.intervalHours, at }])) });
+      { rate: r.rateText, intervalHours: r.intervalHours, at, ...(r.nextFundingTime !== null ? { nextAt: r.nextFundingTime } : {}) }])) });
     return { venue, ok: true, at, count: rows.length, error: null };
   }
 
@@ -117,6 +117,8 @@ export function createFundingMarket(deps: FundingMarketDeps) {
 
   return {
     runOnce,
+    /** The contract catalog alone, without copying every quote. */
+    contracts: (): FundingContractsView => contracts,
     view(): FundingMarketView {
       const current = new Map<string, CurrentFundingRate>();
       for (const venue of quotes.values()) for (const [key, quote] of venue.quotes) current.set(key, quote);

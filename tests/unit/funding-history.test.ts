@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateFundingHistory,
   evaluateFundingWindows,
+  nextSettlement,
   snapshotCutoff,
   type FundingHistoryLeg,
   type HistoryDays,
@@ -121,7 +122,9 @@ describe('funding history contract', () => {
   it('requires proof and freshness independently of fee or execution blockers', () => {
     const short = leg('A', '0.001');
     const long = leg('B', '0');
-    const stale = evaluate(short, long, 7, cutoff + 17 * 60_000);
+    // Settlements fall on the hour: a read is fresh to its hour's end, and stale from the next.
+    expect(evaluate(short, long, 7, cutoff + H - 1)).toMatchObject({ fresh: true, historyEligible: true });
+    const stale = evaluate(short, long, 7, cutoff + H);
     expect(stale.coverage).toBe('complete');
     expect(stale.fresh).toBe(false);
     expect(stale.historyEligible).toBe(false);
@@ -130,6 +133,25 @@ describe('funding history contract', () => {
     expect(evaluate(short, long).short.coverage).toBe('unknown');
     short.source.status = 'unsupported';
     expect(evaluate(short, long).short.coverage).toBe('unsupported');
+  });
+
+  it('carries a read to a later cutoff only while nothing has settled since', () => {
+    const short = leg('A', '0.001');
+    const long = leg('B', '0');
+    const later = cutoff + 3 * H;
+    const quiet = { from: cutoff, next: cutoff + 8 * H };
+    const at = (carry?: { short?: typeof quiet; long?: typeof quiet }) => evaluateFundingHistory({
+      snapshotId: 's1', underlying: 'BTC', cutoff: later, days: 7, short, long, now: later + 60_000, carry });
+    const carried = at({ short: quiet, long: quiet });
+    expect(carried).toMatchObject({ coverage: 'complete', fresh: true, historyEligible: true, start: later - 7 * D });
+    expect(carried.short.total).toBe('0.021');
+    expect(nextSettlement(short, cutoff)).toBe(cutoff + 8 * H);
+    // Without the carry the read does not reach the later cutoff.
+    expect(at().short.coverage).toBe('unknown');
+    // A carry whose next settlement has come proves nothing.
+    const due = at({ short: { from: cutoff, next: later }, long: quiet });
+    expect(due.short.reasons).toContain('history-carry-invalid');
+    expect(due).toMatchObject({ fresh: false, historyEligible: false });
   });
 
   it('keeps all five windows on one cutoff and one fixed direction', () => {

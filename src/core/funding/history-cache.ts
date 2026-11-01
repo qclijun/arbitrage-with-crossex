@@ -6,9 +6,11 @@
  * timestamps, never fresh) or is a cold start (UNKNOWN).
  */
 import {
+  carryCovers,
   evaluateFundingHistory,
   snapshotCutoff,
   type FundingHistoryLeg,
+  type HistoryCarry,
   type FundingHistoryResult,
   type HistoryDays,
 } from './history';
@@ -36,6 +38,12 @@ export interface CachedHistoryLeg {
    * the long windows `leg` does not cover, with its own (older) verification time.
    */
   wider?: FundingHistoryLeg;
+  /**
+   * The refresher's finding at round cutoff `cutoff` that this leg was not due:
+   * its next settlement after the read's cutoff `from` is `next`, past `cutoff`.
+   * It extends `leg` and `wider` (both at `from`) to `cutoff` without a re-read.
+   */
+  carried?: HistoryCarry & { cutoff: number; at: number; evidence: string };
 }
 
 const DAY = 24 * 60 * 60_000;
@@ -71,6 +79,18 @@ export function windowEvidence(cached: CachedHistoryLeg, days: HistoryDays): His
     ?? { cutoff: cached.cutoff, leg: windowLeg(cached, cached.cutoff, days) };
 }
 
+/**
+ * The window's evidence as of `cutoff`: `windowEvidence`, moved to `cutoff` when
+ * the refresher found nothing settled since its read. `cutoff` is then the
+ * window's end and `carry` names the read's own cutoff.
+ */
+export function carriedEvidence(cached: CachedHistoryLeg, days: HistoryDays, cutoff: number): HistoryWindowEvidence & { carry?: HistoryCarry } {
+  const read = windowEvidence(cached, days);
+  const c = cached.carried;
+  if (!c || c.cutoff !== cutoff || c.from !== read.cutoff || !carryCovers(c, cutoff)) return read;
+  return { cutoff, leg: read.leg, carry: { from: c.from, next: c.next } };
+}
+
 export interface HistorySnapshot {
   id: string;
   /** Common cutoff of every comparable result in this snapshot. */
@@ -101,7 +121,8 @@ export interface HistoryRoundReport {
   startedAt: number;
   finishedAt: number;
   cutoff: number;
-  outcome: 'published' | 'failed';
+  /** `unchanged`: no leg was due and nothing moved, so the published snapshot stands. */
+  outcome: 'published' | 'unchanged' | 'failed';
   reason?: 'leg-list-failed' | 'round-error';
   requests: number;
   venues: Record<string, HistoryVenueReport>;
@@ -185,12 +206,13 @@ export class FundingHistoryCache {
     const long = snap?.legs.get(legKey(pair.long));
     // A reader clock behind the snapshot has no window to evaluate.
     if (!snap || !short || !long || snap.cutoff > snapshotCutoff(now)) return null;
-    const a = windowEvidence(short, pair.days);
-    const b = windowEvidence(long, pair.days);
+    const a = carriedEvidence(short, pair.days, snap.cutoff);
+    const b = carriedEvidence(long, pair.days, snap.cutoff);
     const cutoff = a.cutoff === b.cutoff && a.cutoff <= snap.cutoff ? a.cutoff : snap.cutoff;
     return evaluateFundingHistory({ snapshotId: snap.id, underlying: pair.underlying, cutoff, days: pair.days,
       short: a.cutoff === cutoff ? a.leg : windowLeg(short, cutoff, pair.days),
-      long: b.cutoff === cutoff ? b.leg : windowLeg(long, cutoff, pair.days), now });
+      long: b.cutoff === cutoff ? b.leg : windowLeg(long, cutoff, pair.days), now,
+      carry: { ...(a.cutoff === cutoff && a.carry ? { short: a.carry } : {}), ...(b.cutoff === cutoff && b.carry ? { long: b.carry } : {}) } });
   }
 
   /** Server-side history admission: the caller's snapshot must still be current, at the current cutoff, and eligible now. */

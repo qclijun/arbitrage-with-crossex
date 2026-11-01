@@ -45,12 +45,12 @@ export function positionBlockers(
       no('opposite-position', `${contract} holds ${held}, opposite to this ${side} leg; opening would first reduce it`);
       continue;
     }
-    // Sharing a same-side position needs every unit of it owned by a slice
-    // and the contract reconciled; an unattributed old position is not ours.
+    // A same-side position no slice owns may be shared: an untracked contract
+    // starts its book at the fresh reading, which stays unattributed, and the
+    // new slice owns only its own fills. A tracked contract must reconcile
+    // exactly, so any change outside the ledger since still blocks.
     const rec = ledger.reconcile(contract, held);
-    if (rec === null) {
-      if (heldFx !== 0n) no('unattributed-position', `${contract} already holds ${held} that no strategy slice owns; it cannot be shared`);
-    } else if (rec.status !== 'reconciled' || fx(rec.unattributed ?? '1') !== 0n) {
+    if (rec !== null && rec.status !== 'reconciled') {
       no('contract-unreconciled',
         `${contract} is ${rec.status} in the slice ledger (explains ${rec.explained}, holds ${held}, unattributed ${rec.unattributed})`);
     }
