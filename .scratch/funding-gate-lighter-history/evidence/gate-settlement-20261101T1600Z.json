@@ -1,0 +1,217 @@
+{
+ "settle": 1793548800,
+ "samples": [
+  {
+   "at": 1793548682.2259915,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000069",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548684.4298651,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548694.063318,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000069",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548696.6136122,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548709.7293744,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000069",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548712.8203914,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548722.2694037,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000069",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548726.3786922,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548736.0161881,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000069",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548738.3609679,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548749.351121,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000068",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548751.381087,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548760.9651105,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000068",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548764.032804,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548775.415757,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000068",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548777.7178445,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548788.2799237,
+   "contract": "BTC_USDT",
+   "funding_rate": "0.000068",
+   "next": 1793548800,
+   "interval": 28800
+  },
+  {
+   "at": 1793548790.879843,
+   "contract": "ETH_USDT",
+   "funding_rate": "-0.000007",
+   "next": 1793548800,
+   "interval": 28800
+  }
+ ],
+ "reads": [
+  {
+   "at": 1793548893.8827822,
+   "contract": "BTC_USDT",
+   "rows": [
+    {
+     "r": "0.000068",
+     "t": 1793548800
+    },
+    {
+     "r": "0.0001",
+     "t": 1793520000
+    },
+    {
+     "r": "0.000086",
+     "t": 1793491200
+    }
+   ]
+  },
+  {
+   "at": 1793548895.850562,
+   "contract": "ETH_USDT",
+   "rows": [
+    {
+     "r": "-0.000008",
+     "t": 1793548800
+    },
+    {
+     "r": "0.000032",
+     "t": 1793520001
+    },
+    {
+     "r": "0.000011",
+     "t": 1793491200
+    }
+   ]
+  },
+  {
+   "at": 1793549403.0294802,
+   "contract": "BTC_USDT",
+   "rows": [
+    {
+     "r": "0.000068",
+     "t": 1793548800
+    },
+    {
+     "r": "0.0001",
+     "t": 1793520000
+    },
+    {
+     "r": "0.000086",
+     "t": 1793491200
+    }
+   ]
+  },
+  {
+   "at": 1793549404.7006242,
+   "contract": "ETH_USDT",
+   "rows": [
+    {
+     "r": "-0.000008",
+     "t": 1793548800
+    },
+    {
+     "r": "0.000032",
+     "t": 1793520001
+    },
+    {
+     "r": "0.000011",
+     "t": 1793491200
+    }
+   ]
+  }
+ ],
+ "contractsAfter": {
+  "BTC_USDT": {
+   "funding_rate": "0.000039",
+   "funding_next_apply": 1793577600,
+   "funding_interval": 28800
+  },
+  "ETH_USDT": {
+   "funding_rate": "-0.000065",
+   "funding_next_apply": 1793577600,
+   "funding_interval": 28800
+  }
+ }
+}

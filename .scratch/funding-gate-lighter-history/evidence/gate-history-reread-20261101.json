@@ -1,0 +1,24 @@
+{
+ "readAt": 1793549458,
+ "comparedTo": 1793543944,
+ "contracts": {
+  "BTC_USDT": {
+   "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&from=1777997514&to=1793543944&limit=1000",
+   "sha256": "b66a5e298b4d01ab3256ff15576502db9b48923103be2462499bfd6b96b58208",
+   "rows": 539,
+   "same": true,
+   "changed": [],
+   "missing": [],
+   "added": []
+  },
+  "ETH_USDT": {
+   "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&from=1777997514&to=1793543944&limit=1000",
+   "sha256": "759db0d69d5850c1c8c262baf39d2c4abed9772f30266049a90c1d32dd86fe02",
+   "rows": 539,
+   "same": true,
+   "changed": [],
+   "missing": [],
+   "added": []
+  }
+ }
+}

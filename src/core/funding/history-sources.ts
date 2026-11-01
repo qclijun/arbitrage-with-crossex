@@ -1,12 +1,21 @@
 import type { HistoryDays, SettledFundingEvent } from './history';
+import { hasSettlementDelay } from './settlement-time';
 
-/** 07 verified these historical records as settled; other feeds need further proof. */
+/** Gate's REST history; it refuses a `from` more than 180 days before its clock. */
+export const GATE_HISTORY_API = '/futures/usdt/funding_rate';
+export const GATE_HISTORY_DAYS = 180;
+
+/**
+ * 07 verified these historical records as settled; other feeds need further proof.
+ * Gate: .scratch/funding-gate-lighter-history/evidence/gate-settled-history.md.
+ */
 const SETTLED_ENDPOINTS: Record<string, string> = {
   BINANCE: '/fapi/v1/fundingRate',
   ASTER: '/fapi/v3/fundingRate',
   OKX: '/api/v5/public/funding-rate-history',
   BYBIT: '/v5/market/funding/history',
   HYPERLIQUID: 'info:fundingHistory',
+  GATE: GATE_HISTORY_API,
 };
 
 /** REST's three-month limit is retained; this source also reads official monthly files. */
@@ -16,6 +25,7 @@ export function sourceBoundary(venue: string, api: string, days: HistoryDays): '
   if (venue === 'OKX' && api === OKX_ARCHIVE_API) return 'verified';
   if (SETTLED_ENDPOINTS[venue] !== api) return 'unknown';
   if (venue === 'OKX' && days >= 180) return 'unsupported';
+  if (venue === 'GATE' && days > GATE_HISTORY_DAYS) return 'unsupported';
   return 'verified';
 }
 
@@ -74,13 +84,19 @@ export function normalizeOfficialSettlement(
       time = raw.time;
       rate = raw.fundingRate;
       break;
+    case 'GATE':
+      // Rows name no contract; the source tags each with the one it requested.
+      contract = raw.contract;
+      time = Number.isSafeInteger(raw.t) && Number.isSafeInteger((raw.t as number) * 1_000) ? (raw.t as number) * 1_000 : null;
+      rate = raw.r;
+      break;
     default:
       return null;
   }
   const settledAt = safeTimestamp(time);
   if (contract !== source.contractId || settledAt === null || typeof rate !== 'string'
     || !/^-?\d+(?:\.\d+)?$/.test(rate)) return null;
-  if ((source.venue === 'HYPERLIQUID' || source.venue === 'ASTER') && settledAt % 3_600_000 !== 0) {
+  if (hasSettlementDelay(source.venue) && settledAt % 3_600_000 !== 0) {
     // Preserve the original processing timestamp and the venue mapping's
     // evidence, independently of historical cadence and listing checks.
     if (!timeMapping?.evidence || timeMapping.settlementAt !== Math.floor(settledAt / 3_600_000) * 3_600_000) return null;

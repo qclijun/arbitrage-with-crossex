@@ -6,6 +6,7 @@ import { settlementTimeMapping } from './settlement-time';
 import { withOkxArchive } from './okx-history';
 import { HYPERLIQUID_HOURLY_POLICY, type HyperliquidHourlyPolicy } from './hyperliquid-policy';
 import { createHyperliquidHistoryContext } from './hyperliquid-history';
+import { gateHistorySource } from './gate-history';
 
 type Row = Record<string, unknown>;
 interface Endpoint { venue: string; host: string; api: string; limit: number; direction: 'forward' | 'backward'; }
@@ -104,8 +105,9 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
 
 export function createOfficialHistorySources(opts: OfficialHistoryOptions = {}): FundingHistorySource[] {
   const read = opts.read ?? createOfficialPublicReader({ now: opts.now });
-  return ENDPOINTS.map((endpoint) => {
+  const now = opts.now ?? Date.now;
+  return [...ENDPOINTS.map((endpoint) => {
     const source = restSource(endpoint, read, opts);
-    return endpoint.venue === 'OKX' ? withOkxArchive(source, read, opts.now ?? Date.now) : source;
-  });
+    return endpoint.venue === 'OKX' ? withOkxArchive(source, read, now) : source;
+  }), gateHistorySource(read, now, (id, call) => opts.context?.('GATE', id, call) ?? null)];
 }

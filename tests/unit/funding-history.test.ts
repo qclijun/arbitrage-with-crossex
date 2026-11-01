@@ -198,7 +198,9 @@ describe('funding history contract', () => {
     }, 8, 'raw-hash')).toBeNull();
     expect(sourceBoundary('OKX', okx.api, 180)).toBe('unsupported');
     expect(sourceBoundary('OKX', '/api/v5/public/funding-rate', 7)).toBe('unknown');
-    expect(sourceBoundary('GATE', '/futures/usdt/funding_rate', 7)).toBe('unknown');
+    expect(sourceBoundary('GATE', '/futures/usdt/funding_rate', 180)).toBe('verified');
+    expect(sourceBoundary('GATE', '/futures/usdt/funding_rate', 365)).toBe('unsupported');
+    expect(sourceBoundary('GATE', '/futures/usdt/contracts', 7)).toBe('unknown');
     expect(sourceBoundary('LIGHTER', '/api/v1/fundings', 7)).toBe('unknown');
     const unproved = leg('A', '0.001');
     unproved.source.api = '/fapi/v1/premiumIndex';
