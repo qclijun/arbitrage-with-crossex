@@ -18,7 +18,7 @@ Observed figures use returned settlements from the same window; completeness is 
 export const ESTIMATE_TIP = `费率差估算
 同一截止点、同一窗口，按相同名义金额将空腿结算费率总和减去多腿，再乘 365 ÷ 窗口天数。
 金额按 1 USDC = 1 USDT = 1 USD 计（同机会页）。
-* 未计入各期 oracle/mark 价差、基差或费用，并非实际现金收益或权益收益。`;
+* 未计入各期 oracle/index/mark 价差、基差或费用，并非实际现金收益或权益收益。`;
 
 const REASONS: Record<string, string> = {
   'history-cold-start': 'no history published yet (cold start)',

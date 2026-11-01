@@ -55,7 +55,10 @@ describe('funding feed parsers', () => {
     expect(parseLighter({ funding_rates: [
       { exchange: 'binance', symbol: 'BTC', rate: 0.0003 },
       { exchange: 'lighter', symbol: 'BTC', rate: 0.0001 },
-    ] })).toEqual([{ base: 'BTC', contractId: 'BTC', rate: 0.0001, rateText: '0.0001', intervalHours: 8, markPrice: null, nextFundingTime: null }]);
+    ] })).toEqual([{ base: 'BTC', contractId: 'BTC', rate: 0.0000125, rateText: '0.0000125', intervalHours: 1, markPrice: null, nextFundingTime: null }]);
+    // Lighter writes an 8 h equivalent but settles hourly: the hourly rate is exactly one eighth.
+    expect(parseLighter({ funding_rates: [{ exchange: 'lighter', symbol: 'ETH', rate: 9.6e-5 }] }))
+      .toMatchObject([{ rate: 0.000012, rateText: '0.000012', intervalHours: 1 }]);
   });
 });
 
@@ -72,7 +75,7 @@ describe('funding feed identity', () => {
     // A JSON number in exponent form is still an exact decimal once written out.
     expect(pick(parseKraken({ tickers: [{ symbol: 'PF_XBTUSD', tag: 'perpetual', relativeFundingRate: 1.5e-7 }] })))
       .toEqual([{ contractId: 'PF_XBTUSD', rateText: '0.00000015' }]);
-    expect(pick(parseLighter({ funding_rates: [{ exchange: 'lighter', symbol: 'BTC', rate: -0.0001 }] }))).toEqual([{ contractId: 'BTC', rateText: '-0.0001' }]);
+    expect(pick(parseLighter({ funding_rates: [{ exchange: 'lighter', symbol: 'BTC', rate: -0.0001 }] }))).toEqual([{ contractId: 'BTC', rateText: '-0.0000125' }]);
   });
 });
 

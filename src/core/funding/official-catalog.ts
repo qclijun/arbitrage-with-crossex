@@ -1,7 +1,7 @@
 /** Production discovery shares one native/identity snapshot with legOf and history. */
 import { mapFundingContracts, type FundingRuleSymbol, type NativeFundingContract } from './contract-identity';
 import { createOfficialPublicReader, type PublicRead } from './official-public';
-import { OFFICIAL_HISTORY_VENUES, readOfficialInstruments } from './official-instruments';
+import { OFFICIAL_INSTRUMENT_VENUES, readOfficialInstruments } from './official-instruments';
 import type { FundingHistoryLeg, FundingRuleSegment } from './history';
 
 export function createOfficialFundingCatalog(opts: { rules: () => Promise<FundingRuleSymbol[]>; read?: PublicRead }) {
@@ -20,7 +20,7 @@ export function createOfficialFundingCatalog(opts: { rules: () => Promise<Fundin
         const venue = rules.find((r) => r.symbol === rejection.symbol)?.exchangeType;
         const index = venues.indexOf(venue ?? '');
         if (index >= 0 && results[index]?.status === 'rejected') {
-          rejection.reason = OFFICIAL_HISTORY_VENUES.includes(venue!) ? 'native-source-failed' : 'native-source-unwired';
+          rejection.reason = OFFICIAL_INSTRUMENT_VENUES.includes(venue!) ? 'native-source-failed' : 'native-source-unwired';
         }
       }
       return discovery;

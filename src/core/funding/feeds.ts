@@ -136,13 +136,25 @@ export function parseKraken(json: unknown): VenueFundingRate[] {
   return out;
 }
 
-/** Lighter's funding-rates lists several exchanges; its own rows are normalised to an
- * 8 h rate (its Hyperliquid rows read exactly 8× Hyperliquid's hourly rate). */
+/** One eighth of an exact decimal, still exact: x / 8 = x × 125 / 1000. */
+function eighth(text: string): string {
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text)!;
+  const places = (m[3] ?? '').length + 3;
+  const digits = (BigInt(m[2]! + (m[3] ?? '')) * 125n).toString().padStart(places + 1, '0');
+  const whole = digits.slice(0, -places);
+  const fraction = digits.slice(-places).replace(/0+$/, '');
+  return `${m[1]}${whole}${fraction ? `.${fraction}` : ''}`;
+}
+
+/** Lighter's funding-rates lists several exchanges; its own rows are an 8 h equivalent
+ * (its Hyperliquid rows read exactly 8× Hyperliquid's hourly rate). Lighter settles
+ * every hour at one eighth of it: https://docs.lighter.xyz/trading/funding */
 export function parseLighter(json: unknown): VenueFundingRate[] {
   const out: VenueFundingRate[] = [];
   for (const r of rows((json as { funding_rates?: unknown } | null)?.funding_rates)) {
     if (r.exchange !== 'lighter' || typeof r.symbol !== 'string') continue;
-    push(out, r.symbol, r.symbol, r.rate, 8, null, null);
+    const text = decimalText(r.rate);
+    if (text !== null) push(out, r.symbol, r.symbol, eighth(text), 1, null, null);
   }
   return out;
 }

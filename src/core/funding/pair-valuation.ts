@@ -4,11 +4,11 @@ import { nativeFundingId } from './contract-evidence';
 import type { FxRate } from './scenario';
 
 export interface FundingRateEstimate {
-  short: { price: 'oracle' | 'mark'; settlement: 'USDC' | 'USDT' };
-  long: { price: 'oracle' | 'mark'; settlement: 'USDC' | 'USDT' };
+  short: { price: 'oracle' | 'index' | 'mark'; settlement: 'USDC' | 'USDT' };
+  long: { price: 'oracle' | 'index' | 'mark'; settlement: 'USDC' | 'USDT' };
 }
 
-/** Only the explicitly reviewed native BTC/ETH HL vs USDT CEX products. */
+/** Only the explicitly reviewed native BTC/ETH products, across two different price bases. */
 export function fundingRateEstimate(short: LiveFundingContract, long: LiveFundingContract): FundingRateEstimate | null {
   const coin = short.underlying?.id;
   if ((coin !== 'BTC' && coin !== 'ETH') || long.underlying?.id !== coin) return null;
@@ -16,7 +16,10 @@ export function fundingRateEstimate(short: LiveFundingContract, long: LiveFundin
     if (leg.venue === 'HYPERLIQUID' && leg.contractId === coin && leg.rateBasis?.id === 'linear-oracle-notional-fraction') {
       return { price: 'oracle', settlement: 'USDC' };
     }
-    if (['BINANCE', 'BYBIT', 'OKX'].includes(leg.venue) && leg.contractId === nativeFundingId(leg.venue, coin, 'USDT')
+    if (leg.venue === 'LIGHTER' && leg.contractId === coin && leg.rateBasis?.id === 'linear-index-notional-fraction') {
+      return { price: 'index', settlement: 'USDC' };
+    }
+    if (['BINANCE', 'BYBIT', 'OKX', 'GATE'].includes(leg.venue) && leg.contractId === nativeFundingId(leg.venue, coin, 'USDT')
       && leg.rateBasis?.id === 'linear-mark-notional-fraction') return { price: 'mark', settlement: 'USDT' };
     return null;
   };
