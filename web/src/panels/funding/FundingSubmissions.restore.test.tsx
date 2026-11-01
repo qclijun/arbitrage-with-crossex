@@ -8,11 +8,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fill, previewAndHold, renderForm, ROW, seedSubmission, servePreviews, storedSubmissions } from '../../test/fundingOrderForm';
+import { fill, previewAndHold, renderForm, ROW, seedSubmission, serveDefaults, servePreviews, storedSubmissions } from '../../test/fundingOrderForm';
 import { fundingPreview, fundingReceipt } from '../../test/fundingPreview';
 import { env, server } from '../../test/server';
 import { CandidateDetail } from './CandidateDetail';
 import { FundingSubmissionsProvider } from './FundingSubmissions';
+
 
 const CANDIDATE = fundingPreview().content.candidateId;
 
@@ -129,6 +130,7 @@ describe('restoring funding submissions', () => {
       expect(new URL(request.url).searchParams.get('candidateId')).toBe(ROW.id);
       return HttpResponse.json(env([fundingReceipt('intent-elsewhere', DONE_WITH_DUST)]));
     }));
+    serveDefaults();
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <FundingSubmissionsProvider><CandidateDetail row={ROW} days={30} snapshotId="snap-1" admissionOpen /></FundingSubmissionsProvider>

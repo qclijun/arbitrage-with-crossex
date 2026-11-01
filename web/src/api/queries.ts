@@ -437,15 +437,37 @@ export function useDealView(id: string | null) {
   return query;
 }
 
+/** One venue touch read, shared by every hook that shows a book. */
+const bookQuery = (symbol: string | null) => ({
+  queryKey: ['book', symbol ?? ''] as const,
+  queryFn: () => fetchJson<BookTouch>(`/books/${encodeURIComponent(symbol ?? '')}`),
+});
+
 /** Venue touch for the re-peg decision UI — polls only while enabled. */
 export function useVenueBook(symbol: string | null, enabled: boolean) {
   const shown = useTabActive();
   return useQuery({
-    queryKey: ['book', symbol ?? ''] as const,
-    queryFn: () => fetchJson<BookTouch>(`/books/${encodeURIComponent(symbol ?? '')}`),
+    ...bookQuery(symbol),
     enabled: (query) => enabled && Boolean(symbol) && canFetch(shown, query),
     refetchInterval: shown ? 2_500 : false,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * A slow venue touch for defaults and estimates: read fresh on mount — never
+ * another panel's cached touch — then once a minute while the tab is shown.
+ * Its own cache entry, dropped on unmount.
+ */
+export function useVenueTouch(symbol: string | null) {
+  const shown = useTabActive();
+  const { queryKey, queryFn } = bookQuery(symbol);
+  return useQuery({
+    queryKey: [...queryKey, 'slow'] as const,
+    queryFn,
+    enabled: (query) => Boolean(symbol) && canFetch(shown, query),
+    refetchInterval: shown ? 60_000 : false,
+    gcTime: 0,
   });
 }
 

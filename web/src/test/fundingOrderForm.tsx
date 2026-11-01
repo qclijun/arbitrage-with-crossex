@@ -12,7 +12,24 @@ import { env, server } from './server';
 
 export const ROW = boardRow('BTC', 'BINANCE BTCUSDT', 'BYBIT BTCUSDT', 1, '0.438');
 
-export function renderForm(props: Partial<ComponentProps<typeof FundingOrderForm>> = {}) {
+/**
+ * The live reads the draft's defaults come from: a $50,000 mid and these leverage caps.
+ * `hold` keeps the book's answer back until it settles, so a test can type first.
+ */
+export function serveDefaults(opts: { mid?: number; leverageMax?: Record<string, number>; hold?: Promise<unknown> } = {}) {
+  const mid = opts.mid ?? 50_000;
+  server.use(
+    http.get('/api/books/:symbol', async ({ params }) => {
+      await opts.hold;
+      return HttpResponse.json(env({ symbol: String(params.symbol), bestBid: mid - 1, bestAsk: mid + 1, mid }));
+    }),
+    http.get('/api/symbols/:symbol', ({ params }) =>
+      HttpResponse.json(env({ symbol: String(params.symbol), leverageMax: opts.leverageMax?.[String(params.symbol)] ?? 20 }))),
+  );
+}
+
+export function renderForm(props: Partial<ComponentProps<typeof FundingOrderForm>> = {}, defaults?: Parameters<typeof serveDefaults>[0]) {
+  serveDefaults(defaults);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>

@@ -1,27 +1,81 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { boardRow } from '../../test/fundingBoard';
-import { fill, renderForm, ROW, seedSubmission, servePreviews, type } from '../../test/fundingOrderForm';
+import { fill, renderForm, ROW, seedSubmission, serveDefaults, servePreviews, type } from '../../test/fundingOrderForm';
 import { fundingPreview, fundingReceipt } from '../../test/fundingPreview';
 import { env, server } from '../../test/server';
 import { FundingOrderForm } from './FundingOrderForm';
 import { FundingSubmissionsProvider } from './FundingSubmissions';
 
+
 describe('FundingOrderForm', () => {
-  it('prefills the exact two legs and previews the typed decimals unchanged; nothing is chosen for the user', async () => {
+  it('starts previewable with the Opportunities defaults, without a hint line', async () => {
+    const bodies = servePreviews(fundingPreview());
+    renderForm({}, { mid: 64_000, leverageMax: { BINANCE_FUTURE_BTC_USDT: 75, BYBIT_FUTURE_BTC_USDT: 50.5 } });
+    // $10,000 at a 64,000 mid, floored to four significant figures.
+    await waitFor(() => expect(screen.getByLabelText('Quantity (BTC)')).toHaveValue('0.1562'));
+    expect(screen.getByText('≈ $9,997 at short mid')).toBeInTheDocument();
+    expect(screen.getByLabelText('Short leverage')).toHaveValue('75');
+    expect(screen.getByLabelText('Long leverage')).toHaveValue('50');
+    expect(screen.getByLabelText('Hold days')).toHaveValue('30');
+    expect(screen.getByLabelText('Maker: short BINANCE')).toBeChecked();
+    expect(screen.getByLabelText('Maker timeout (s)')).toHaveValue('300');
+    expect(screen.queryByText(/Preview needs/)).not.toBeInTheDocument();
+    const preview = screen.getByRole('button', { name: 'Preview' });
+    expect(preview).toBeEnabled();
+    expect(preview).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(preview);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ quantity: '0.1562', makerLeg: 'short', leverage: { short: '75', long: '50' }, holdDays: '30' });
+  });
+
+  it('never refills a field the user has typed in, even after clearing it', async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    renderForm({}, { hold });
+    await waitFor(() => expect(screen.getByLabelText('Short leverage')).toHaveValue('20'));
+    type('Quantity (BTC)', '1');
+    type('Quantity (BTC)', '');
+    release();
+    // The price lands (the blank field's hint shows it); the cleared field stays the user's.
+    expect(await screen.findByText('short mid $50,000.00')).toBeInTheDocument();
+    await act(async () => {});
+    expect(screen.getByLabelText('Quantity (BTC)')).toHaveValue('');
+    type('Quantity (BTC)', '0.2');
+    expect(await screen.findByText('≈ $10,000 at short mid')).toBeInTheDocument();
+  });
+
+  it('explains an incomplete draft only in the Preview tip, keeping the button focusable', async () => {
+    const bodies = servePreviews(fundingPreview());
+    renderForm();
+    await waitFor(() => expect(screen.getByLabelText('Quantity (BTC)')).toHaveValue('0.2'));
+    type('Quantity (BTC)', '');
+    type('Long leverage', '0');
+    const preview = screen.getByRole('button', { name: 'Preview' });
+    expect(preview).toHaveAttribute('aria-disabled', 'true');
+    expect(preview).toBeEnabled();
+    expect(preview).toHaveAttribute('title',
+      'Preview needs\nQuantity (BTC) — a positive decimal, at most 12 decimals\nLong leverage — a whole number from 1');
+    expect(preview).toHaveAccessibleDescription(/Preview needs/);
+    expect(screen.queryByText(/Preview needs/)).not.toBeInTheDocument();
+    fireEvent.click(preview);
+    // The hints under the fields are announced with them.
+    expect(screen.getByLabelText('Short leverage')).toHaveAccessibleDescription('max 20×');
+    type('Quantity (BTC)', '0.1');
+    type('Long leverage', '3');
+    expect(preview).not.toHaveAttribute('aria-disabled');
+    expect(preview).not.toHaveAttribute('title');
+    expect(screen.getByLabelText('Quantity (BTC)')).toHaveAccessibleDescription('≈ $5,000 at short mid');
+    expect(bodies).toHaveLength(0);
+  });
+
+  it('previews the typed decimals unchanged', async () => {
     const bodies = servePreviews(fundingPreview());
     renderForm();
     const preview = screen.getByRole('button', { name: 'Preview' });
-    expect(preview).toBeDisabled();
-    expect(preview).toHaveAccessibleDescription('Preview needs: Quantity (BTC), Short leverage, Long leverage, Hold days, Maker leg');
-    expect(screen.getByLabelText('Maker: short BINANCE')).not.toBeChecked();
-    expect(screen.getByLabelText('Maker: long BYBIT')).not.toBeChecked();
-    expect(screen.getByLabelText('Short leverage')).toHaveValue('');
-    expect(screen.getByLabelText('Maker timeout (s)')).toHaveValue('300');
     fill();
-    expect(preview).not.toHaveAccessibleDescription();
     fireEvent.click(preview);
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
@@ -51,7 +105,7 @@ describe('FundingOrderForm', () => {
     fill();
     for (const bad of ['0', '0.0000000000001', '1e-3', '-1', '1,5']) {
       type('Quantity (BTC)', bad);
-      expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-disabled', 'true');
     }
     type('Quantity (BTC)', '0.000000000001');
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
@@ -66,7 +120,7 @@ describe('FundingOrderForm', () => {
     fill();
     for (const bad of ['20', '3601', '45.5', '']) {
       type('Maker timeout (s)', bad);
-      expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-disabled', 'true');
     }
     type('Maker timeout (s)', '3600');
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
@@ -273,6 +327,7 @@ describe('FundingOrderForm', () => {
         <FundingSubmissionsProvider><FundingOrderForm row={ROW} days={30} snapshotId={snapshotId} admissionOpen holdMs={20} /></FundingSubmissionsProvider>
       </QueryClientProvider>
     );
+    serveDefaults();
     const { rerender } = render(ui('snap-1'));
     fill();
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));

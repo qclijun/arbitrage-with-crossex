@@ -2,10 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
-import { expect, it } from 'vitest';
+import { beforeEach, expect, it } from 'vitest';
 import { boardRow, fundingBoard } from '../../test/fundingBoard';
+import { serveDefaults } from '../../test/fundingOrderForm';
 import { env, server } from '../../test/server';
 import { FundingOpportunitiesPanel } from '../FundingOpportunitiesPanel';
+
+// The order form reads a touch and leverage caps for its defaults.
+beforeEach(() => serveDefaults());
 
 it('shows the HL/OKX estimates in both directions and lets a ranked pair open with USDC valued at par', async () => {
   const forward = boardRow('ETH', 'HYPERLIQUID ETH', 'OKX ETH-USDT-SWAP', 1, '0.0657', {

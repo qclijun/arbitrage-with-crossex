@@ -1,26 +1,30 @@
 import { useId } from 'react';
 import type { HistoryDays } from '../../../../src/core/funding/history';
 import type { BoardRow } from '../../api/fundingOpportunities';
+import { useSymbolDetail, useVenueTouch } from '../../api/queries';
 import { HoldToConfirmButton } from '../../components/HoldToConfirmButton';
 import { TipLabel } from '../../components/Th';
+import { fmtUsd } from '../../lib/fmt';
 import { SubmissionCard } from './FundingReceiptView';
 import { useFundingSubmissions } from './FundingSubmissions';
 import { decimalSign, micro } from './labels';
-import { TIMEOUT_RANGE, type OrderDraft } from './orderDraft';
+import { DEFAULT_NOTIONAL_USD, leverageFor, quantityFor, TIMEOUT_RANGE, type OrderDraft } from './orderDraft';
 import { PreviewSummary, warningText } from './PreviewSummary';
 import { useFundingOrder } from './useFundingOrder';
 
 const input = 'input num h-[26px] w-24 !px-2 !py-0 text-[11px]';
 
-function Field({ label, value, error, disabled, onChange, placeholder, tip }: {
-  label: string; value: string; error?: string; disabled: boolean; onChange: (v: string) => void; placeholder?: string; tip?: string;
+function Field({ label, value, error, disabled, onChange, placeholder, tip, hint }: {
+  label: string; value: string; error?: string; disabled: boolean; onChange: (v: string) => void; placeholder?: string; tip?: string; hint?: string;
 }) {
+  const noteId = useId();
+  const shown = value !== '' && error ? error : hint;
   return (
     <label className={`flex flex-col gap-0.5 ${micro}`}>
       {tip ? <TipLabel className="self-start" title={tip}>{label}</TipLabel> : label}
       <input type="text" inputMode="decimal" autoComplete="off" aria-label={label} value={value} disabled={disabled} placeholder={placeholder}
-        aria-invalid={value !== '' && !!error} onChange={(e) => onChange(e.target.value)} className={input} />
-      {value !== '' && error && <span className="text-guava">{error}</span>}
+        aria-invalid={value !== '' && !!error} aria-describedby={shown ? noteId : undefined} onChange={(e) => onChange(e.target.value)} className={input} />
+      {shown && <span id={noteId} className={shown === hint ? 'whitespace-nowrap' : 'text-guava'}>{shown}</span>}
     </label>
   );
 }
@@ -37,21 +41,33 @@ const fieldsFor = (underlying: string): { key: TextField; label: string; placeho
   { key: 'holdDays', label: 'Hold days', tip: 'Only shapes the cost scenarios below.' },
 ];
 
-/**
- * Open this exact pair (ticket 13): the user types every number, previews
- * through ticket 12, confirms what the server bound, and holds to accept.
- * The server re-checks everything; this form never decides admission. An
- * intent sent for this pair is shown, by its id, in place of a new draft (ticket 14).
- */
-export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs, acceptTimeoutMs, now = Date.now }: {
+type FormProps = {
   row: BoardRow; days: HistoryDays; snapshotId: string; admissionOpen: boolean; holdMs?: number; acceptTimeoutMs?: number; now?: () => number;
-}) {
-  const order = useFundingOrder({ row, days, snapshotId, now, acceptTimeoutMs });
-  const previewNeedsId = useId();
+};
+
+/**
+ * Open this exact pair (ticket 13): the draft starts previewable — $10k per
+ * leg at the short leg's mid, each leg's max leverage, short as maker, 30 hold
+ * days — and the user edits any of it, previews through ticket 12, confirms
+ * what the server bound, and holds to accept. The server re-checks everything;
+ * this form never decides admission. An intent sent for this pair is shown, by
+ * its id, in place of a new draft (ticket 14).
+ */
+export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs, acceptTimeoutMs, now = Date.now }: FormProps) {
   const submissions = useFundingSubmissions();
+  const sent = submissions.forCandidate(row.id);
+  // The draft's state outlives a sent intent (a refusal returns to it), but its
+  // default reads run only while the draft is on screen.
+  const drafting = sent.length === 0 && !!row.short.symbol && !!row.long.symbol;
+  // Opportunities defaults: $10k per leg priced off the short leg's touch, each leg at its max leverage.
+  const book = useVenueTouch(drafting ? row.short.symbol : null);
+  const shortMax = useSymbolDetail(drafting ? row.short.symbol : null).data?.leverageMax;
+  const longMax = useSymbolDetail(drafting ? row.long.symbol : null).data?.leverageMax;
+  const mid = book.data?.mid;
+  const order = useFundingOrder({ row, days, snapshotId, now, acceptTimeoutMs, suggested: {
+    quantity: quantityFor(DEFAULT_NOTIONAL_USD, mid), leverageShort: leverageFor(shortMax), leverageLong: leverageFor(longMax) } });
   const { draft, errors, stage } = order;
   const blocked = submissions.blocked;
-  const sent = submissions.forCandidate(row.id);
   if (sent.length) {
     return <div>{sent.map((s) => <SubmissionCard key={s.record.body.intentId} submission={s} onDismiss={submissions.dismiss} />)}</div>;
   }
@@ -60,7 +76,13 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs,
   }
   const frozen = order.locked;
   const fields = fieldsFor(row.underlying);
-  const missing = [...fields.filter((f) => errors[f.key]).map((f) => f.label), ...(errors.makerLeg ? ['Maker leg'] : [])];
+  const needs = fields.filter((f) => errors[f.key]).map((f) => `${f.label} — ${errors[f.key]}`);
+  const qty = Number(draft.quantity);
+  const hints: Partial<Record<keyof OrderDraft, string>> = {
+    quantity: mid ? (errors.quantity ? `short mid ${fmtUsd(mid)}` : `≈ ${fmtUsd(qty * mid, 0)} at short mid`) : book.isError ? 'no price read' : undefined,
+    leverageShort: shortMax ? `max ${leverageFor(shortMax) ?? shortMax}×` : undefined,
+    leverageLong: longMax ? `max ${leverageFor(longMax) ?? longMax}×` : undefined,
+  };
   const preview = stage.kind === 'preview' || stage.kind === 'sending' ? stage.preview : null;
   const historySign = decimalSign(row.windows.find((w) => w.days === days)?.netTotal);
   const negativeHistory = historySign === 0 || historySign === -1;
@@ -72,7 +94,7 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs,
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         {fields.map((f) => (
           <Field key={f.key} label={f.label} value={draft[f.key]} error={errors[f.key]} disabled={frozen} placeholder={f.placeholder}
-            tip={f.tip} onChange={(v) => order.edit(f.key, v)} />
+            tip={f.tip} hint={hints[f.key]} onChange={(v) => order.edit(f.key, v)} />
         ))}
       </div>
       <fieldset className="mt-2 flex gap-4" disabled={frozen}>
@@ -86,11 +108,14 @@ export function FundingOrderForm({ row, days, snapshotId, admissionOpen, holdMs,
         ))}
       </fieldset>
       <div className="mt-3 flex items-center gap-3">
-        <button type="button" className="btn" disabled={frozen || stage.kind === 'previewing' || missing.length > 0}
-          aria-describedby={missing.length > 0 && !frozen ? previewNeedsId : undefined} onClick={() => void order.requestPreview()}>
+        {/* An incomplete draft is aria-disabled, not disabled: the button stays focusable, so its
+            hover/focus tip (also its accessible description) says why. Nothing is printed on the page. */}
+        <button type="button" className="btn aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+          disabled={frozen || stage.kind === 'previewing'} aria-disabled={needs.length > 0 || undefined}
+          title={needs.length > 0 && !frozen ? ['Preview needs', ...needs].join('\n') : undefined}
+          onClick={() => void order.requestPreview()}>
           Preview
         </button>
-        {missing.length > 0 && !frozen && <span id={previewNeedsId} className={micro}>Preview needs: {missing.join(', ')}</span>}
       </div>
       {stage.kind === 'draft' && stage.message && <p role="alert" className="mt-2 text-guava">{stage.message}</p>}
       {preview && (

@@ -2,13 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { FundingBoard } from '../api/fundingOpportunities';
 import { fundingBoard } from '../test/fundingBoard';
 import { fundingPreview, fundingReceipt } from '../test/fundingPreview';
-import { seedSubmission } from '../test/fundingOrderForm';
+import { seedSubmission, serveDefaults } from '../test/fundingOrderForm';
 import { env, server } from '../test/server';
 import { FundingOpportunitiesPanel } from './FundingOpportunitiesPanel';
+
+// The order form reads a touch and leverage caps for its defaults.
+beforeEach(() => serveDefaults());
 
 let client: QueryClient;
 function renderWithClient(ui: ReactElement) {
@@ -194,7 +197,8 @@ describe('FundingOpportunitiesPanel', () => {
     const d = () => detail();
     fireEvent.change(within(d()).getByLabelText('Quantity (BTC)'), { target: { value: '0.01' } });
     fireEvent.click(within(table()).getByRole('button', { name: /BYBIT.*BINANCE/ }));
-    expect(within(d()).getByLabelText('Quantity (BTC)')).toHaveValue('');
+    // A new pair is a new draft: the typed size does not carry over; its own $10k default at the 50,000 mid does.
+    await waitFor(() => expect(within(d()).getByLabelText('Quantity (BTC)')).toHaveValue('0.2'));
     fireEvent.change(within(d()).getByLabelText('Quantity (BTC)'), { target: { value: '0.01' } });
     fireEvent.click(within(d()).getByLabelText(/Maker: long/));
     fireEvent.change(within(d()).getByLabelText('Short leverage'), { target: { value: '2' } });

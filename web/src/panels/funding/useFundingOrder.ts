@@ -14,7 +14,7 @@ import { acceptFunding, previewFunding, type FundingPreview } from '../../api/fu
 import type { BoardRow } from '../../api/fundingOpportunities';
 import { uuid } from '../../lib/uuid';
 import { useFundingSubmissions } from './FundingSubmissions';
-import { draftErrors, EMPTY_DRAFT, previewRequest, type OrderDraft } from './orderDraft';
+import { DEFAULT_DRAFT, draftErrors, previewRequest, type OrderDraft, type SuggestedField } from './orderDraft';
 
 export type OrderStage =
   | { kind: 'draft'; message?: string }
@@ -52,10 +52,16 @@ function previewIn(details: Record<string, unknown> | undefined): FundingPreview
 const definitive = (err: unknown): err is ApiError =>
   err instanceof ApiError && err.httpStatus !== undefined && err.httpStatus >= 400 && err.httpStatus < 500 && err.label !== 'intent-conflict';
 
-export function useFundingOrder(opts: { row: BoardRow; days: HistoryDays; snapshotId: string; now: () => number; acceptTimeoutMs?: number }) {
-  const { row, days, snapshotId, now, acceptTimeoutMs } = opts;
+export function useFundingOrder(opts: {
+  row: BoardRow; days: HistoryDays; snapshotId: string; now: () => number; acceptTimeoutMs?: number;
+  /** Live-read defaults; each fills its field once, while still blank and untouched. */
+  suggested?: Partial<Record<SuggestedField, string | null>>;
+}) {
+  const { row, days, snapshotId, now, acceptTimeoutMs, suggested } = opts;
   const submissions = useFundingSubmissions();
-  const [draft, setDraft] = useState<OrderDraft>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<OrderDraft>(DEFAULT_DRAFT);
+  // A field the user has typed in is theirs: a suggestion never lands there, even after they clear it.
+  const touched = useRef(new Set<keyof OrderDraft>());
   const [stage, setStage] = useState<OrderStage>({ kind: 'draft' });
   const [acks, setAcks] = useState<Acks>(NO_ACKS);
   const [clock, setClock] = useState(now());
@@ -75,11 +81,26 @@ export function useFundingOrder(opts: { row: BoardRow; days: HistoryDays; snapsh
     setStage((s) => (s.kind === 'preview' || s.kind === 'previewing' ? { kind: 'draft' } : s));
   }, [snapshotId]);
 
+  const sQuantity = suggested?.quantity;
+  const sShort = suggested?.leverageShort;
+  const sLong = suggested?.leverageLong;
+  useEffect(() => {
+    const fill = { quantity: sQuantity, leverageShort: sShort, leverageLong: sLong };
+    setDraft((d) => {
+      let next = d;
+      for (const [key, value] of Object.entries(fill) as [SuggestedField, string | null | undefined][]) {
+        if (value && d[key] === '' && !touched.current.has(key)) next = { ...next, [key]: value };
+      }
+      return next;
+    });
+  }, [sQuantity, sShort, sLong]);
+
   const locked = stage.kind === 'sending' || submissions.blocked !== null;
   const errors = draftErrors(draft);
 
   const edit = useCallback(<K extends keyof OrderDraft>(field: K, value: OrderDraft[K]) => {
     seq.current += 1;
+    touched.current.add(field);
     setDraft((d) => ({ ...d, [field]: value }));
     setAcks(NO_ACKS);
     setStage((s) => (s.kind === 'preview' || s.kind === 'previewing' || s.kind === 'draft' ? { kind: 'draft' } : s));

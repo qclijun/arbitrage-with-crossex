@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
-import { expect, it } from 'vitest';
+import { beforeEach, expect, it } from 'vitest';
 import { fundingBoard } from '../../test/fundingBoard';
+import { serveDefaults } from '../../test/fundingOrderForm';
 import { env, server } from '../../test/server';
 import { FundingOpportunitiesPanel } from '../FundingOpportunitiesPanel';
+
+// The order form reads a touch and leverage caps for its defaults.
+beforeEach(() => serveDefaults());
 
 it('labels ranked inferred schedules and displays the inferred leg intervals', async () => {
   const board = fundingBoard();
