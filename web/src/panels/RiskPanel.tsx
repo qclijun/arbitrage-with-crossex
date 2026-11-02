@@ -38,7 +38,7 @@ export function RiskPanel() {
   const token = collateral.data?.tokens.find(t => t.tokenId === 2);
   const actualSize = preliminary.boros.length === 2 && preliminary.boros[0].sizeToken === preliminary.boros[1].sizeToken && token?.priceUsd
     ? preliminary.boros[0].sizeToken * token.priceUsd : 0;
-  const opportunities = useOpportunities({ notionalUsd: actualSize, borosEntry: 'market', entryMode: 'both-market', exitMode: 'roll' },
+  const opportunities = useOpportunities({ sizeBy: 'notional', sizeUsd: actualSize, borosEntry: 'market', entryMode: 'both-market', exitMode: 'roll' },
     shown && preliminary.days !== null && preliminary.days < 14 && actualSize > 0 && Boolean(supplement.data?.baseline && scopeKey(supplement.data.scope) === scopeKey(scope)));
   const adapted = riskMeasurements(scope, { ...inputs, opportunities }, now);
   const local = useRef<{ key: string; state: RiskState; history: Record<string, MetricEvidence> }>({ key: '', state: {}, history: {} });

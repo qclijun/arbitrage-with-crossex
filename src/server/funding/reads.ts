@@ -7,7 +7,7 @@ import type { CrossexAccount, CrossexInterestRate, Symbol as RuleSymbol } from '
 import type { Clients } from '../../core/clients';
 import { fetchVenueBookWithDiagnostics, type VenueBookResult } from '../../core/estimate/books';
 import type { VenueFeeRow } from '../../core/estimate/fees';
-import { getLeverageMax } from '../../core/orders';
+import { getPositionLimits } from '../../core/orders';
 
 export interface FundingReads {
   rules(symbols: string[]): Promise<RuleSymbol[]>;
@@ -27,7 +27,12 @@ export function gateFundingReads(getClients: () => Clients): FundingReads {
   const crossEx = () => getClients().crossEx;
   return {
     rules: async (symbols) => (await crossEx().listCrossexRuleSymbols({ symbols: symbols.join(',') })).body ?? [],
-    leverageMax: (symbols) => getLeverageMax(crossEx(), symbols),
+    // The top tier's leverage; a symbol with no tiers is left out.
+    leverageMax: async (symbols) => {
+      const out = new Map<string, number>();
+      for (const [symbol, limit] of await getPositionLimits(crossEx(), symbols)) if (limit) out.set(symbol, limit.leverage);
+      return out;
+    },
     leverage: async (symbols) => (await crossEx().getCrossexPositionsLeverage({ symbols: symbols.join(',') })).body ?? {},
     fees: async () => (await crossEx().getCrossexFee()).body as VenueFeeRow[],
     book: fetchVenueBookWithDiagnostics,

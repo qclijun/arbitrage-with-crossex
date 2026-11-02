@@ -364,7 +364,7 @@ describe('POST /api/version/update', () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toMatchObject({ category: 'validation', retryable: true });
-    expect(res.json().error.message).toMatch(/deal is still working/);
+    expect(res.json().error.message).toMatch(/deal is still running/);
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
@@ -389,7 +389,7 @@ describe('POST /api/version/update', () => {
     const res = await post();
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe('a rebalance is still running. Wait for it to finish, then update.');
+    expect(res.json().error.message).toBe('A rebalance is still running. Wait for it to finish, then update.');
     expect(res.json().error.retryable).toBe(true);
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
@@ -408,7 +408,7 @@ describe('POST /api/version/update', () => {
     const res = await post();
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe('A transfer is still moving. Wait for it to end, then update.');
+    expect(res.json().error.message).toBe('A transfer is still moving. Wait for it to finish, then update.');
     expect(res.json().error.retryable).toBe(true);
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
@@ -487,7 +487,7 @@ describe('POST /api/version/update', () => {
     const res = await post();
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toMatch(/^could not start the update: /);
+    expect(res.json().error.message).toMatch(/^Could not start the update: /);
     expect(res.json().error.message).toMatch(why);
     expect(res.json().error.retryable).toBe(true);
     expect(mocks.spawn).not.toHaveBeenCalled();
@@ -750,7 +750,7 @@ describe('POST /api/version/update', () => {
       const res = await post();
 
       expect(res.statusCode).toBe(409);
-      expect(res.json().error.message).toMatch(/could not start the update: ENOENT/);
+      expect(res.json().error.message).toMatch(/Could not start the update: ENOENT/);
       expect(res.json().error.retryable).toBe(true);
       expect(mocks.execFileSync).not.toHaveBeenCalled();
     } finally {

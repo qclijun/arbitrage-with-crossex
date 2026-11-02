@@ -22,7 +22,7 @@ const REBALANCE_HALTED = {
   ok: false,
   error: {
     category: 'validation',
-    message: 'a halted rebalance belongs to the current account. Resume or abandon it before changing to another account.',
+    message: 'A halted rebalance belongs to this account. Resume or abandon it before you change accounts.',
     retryable: true,
   },
 };
@@ -63,7 +63,7 @@ export function credentialsRoutes(deps: AppDeps) {
           ok: false,
           error: {
             category: 'validation',
-            message: 'a deal is still working — wait for it to finish before changing credentials',
+            message: 'A deal is still running. Wait for it to finish, then change the key.',
             retryable: true,
           },
         });
@@ -82,7 +82,7 @@ export function credentialsRoutes(deps: AppDeps) {
         const classified = classifyGateError(err);
         return reply.code(401).send({
           ok: false,
-          error: { ...classified, category: 'auth', hint: 'Gate rejected these credentials — check key, secret, and CrossEx permission.' },
+          error: { ...classified, category: 'auth', hint: 'Gate refused this key. Check the key, the secret and its CrossEx permission.' },
         });
       }
 
@@ -96,7 +96,7 @@ export function credentialsRoutes(deps: AppDeps) {
           ok: false,
           error: {
             category: 'validation',
-            message: 'a basket started while validating the new credentials — wait for it to finish and retry',
+            message: 'A deal started while the new key was being checked. Wait for it to finish, then try again.',
             retryable: true,
           },
         });

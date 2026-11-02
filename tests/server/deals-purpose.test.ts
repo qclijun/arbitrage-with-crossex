@@ -59,11 +59,24 @@ function mockCreate(): void {
 /** Leverage reads/sets for both legs (risk limits, previous value, the set). */
 function mockLeverage(): void {
   mockGateGet('/rule/risk_limits', {
-    body: [A_CONTRACT, B_CONTRACT].map((symbol) => ({ symbol, tiers: [{ leverage_max: '50' }] })),
+    body: [A_CONTRACT, B_CONTRACT].map((symbol) => ({ symbol, tiers: [{ leverage_max: '50', max_risk_limit_value: '1000000000' }] })),
     times: 2,
   });
   gate().get(/positions\/leverage/).times(4).reply(200, {});
   gate().post(/positions\/leverage/).times(4).reply(200, { leverage: '3' });
+}
+
+/**
+ * Fallbacks for the reads the position-cap check makes on every leg that grows
+ * a position: a cap far above any test size, no position, no resting order.
+ * nock answers with the first stub that matches, so call this after a test's
+ * own stubs.
+ */
+function capReads(): void {
+  const cap = (symbol: string) => ({ symbol, tiers: [{ max_risk_limit_value: '1000000000', leverage_max: '50' }] });
+  gate().get('/api/v4/crossex/rule/risk_limits').query(true).times(20).reply(200, [cap(A_CONTRACT), cap(B_CONTRACT)]);
+  gate().get('/api/v4/crossex/positions').query(true).times(20).reply(200, []);
+  gate().get('/api/v4/crossex/open_orders').query(true).times(20).reply(200, []);
 }
 
 function activeDeal(store: Store, contract: string): void {
@@ -104,6 +117,7 @@ describe('purpose gate', () => {
   it('keeps the original Boros-strategy behavior and records its context', async () => {
     const { store } = mkApp();
     mockCreate();
+    capReads();
     const res = await post(payload({ purpose: 'boros-strategy', boros: BOROS }));
     expect(res.statusCode, res.body).toBe(202);
     const pair = store.getPair('deal-purpose-1')!;
@@ -138,6 +152,7 @@ describe('purpose gate', () => {
   it('answers a retry of an accepted deal with its receipt, whatever the retry carries', async () => {
     const { store } = mkApp();
     mockCreate();
+    capReads();
     expect((await post(payload({ purpose: 'boros-strategy', boros: BOROS }))).statusCode).toBe(202);
     const retry = await post(payload());
     expect(retry.statusCode).toBe(202);
@@ -155,6 +170,7 @@ describe('manual conflict gate', () => {
     mockGateGet('/positions', { body: [{ symbol: 'GATE_FUTURE_BTC_USDT', position_qty: '1' }] });
     mockGateGet('/open_orders', { body: [] });
     mockLeverage();
+    capReads();
     const res = await post(manual());
     expect(res.statusCode, res.body).toBe(202);
     expect(store.getPair('deal-purpose-1')).toMatchObject({ purpose: 'manual', purposeContext: null });
@@ -220,6 +236,7 @@ describe('manual conflict gate', () => {
     });
     mockGateGet('/open_orders', { body: [] });
     mockLeverage();
+    capReads();
     const res = await post(manual());
     expect(res.statusCode, res.body).toBe(409);
     expect(res.json().error.message).toContain('other-deal');

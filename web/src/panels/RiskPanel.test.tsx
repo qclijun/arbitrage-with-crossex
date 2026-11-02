@@ -8,7 +8,6 @@ import { STRATEGY_STORAGE_KEY } from './HomeControls';
 import { env, server } from '../test/server';
 import { contracts, effectiveRiskRule, rules, type MetricEvidence, type RiskScope, type RiskBaseline } from '../lib/risk';
 import { useBookId } from './bookId';
-import { savePrefs } from './assets/assetPrefsStore';
 const address = '0x' + '1'.repeat(40), second = '0x' + '2'.repeat(40);
 const scope: RiskScope = { address, credentialId: 'account-a', accountId: 0, pool: 'account' };
 const pool = address + '000002ffffff';
@@ -25,7 +24,7 @@ function Controls({ client }: { client: QueryClient }) {
   const wallet = useTrackedAddress();
   const book = useBookId(wallet.address);
   return <><button onClick={() => wallet.followBrowserWallet(second)}>Switch wallet</button><button onClick={() => client.setQueryData(['credentials'], { configured: true, keyMasked: 'other', identity: 'account-b' })}>Switch credentials</button>
-    <button onClick={() => savePrefs(book, { sinceByAsset: {}, exclusions: {}, legSince: { 'boros:128': 1800000000 } })}>Change shared window</button></>;
+    <button onClick={() => client.setQueryData(['assetPrefs', book], { sinceByAsset: {}, exclusions: {}, legSince: { 'boros:128': 1800000000 } })}>Change shared window</button></>;
 }
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });

@@ -287,7 +287,7 @@ describe('book outage: an unavailable HEDGE reference blocks hedging at any loca
     expect(pair.hedgeRejectStreak).toBeGreaterThanOrEqual(TUNING.HEDGE_REJECT_HALT);
     expect(pair.mode).toBe('HALTED');
     expect(
-      w.store.listAlerts().some((a) => /hedge (wall|failed)|cannot be sized|reference price/i.test(a.message)),
+      w.store.listAlerts().some((a) => /hedge (wall|failed)|hedge orders keep failing|cannot be sized|reference price/i.test(a.message)),
     ).toBe(true);
   });
 });

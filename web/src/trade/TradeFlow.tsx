@@ -13,6 +13,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { DealModal } from './DealModal';
 import type { BorosContext } from '../api/types';
 import type { ExecMode } from './PairTicketBits';
+import type { BorosOverlap } from './borosOverlap';
 
 export interface PairPrefill {
   base: string;
@@ -99,6 +100,9 @@ export interface BorosOpenPrefill {
    * (ADR 0002): 'singles' arms the two single markets. Omitted = the spread.
    */
   route?: BorosRoute;
+  /** Boros the venues already hold at other dates on these sides; the ticket
+   * warns when the size it sends covers part of a perp twice. */
+  overlaps?: BorosOverlap[];
   /** Monotonic — a new prefill with identical content still re-applies. */
   nonce: number;
 }

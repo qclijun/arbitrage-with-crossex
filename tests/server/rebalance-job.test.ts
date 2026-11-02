@@ -480,7 +480,7 @@ describe('POST /api/rebalance refusals kept from 1.6.0', () => {
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({
       ok: false,
-      error: { category: 'validation', message: 'deal deal-409 is still working', retryable: true },
+      error: { category: 'validation', message: 'A deal is still running. Wait for it to finish.', retryable: true },
     });
 
     await reset();
@@ -499,7 +499,7 @@ describe('POST /api/rebalance refusals kept from 1.6.0', () => {
     const res = await h.post('/api/rebalance', { route: 'loop', costUsd: 1000 });
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe('Gate is rate-limiting the account read. Try again in a few seconds.');
+    expect(res.json().error.message).toBe('Gate is limiting requests from this account. Try again in a few seconds.');
     expect(() => h.file()).toThrow();
   });
 
@@ -515,7 +515,7 @@ describe('POST /api/rebalance refusals kept from 1.6.0', () => {
     const res = await h.post('/api/rebalance', { route: 'loop', costUsd: 1000 });
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe('deal deal-409 is still working');
+    expect(res.json().error.message).toBe('A deal is still running. Wait for it to finish.');
     expect(() => h.file()).toThrow();
   });
 });
@@ -570,7 +570,7 @@ describe('POST /api/rebalance/:id/resume and /abandon', () => {
     const res = await h.post(`/api/rebalance/${job.id}/resume`);
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe('deal deal-409 is still working');
+    expect(res.json().error.message).toBe('A deal is still running. Wait for it to finish.');
     expect(h.file().status).toBe('halted');
   });
 
@@ -588,7 +588,7 @@ describe('POST /api/rebalance/:id/resume and /abandon', () => {
     const res = await h.post(`/api/rebalance/${job.id}/resume`);
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe('deal deal-409 is still working');
+    expect(res.json().error.message).toBe('A deal is still running. Wait for it to finish.');
     expect(h.file()).toMatchObject({ status: 'halted', haltReason: HALT_TEXT.restart });
   });
 
@@ -606,7 +606,7 @@ describe('POST /api/rebalance/:id/resume and /abandon', () => {
     const res = await h.post(`/api/rebalance/${job.id}/resume`);
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe(`rebalance ${job.id} is no longer halted`);
+    expect(res.json().error.message).toBe('This rebalance is no longer halted');
     expect(h.file().status).toBe('abandoned');
   });
 
@@ -619,7 +619,7 @@ describe('POST /api/rebalance/:id/resume and /abandon', () => {
     let res = await h.post(`/api/rebalance/${foreign.id}/resume`);
 
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.message).toBe(`rebalance ${foreign.id} was started on another Gate account. Abandon it.`);
+    expect(res.json().error.message).toBe('This rebalance was started on another Gate account. Abandon it.');
     expect(h.file().status).toBe('halted');
 
     await reset();

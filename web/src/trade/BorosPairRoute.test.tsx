@@ -157,12 +157,12 @@ function Harness({ prefill, guided }: { prefill: Omit<BorosOpenPrefill, 'nonce'>
 const routeGroup = () => screen.queryByRole('radiogroup', { name: 'Trade on' });
 const lastLegs = (bodies: Body[]) => bodies[bodies.length - 1]?.legs.map((l) => [l.marketId, l.direction]);
 
-/** The free ticket with Hyperliquid in slot A and Gate in slot B, sized. */
+/** The free ticket long Gate (slot A) and short Hyperliquid (slot B), sized. */
 async function pickHlGate(user: ReturnType<typeof userEvent.setup>) {
   renderWithClient(<BorosPairTicket />);
-  await waitFor(() => expect((screen.getByLabelText('Leg A') as HTMLSelectElement).options.length).toBeGreaterThan(1));
-  await user.selectOptions(screen.getByLabelText('Leg A'), String(HL));
-  await user.selectOptions(screen.getByLabelText('Leg B'), String(GATE));
+  await waitFor(() => expect((screen.getByLabelText('Market A') as HTMLSelectElement).options.length).toBeGreaterThan(1));
+  await user.selectOptions(screen.getByLabelText('Market A'), String(GATE));
+  await user.selectOptions(screen.getByLabelText('Market B'), String(HL));
   await user.type(screen.getByLabelText(/^Size/), '0.5');
 }
 
@@ -182,11 +182,11 @@ describe('BorosPairTicket — Spread or two single markets', () => {
     await waitFor(() => expect(lastLegs(bodies)).toEqual([[SPREAD, 'short']]));
 
     await user.click(within(routeGroup()!).getByRole('radio', { name: '2 single markets' }));
-    expect(screen.getByLabelText('Leg A')).toHaveValue(String(HL));
-    expect(screen.getByLabelText('Leg B')).toHaveValue(String(GATE));
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'short'], [GATE, 'long']]));
+    expect(screen.getByLabelText('Market A')).toHaveValue(String(GATE));
+    expect(screen.getByLabelText('Market B')).toHaveValue(String(HL));
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]));
     expect(await screen.findByRole('button', { name: /Confirm · 2 Boros market orders/ })).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Size per leg/)).toHaveValue('0.5');
+    expect(screen.getByLabelText(/^Size per market/)).toHaveValue('0.5');
   });
 
   it('stays on the singles through a side swap and a new size, and drops the choice with the pair', async () => {
@@ -199,22 +199,22 @@ describe('BorosPairTicket — Spread or two single markets', () => {
     await user.click(within(routeGroup()!).getByRole('radio', { name: '2 single markets' }));
 
     await user.click(screen.getByRole('button', { name: 'Swap markets' }));
-    await user.clear(screen.getByLabelText(/^Size per leg/));
-    await user.type(screen.getByLabelText(/^Size per leg/), '0.7');
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'short'], [HL, 'long']]));
+    await user.clear(screen.getByLabelText(/^Size per market/));
+    await user.type(screen.getByLabelText(/^Size per market/), '0.7');
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'long'], [GATE, 'short']]));
     expect(bodies[bodies.length - 1].legs[0].size).toBe(0.7);
     expect(within(routeGroup()!).getByRole('radio', { name: '2 single markets' })).toBeChecked();
 
     // A pair no spread covers: no choice to show, and none left behind.
-    await user.selectOptions(screen.getByLabelText('Leg B'), '213');
+    await user.selectOptions(screen.getByLabelText('Market B'), '213');
     expect(routeGroup()).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('Leg B'), String(HL));
+    await user.selectOptions(screen.getByLabelText('Market B'), String(GATE));
     await waitFor(() => expect(within(routeGroup()!).getByRole('radio', { name: /ETH Spread HL-GATE/ })).toBeChecked());
     await waitFor(() => expect(lastLegs(bodies)).toEqual([[SPREAD, 'long']]));
 
     // And back again by choice.
     await user.click(within(routeGroup()!).getByRole('radio', { name: '2 single markets' }));
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'short'], [HL, 'long']]));
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'long'], [GATE, 'short']]));
     await user.click(within(routeGroup()!).getByRole('radio', { name: /ETH Spread HL-GATE/ }));
     await waitFor(() => expect(lastLegs(bodies)).toEqual([[SPREAD, 'long']]));
   });
@@ -231,8 +231,8 @@ describe('BorosPairTicket — Spread or two single markets', () => {
     );
     await user.click(screen.getByRole('button', { name: 'fire' }));
     expect(await screen.findByRole('button', { name: /Confirm · 2 Boros market orders/ })).toBeInTheDocument();
-    expect(screen.getByLabelText('Leg A')).toHaveValue(String(GATE));
-    expect(screen.getByLabelText('Leg B')).toHaveValue(String(HL));
+    expect(screen.getByLabelText('Market A')).toHaveValue(String(GATE));
+    expect(screen.getByLabelText('Market B')).toHaveValue(String(HL));
     expect(screen.queryByText('ETH Spread HL-GATE')).not.toBeInTheDocument();
     expect(routeGroup()).not.toBeInTheDocument();
     await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]));
@@ -259,7 +259,7 @@ describe('BorosPairTicket — Spread or two single markets', () => {
     server.use(...handlers({ spreadMarkets: [spread(over)], onSimulate: (b) => bodies.push(b) }));
     const user = userEvent.setup();
     await pickHlGate(user);
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'short'], [GATE, 'long']]));
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]));
     expect(routeGroup()).not.toBeInTheDocument();
     expect(screen.queryByText('ETH Spread HL-GATE')).not.toBeInTheDocument();
   });
@@ -288,17 +288,17 @@ describe('BorosPairTicket — Spread or two single markets', () => {
     await user.click(report.getByRole('button', { name: 'Retry' }));
 
     // Both fell short: both re-arm at the smaller shortfall, on the singles.
-    expect(screen.getByLabelText(/^Size per leg/)).toHaveValue('0.125');
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'short'], [GATE, 'long']]));
+    expect(screen.getByLabelText(/^Size per market/)).toHaveValue('0.125');
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]));
     const retry = await screen.findByRole('button', { name: /Confirm · 2 Boros market orders/ });
     await waitFor(() => expect(retry).not.toBeDisabled());
     await user.pointer({ keys: '[MouseLeft>]', target: retry });
     await waitFor(() => expect(sent).toHaveLength(2), { timeout: 3_000 });
-    expect(sent.map((b) => b.legs.map((l) => l.marketId))).toEqual([[HL, GATE], [HL, GATE]]);
+    expect(sent.map((b) => b.legs.map((l) => l.marketId))).toEqual([[GATE, HL], [GATE, HL]]);
     expect(sent[1].legs.map((l) => l.size)).toEqual([0.125, 0.125]);
   });
 
-  it('completing the short leg of a singles pair sends that single alone', async () => {
+  it('completing the short-filled market of a singles pair sends that single alone', async () => {
     const bodies: Body[] = [];
     server.use(
       ...handlers({ onSimulate: (b) => bodies.push(b), execute: (b) => fill([[b.legs[0], 0.25], [b.legs[1], 0.5]]) }),
@@ -313,16 +313,16 @@ describe('BorosPairTicket — Spread or two single markets', () => {
     const report = within(await screen.findByRole('status', {}, { timeout: 3_000 }));
     await user.click(report.getByRole('button', { name: 'Complete now at market' }));
 
-    expect(screen.getByText(/Completing leg A only/i)).toBeInTheDocument();
+    expect(screen.getByText(/Completing market A only/i)).toBeInTheDocument();
     await waitFor(() => {
       const last = bodies[bodies.length - 1];
       expect(last.onlyLeg).toBe(0);
-      expect(last.legs.map((l) => [l.marketId, l.size])).toEqual([[HL, 0.25], [GATE, 0.25]]);
+      expect(last.legs.map((l) => [l.marketId, l.size])).toEqual([[GATE, 0.25], [HL, 0.25]]);
     });
     // Leaving the completion keeps the singles too.
-    await user.click(screen.getByRole('button', { name: 'Trade both legs instead' }));
+    await user.click(screen.getByRole('button', { name: 'Trade both markets instead' }));
     await waitFor(() => expect(bodies[bodies.length - 1].onlyLeg).toBeUndefined());
-    expect(lastLegs(bodies)).toEqual([[HL, 'short'], [GATE, 'long']]);
+    expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]);
   });
 
   it('keeps the singles through Pair → Single → Pair and through a Reduce-only round trip', async () => {
@@ -336,13 +336,13 @@ describe('BorosPairTicket — Spread or two single markets', () => {
 
     await user.click(screen.getByRole('radio', { name: 'Single' }));
     await user.click(screen.getByRole('radio', { name: 'Pair' }));
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'short'], [GATE, 'long']]));
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]));
     expect(within(routeGroup()!).getByRole('radio', { name: '2 single markets' })).toBeChecked();
 
     await user.click(screen.getByRole('checkbox', { name: 'Reduce-only' }));
     await waitFor(() => expect(lastLegs(bodies)).toEqual([[SPREAD, 'short']]));
     await user.click(screen.getByRole('checkbox', { name: 'Reduce-only' }));
-    await waitFor(() => expect(lastLegs(bodies)).toEqual([[HL, 'short'], [GATE, 'long']]));
+    await waitFor(() => expect(lastLegs(bodies)).toEqual([[GATE, 'long'], [HL, 'short']]));
     expect(within(routeGroup()!).getByRole('radio', { name: '2 single markets' })).toBeChecked();
   });
 });

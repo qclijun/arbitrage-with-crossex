@@ -323,7 +323,7 @@ export function riskMeasurements(scope: RiskScope, input: RiskInputs, now: numbe
       && pair.every(b => baseline.boros[String(b.marketId)] === signed(b))
       && perpLegs.every(p => baseline.perps[p.symbol] === (p.side === 'SHORT' ? -p.qty : p.qty))
       && perpLegs.every(p => pair.some(b => b.venue === p.exchange && b.side === p.side && b.sizeToken === p.qty))
-      && Math.abs(q.meta.notionalUsd - size) < .01 && q.meta.exitMode === 'roll' && q.meta.borosEntry === 'market') {
+      && q.meta.notionalUsd !== null && Math.abs(q.meta.notionalUsd - size) < .01 && q.meta.exitMode === 'roll' && q.meta.borosEntry === 'market') {
       const candidates = q.groups.filter(g => g.tokenId === 2 && g.underlying === 'ETH' && g.maturity > Math.max(...pair.map(b => b.maturity!)))
         .flatMap(g => g.pairs.filter(p => p.base === 'ETH' && p.shortLeg.venue.toUpperCase() === 'HYPERLIQUID' && p.longLeg.venue.toUpperCase() === 'BINANCE'
           && p.shortLeg.crossexSymbol === perpLegs.find(l => l.exchange === 'HYPERLIQUID')?.symbol && p.longLeg.crossexSymbol === perpLegs.find(l => l.exchange === 'BINANCE')?.symbol

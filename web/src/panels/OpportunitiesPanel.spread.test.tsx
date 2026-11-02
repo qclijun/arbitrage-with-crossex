@@ -40,8 +40,8 @@ describe('OpportunitiesPanel — spread market', () => {
     await waitFor(() => expect(toggles()).toHaveLength(1));
     await userEvent.click(toggles()[0]);
 
-    expect(screen.getByText(/three legs ·/)).toBeInTheDocument();
-    expect(screen.queryByText(/four legs ·/)).not.toBeInTheDocument();
+    expect(screen.getByText(/2 perps \+ 1 spread position ·/)).toBeInTheDocument();
+    expect(screen.queryByText(/2 perps \+ 2 Boros positions ·/)).not.toBeInTheDocument();
 
     const borosLinks = screen.getAllByRole('link', { name: /funding on Boros/ });
     expect(borosLinks).toHaveLength(1);
@@ -51,15 +51,15 @@ describe('OpportunitiesPanel — spread market', () => {
       'https://boros.pendle.finance/markets/59?form=market&direction=short',
     );
 
-    const legLabels = ['Short ETH', 'Long ETH', 'Short ETH Spread HL-GATE'].map((label) => screen.getByText(label));
+    const legLabels = ['Long ETH', 'Short ETH', 'Short ETH Spread HL-GATE'].map((label) => screen.getByText(label));
     expect(legLabels[0].compareDocumentPosition(legLabels[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(legLabels[1].compareDocumentPosition(legLabels[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('ETH Spread HL-GATE')).toBeInTheDocument();
-    expect(screen.getAllByText(/ Fixed$/)).toHaveLength(1);
+    expect(screen.getAllByText(/ fixed$/)).toHaveLength(1);
 
-    expect(screen.getByText('Boros spread IM')).toBeInTheDocument();
-    expect(screen.queryByText('Boros short IM')).not.toBeInTheDocument();
-    expect(screen.queryByText('Boros long IM')).not.toBeInTheDocument();
+    expect(screen.getByText('Boros spread margin')).toBeInTheDocument();
+    expect(screen.queryByText('Boros Short margin')).not.toBeInTheDocument();
+    expect(screen.queryByText('Boros Long margin')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -76,11 +76,11 @@ describe('OpportunitiesPanel — spread market', () => {
     await waitFor(() => expect(toggles()).toHaveLength(1));
     await userEvent.click(toggles()[0]);
 
-    const chip = screen.getByText(/ Fixed$/);
-    expect(chip).toHaveTextContent(/^3\.4% Fixed$/);
+    const chip = screen.getByText(/ fixed$/);
+    expect(chip).toHaveTextContent(/^3\.4% fixed$/);
     expect(chip.className).toContain('text-grass');
-    expect(screen.getAllByTitle(/^Modelled minimum capital .+ across the three legs$/)).toHaveLength(2);
-    expect(screen.getByTitle('The minimum capital this trade posts across the three legs.')).toBeInTheDocument();
+    expect(screen.getAllByTitle(/^Modeled minimum capital .+ across the 2 perps and the spread position$/)).toHaveLength(2);
+    expect(screen.getByTitle('The minimum capital this trade posts across the 2 perps and the spread position.')).toBeInTheDocument();
   });
 
   it('keeps one capital bar per Boros market for two single markets', async () => {
@@ -89,13 +89,13 @@ describe('OpportunitiesPanel — spread market', () => {
     await waitFor(() => expect(toggles()).toHaveLength(1));
     await userEvent.click(toggles()[0]);
 
-    expect(screen.getByText(/four legs ·/)).toBeInTheDocument();
-    expect(screen.getByText('Boros short IM')).toBeInTheDocument();
-    expect(screen.getByText('Boros long IM')).toBeInTheDocument();
-    expect(screen.queryByText('Boros spread IM')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/ Fixed$/)).toHaveLength(2);
-    expect(screen.getAllByTitle(/^Modelled minimum capital .+ across the four legs$/)).toHaveLength(2);
-    expect(screen.getByTitle('The minimum capital this trade posts across the four legs.')).toBeInTheDocument();
+    expect(screen.getByText(/2 perps \+ 2 Boros positions ·/)).toBeInTheDocument();
+    expect(screen.getByText('Boros Short margin')).toBeInTheDocument();
+    expect(screen.getByText('Boros Long margin')).toBeInTheDocument();
+    expect(screen.queryByText('Boros spread margin')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/ fixed$/)).toHaveLength(2);
+    expect(screen.getAllByTitle(/^Modeled minimum capital .+ across the 2 perps and the 2 Boros positions$/)).toHaveLength(2);
+    expect(screen.getByTitle('The minimum capital this trade posts across the 2 perps and the 2 Boros positions.')).toBeInTheDocument();
   });
 });
 
@@ -125,22 +125,21 @@ function WizardProbe() {
 const cards = () => screen.getAllByRole('button', { name: /^Open this strategy — / });
 
 describe('OpportunitiesPanel — spread and singles side by side', () => {
-  it('lists both routes as their own cards, ranked on capital and labelled by leg count', async () => {
+  it('lists both routes as their own cards, ranked on capital and labelled by route', async () => {
     server.use(opportunitiesHandler(spreadResult(makeSpreadOpportunityPair(), singlesPair())));
     renderWithClient(<OpportunitiesPanel />);
     await waitFor(() => expect(cards()).toHaveLength(2));
 
     // The four-leg route out-earns the spread here, so it leads.
-    expect(cards()[0]).toHaveAccessibleName(/4 legs/);
-    expect(cards()[1]).toHaveAccessibleName(/3 legs/);
-    const [four, three] = screen.getAllByText(/^[34] legs$/);
-    expect(four).toHaveTextContent('4 legs');
-    expect(three).toHaveTextContent('3 legs');
+    expect(cards()[0]).toHaveAccessibleName(/Two singles/);
+    expect(cards()[1]).toHaveAccessibleName(/Spread/);
+    expect(screen.getByText('Two singles')).toBeInTheDocument();
+    expect(screen.getByText('Spread')).toBeInTheDocument();
 
     await userEvent.click(toggles()[0]);
     await userEvent.click(toggles()[1]);
-    expect(screen.getByText(/four legs ·/)).toBeInTheDocument();
-    expect(screen.getByText(/three legs ·/)).toBeInTheDocument();
+    expect(screen.getByText(/2 perps \+ 2 Boros positions ·/)).toBeInTheDocument();
+    expect(screen.getByText(/2 perps \+ 1 spread position ·/)).toBeInTheDocument();
   });
 
   it.each([

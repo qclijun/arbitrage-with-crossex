@@ -4,6 +4,7 @@
  * server-side — closing this modal never affects the deal.
  */
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { useAckAlert, useAlerts, useDealCommand, useDealView } from '../api/queries';
 import type { DealOrder, DealPair, DealPause, DealReport, Side } from '../api/types';
 import { Modal } from '../components/Modal';
@@ -12,14 +13,8 @@ import { fmtPct, parseSymbol, prettyVenue, sig, signedClass } from '../lib/fmt';
 import { formatRestPrice } from '../lib/ticks';
 import { useNow } from '../lib/useNow';
 import { DealBookImpact } from './PriceImpactGraph';
-
-const MODE_LABEL: Record<DealPair['mode'], string> = {
-  OPENING: 'maker resting — awaiting fills',
-  CONVERTING: 'executing at market…',
-  STOPPING: 'stopping — settling what filled',
-  HALTED: 'HALTED — operator needed',
-  DONE: 'done',
-};
+import { localizeServerText } from '../i18n/serverMessages';
+import { t as translate } from '../i18n';
 
 const MODE_TONE: Record<DealPair['mode'], string> = {
   OPENING: 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300',
@@ -45,6 +40,11 @@ function venueReasonText(raw: string | null): string | null {
   }
 }
 
+/** Server reasons are lowercase so they can follow a "—"; the report shows one alone. */
+function upperFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 const ORDER_STATE_TONE: Record<DealOrder['state'], string> = {
   PENDING: 'text-amber-300',
   OPEN: 'text-cyan-300',
@@ -64,11 +64,11 @@ function fmtCountdown(ms: number): string {
 function pauseText(pause: DealPause): string {
   switch (pause.kind) {
     case 'book-unavailable':
-      return 'book unavailable — quoting paused';
+      return translate('trade.deal.pauseBookUnavailable');
     case 'reprice-cap':
-      return 'reprice limit reached — keeping the last quote';
+      return translate('trade.deal.pauseRepriceCap');
     case 'maker-backoff':
-      return 'backing off before the next quote';
+      return translate('trade.deal.pauseMakerBackoff');
   }
 }
 
@@ -110,11 +110,12 @@ function LegFillLine({
   price: number;
   note: string;
 }) {
+  const { t } = useTranslation();
   const long = side === 'BUY';
   return (
     <div className="flex flex-wrap items-baseline gap-x-2">
       <span className="w-14 shrink-0 text-ink-500">{role}</span>
-      <span className={long ? 'text-emerald-400' : 'text-rose-400'}>{long ? 'long' : 'short'}</span>
+      <span className={long ? 'text-emerald-400' : 'text-rose-400'}>{long ? t('trade.deal.long') : t('trade.deal.short')}</span>
       <span className="text-ink-400">{prettyVenue(parseSymbol(contract).exchange)}</span>
       <span className="text-ink-500">@</span>
       <span className="num text-ink-100">{sig(price)}</span>
@@ -141,6 +142,7 @@ function dealSlippage(pair: DealPair, report: DealReport | null): DealSlippage |
 }
 
 export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => void }) {
+  const { t } = useTranslation();
   const view = useDealView(dealId);
   const alerts = useAlerts();
   const ack = useAckAlert();
@@ -179,6 +181,20 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
       ? formatRestPrice(customN, pair.a.side, pair.a.contract, pair.a.tick)
       : null;
   const customPrice = restPx !== null && Number(restPx) > 0 ? restPx : null;
+  const modeLabel: Record<DealPair['mode'], string> = {
+    OPENING: t('trade.deal.modeOpening'),
+    CONVERTING: t('trade.deal.modeConverting'),
+    STOPPING: t('trade.deal.modeStopping'),
+    HALTED: t('trade.deal.modeHalted'),
+    DONE: t('trade.deal.modeDone'),
+  };
+  const orderState: Record<DealOrder['state'], string> = {
+    PENDING: t('trade.deal.statePending'),
+    OPEN: t('trade.deal.stateOpen'),
+    CLOSED: t('trade.deal.stateClosed'),
+    DEAD: t('trade.deal.stateDead'),
+  };
+  const roleText = (role: 'maker' | 'taker') => (role === 'maker' ? t('trade.deal.maker') : t('trade.deal.taker'));
 
   return (
     <Modal
@@ -186,7 +202,11 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
       widthClass="w-[560px]"
       title={
         <>
-          Deal <span className="num text-ink-400">{dealId.slice(0, 8)}</span>
+          <Trans
+            i18nKey="trade.deal.title"
+            values={{ id: dealId.slice(0, 8) }}
+            components={{ n: <span className="num text-ink-400" /> }}
+          />
         </>
       }
     >
@@ -195,7 +215,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
           <div className="py-6 text-center text-xs text-ink-500">
             {view.isError ? (
               <span role="alert" className="text-rose-300">
-                could not load the deal — it may have been created by another session; check Open Orders / Positions
+                {t('trade.deal.loadFailed')}
               </span>
             ) : (
               <Spinner className="inline h-4 w-4" />
@@ -206,12 +226,14 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
             <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${MODE_TONE[pair.mode]}`}>
               <span className="inline-flex items-center gap-2">
                 {pair.mode !== 'DONE' && pair.mode !== 'HALTED' && <Spinner className="h-3 w-3" />}
-                {MODE_LABEL[pair.mode]}
-                {pair.mode === 'HALTED' && pair.haltReason ? ` — ${pair.haltReason}` : ''}
+                {modeLabel[pair.mode]}
+                {pair.mode === 'HALTED' && pair.haltReason ? ` — ${localizeServerText(pair.haltReason)}` : ''}
               </span>
               {opening && pair.deadlineAt !== null && (
-                <span className="num" title="unfilled remainder converts to taker at the deadline">
-                  {fmtCountdown(pair.deadlineAt - now)} until convert
+                <span className="num" title={t('trade.deal.deadlineTitle')}>
+                  {t('trade.deal.untilConvert', {
+                    time: pair.deadlineAt - now <= 0 ? t('trade.deal.now') : fmtCountdown(pair.deadlineAt - now),
+                  })}
                 </span>
               )}
             </div>
@@ -220,13 +242,16 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                 the book/limit story; these two must survive in every mode). */}
             {pair.b && Number(proj.unhedged) > 0 && (
               <div role="alert" className="text-[11px] text-amber-300">
-                unhedged <span className="num">{sig(proj.unhedged)}</span> — the engine hedges it next tick
+                <Trans
+                  i18nKey="trade.deal.unhedgedNext"
+                  values={{ size: sig(proj.unhedged) }}
+                  components={{ n: <span className="num" /> }}
+                />
               </div>
             )}
             {(proj.anyPending || proj.anyQuarantined) && (
               <div className="text-[11px] text-amber-300">
-                <Spinner className="inline h-3 w-3" /> resolving an order's fate on the venue — nothing new
-                is placed until it is confirmed
+                <Spinner className="inline h-3 w-3" /> {t('trade.deal.resolving')}
               </div>
             )}
 
@@ -241,7 +266,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-400"
               >
                 <span>
-                  reprices{' '}
+                  {t('trade.deal.reprices')}{' '}
                   <span data-testid="reprice-usage" className="num text-ink-200">
                     {progress.reprice.used} / {progress.reprice.limit}
                   </span>
@@ -252,12 +277,12 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                   title={
                     progress.autoFollow.following
                       ? undefined
-                      : 'a price is pinned — the deal is NOT chasing the book until you restore auto-follow'
+                      : t('trade.deal.pinnedTitle')
                   }
                 >
                   {progress.autoFollow.following
-                    ? `auto-following ${progress.autoFollow.family}`
-                    : `not auto-following — price pinned (would follow ${progress.autoFollow.family})`}
+                    ? t('trade.deal.autoFollowing', { family: progress.autoFollow.family })
+                    : t('trade.deal.notAutoFollowing', { family: progress.autoFollow.family })}
                 </span>
                 {progress.pause && (
                   <span data-testid="pause-reason" className="text-amber-300">
@@ -303,29 +328,29 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                       type="button"
                       className="btn-ghost-xs border-amber-500/50 text-amber-300"
                       disabled={anyCmdPending}
-                      title="Cancel the resting remainder and complete both venues as market orders now"
+                      title={t('trade.deal.convertTitle')}
                       onClick={() => convert.mutate({ id: dealId })}
                     >
-                      Convert now
+                      {t('trade.deal.convertNow')}
                     </button>
                     <button
                       type="button"
                       className="btn-ghost-xs border-cyan-500/50 text-cyan-300"
                       disabled={anyCmdPending}
-                      title="Cancel and re-place the maker remainder at the fresh same-side touch"
+                      title={t('trade.deal.repegTitle')}
                       onClick={() => repeg.mutate({ id: dealId })}
                     >
-                      Re-peg to touch
+                      {t('trade.deal.repegTouch')}
                     </button>
                     <span
                       className="inline-flex items-center gap-1"
-                      title="Cancel and re-place the maker remainder at YOUR price (snapped to the venue tick)"
+                      title={t('trade.deal.customTitle')}
                     >
                       <input
-                        aria-label="Custom re-peg price"
+                        aria-label={t('trade.deal.customAria')}
                         className="input num h-[26px] w-24 !py-0 text-[11px]"
                         inputMode="decimal"
-                        placeholder="custom price"
+                        placeholder={t('trade.deal.customPlaceholder')}
                         value={customPx}
                         onChange={(e) => setCustomPx(e.target.value)}
                       />
@@ -341,7 +366,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                           )
                         }
                       >
-                        Re-peg to price
+                        {t('trade.deal.repegPrice')}
                       </button>
                     </span>
                   </>
@@ -351,10 +376,10 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                     type="button"
                     className="btn-ghost-xs border-rose-500/50 text-rose-300"
                     disabled={anyCmdPending}
-                    title="Stop acquiring; hedge whatever filled; finish honestly partial"
+                    title={t('trade.deal.stopTitle')}
                     onClick={() => stop.mutate({ id: dealId })}
                   >
-                    Stop
+                    {t('trade.deal.stop')}
                   </button>
                 )}
                 {pair.mode === 'HALTED' && (
@@ -362,10 +387,10 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                     type="button"
                     className="btn-ghost-xs border-rose-500/50 text-rose-300"
                     disabled={anyCmdPending}
-                    title="Retry the hedge and settle the deal (fix margin/venue first)"
+                    title={t('trade.deal.resumeTitle')}
                     onClick={() => resume.mutate({ id: dealId })}
                   >
-                    Resume — hedge &amp; settle
+                    {t('trade.deal.resume')}
                   </button>
                 )}
               </div>
@@ -377,11 +402,11 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                 <table className="w-full text-[11px]">
                   <thead className="text-left text-[12px] font-normal text-ink-300">
                     <tr>
-                      <th className="px-2 py-1">leg</th>
-                      <th className="px-2 py-1">kind</th>
-                      <th className="px-2 py-1 text-right">qty</th>
-                      <th className="px-2 py-1 text-right">filled</th>
-                      <th className="px-2 py-1">state</th>
+                      <th className="px-2 py-1">{t('trade.deal.colLeg')}</th>
+                      <th className="px-2 py-1">{t('trade.deal.colKind')}</th>
+                      <th className="px-2 py-1 text-right">{t('trade.deal.colQty')}</th>
+                      <th className="px-2 py-1 text-right">{t('trade.deal.colFilled')}</th>
+                      <th className="px-2 py-1">{t('trade.deal.colState')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -389,14 +414,14 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                       <tr key={`${o.leg}${o.seq}`} className="border-t border-ink-800/60">
                         <td className="px-2 py-1">{o.leg}</td>
                         <td className="px-2 py-1">
-                          {o.kind}
+                          {roleText(o.kind)}
                           {o.price ? <span className="num text-ink-500"> @{sig(o.price)}</span> : ''}
                         </td>
                         <td className="num px-2 py-1 text-right">{sig(o.qty)}</td>
                         <td className="num px-2 py-1 text-right">{sig(o.cumQty)}</td>
                         <td className={`px-2 py-1 ${ORDER_STATE_TONE[o.state]}`}>
-                          {o.state.toLowerCase()}
-                          {o.closeReason ? <span className="text-ink-500"> · {o.closeReason}</span> : ''}
+                          {orderState[o.state]}
+                          {o.closeReason ? <span className="text-ink-500"> · {localizeServerText(o.closeReason)}</span> : ''}
                           {o.venueReason ? (
                             <div className="mt-0.5 max-w-[46ch] whitespace-normal text-[11px] leading-snug text-ink-400">
                               {venueReasonText(o.venueReason)}
@@ -424,7 +449,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
               >
                 <span>{a.message}</span>
                 <button type="button" className="btn-ghost-xs shrink-0" onClick={() => ack.mutate(a.id)}>
-                  Ack
+                  {t('common.dismiss')}
                 </button>
               </div>
             ))}
@@ -437,10 +462,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                 role="alert"
                 className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-200"
               >
-                <span className="font-semibold">
-                  The deal stopped — the limit price was already through the market.
-                </span>{' '}
-                Try again from the order form with a fresh limit price.
+                <Trans i18nKey="trade.deal.crossed" components={{ b: <span className="font-semibold" /> }} />
               </div>
             )}
 
@@ -450,22 +472,34 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                 data-testid="deal-report"
                 className="rounded-lg border border-ink-800 bg-ink-950/60 px-3 py-2 text-[11px] text-ink-300"
               >
-                <div className="mb-1 text-[12px] font-normal text-ink-300">Report</div>
+                <div className="mb-1 text-[12px] font-normal text-ink-300">{t('trade.deal.report')}</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5">
                   <span>
-                    A filled <span className="num text-ink-100">{sig(report.aFilled)}</span>
+                    <Trans
+                      i18nKey="trade.deal.aFilled"
+                      values={{ size: sig(report.aFilled) }}
+                      components={{ n: <span className="num text-ink-100" /> }}
+                    />
                   </span>
                   {pair.b && (
                     <span>
-                      hedged <span className="num text-ink-100">{sig(report.bFilled)}</span>
+                      <Trans
+                        i18nKey="trade.deal.hedged"
+                        values={{ size: sig(report.bFilled) }}
+                        components={{ n: <span className="num text-ink-100" /> }}
+                      />
                     </span>
                   )}
                   {Number(report.unhedged) > 0 && (
-                    <span className="text-amber-300">
-                      unhedged dust <span className="num">{sig(report.unhedged)}</span>
+                    <span className="tip-label text-amber-300" title={t('trade.deal.dustTitle')}>
+                      <Trans
+                        i18nKey="trade.deal.dust"
+                        values={{ size: sig(report.unhedged) }}
+                        components={{ n: <span className="num" /> }}
+                      />
                     </span>
                   )}
-                  <span className="text-ink-500">{report.reason}</span>
+                  <span className="text-ink-500">{upperFirst(localizeServerText(report.reason))}</span>
                 </div>
                 {slip && pair.b && (
                   <div className="mt-1.5 flex flex-col gap-0.5 border-t border-ink-800 pt-1.5">
@@ -475,24 +509,24 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                         slippage below is a difference of averages and was never
                         affected. */}
                     <LegFillLine
-                      role={legRole('A')}
+                      role={roleText(legRole('A'))}
                       side={pair.a.side}
                       contract={pair.a.contract}
                       price={slip.limitAvg}
-                      note={legRole('A') === 'maker' ? 'limit — the filled resting leg' : 'market order'}
+                      note={legRole('A') === 'maker' ? t('trade.deal.noteLimit') : t('trade.deal.noteMarket')}
                     />
                     <LegFillLine
-                      role={legRole('B')}
+                      role={roleText(legRole('B'))}
                       side={pair.b.side}
                       contract={pair.b.contract}
                       price={slip.takerAvg}
-                      note="market hedge"
+                      note={t('trade.deal.noteHedge')}
                     />
                     <div
                       className="flex flex-wrap items-baseline gap-x-2 pt-0.5"
-                      title="Short-leg average − long-leg average. Positive = sold higher than it bought."
+                      title={t('trade.deal.slipTitle')}
                     >
-                      <span className="w-14 shrink-0 text-ink-500">slippage</span>
+                      <span className="w-14 shrink-0 text-ink-500">{t('trade.deal.slippage')}</span>
                       <span className={`num ${signedClass(slip.diff)}`}>
                         {slip.diff >= 0 ? '+' : '−'}
                         {sig(Math.abs(slip.diff))}
@@ -502,7 +536,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
                         {fmtPct(Math.abs(slip.ratio), 3)})
                       </span>
                       <span className="text-[10px] text-ink-500">
-                        {slip.diff >= 0 ? 'favorable' : 'adverse'}
+                        {slip.diff >= 0 ? t('trade.deal.favorable') : t('trade.deal.adverse')}
                       </span>
                     </div>
                   </div>
@@ -511,7 +545,7 @@ export function DealModal({ dealId, onClose }: { dealId: string; onClose: () => 
             )}
 
             <div className="text-center text-[10px] text-ink-500">
-              the deal runs server-side — closing this view never affects it
+              {t('trade.deal.serverSide')}
             </div>
           </>
         )}

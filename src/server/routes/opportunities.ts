@@ -42,14 +42,17 @@ import {
 import type { VenueFeeRow } from '../../core/estimate/fees';
 import { classifyGateError, CoreError } from '../../core/errors';
 import { parseSymbol } from '../../core/numbers';
-import { getLeverageMax } from '../../core/orders';
+import { getPositionLimits } from '../../core/orders';
+import type { PositionLimit } from '../../core/positionLimit';
 import type { AppDeps } from '../app';
 import { TTL } from '../cache';
-import { requireLeverageMax } from './leverage';
+import { requirePositionLimit } from './leverage';
 
 const DEFAULT_NOTIONAL_USD = 10_000;
 const MIN_NOTIONAL_USD = 1_000;
 const MAX_NOTIONAL_USD = 100_000_000;
+const MIN_CAPITAL_USD = 100;
+const MAX_CAPITAL_USD = 100_000_000;
 
 /** Quote ranking for a hedge symbol. Venues list several quotes per base
  * (Hyperliquid is USDC-quoted) and the pick decides which fee row and book
@@ -58,6 +61,7 @@ const QUOTE_PREFERENCE = ['USDT', 'USDC', 'USD'];
 
 interface OpportunitiesQuery {
   notionalUsd?: string;
+  capitalUsd?: string;
   borosEntry?: string;
   entryMode?: string;
   exitMode?: string;
@@ -78,6 +82,19 @@ function parseNotionalUsd(raw: string | undefined): number {
   if (!Number.isFinite(n) || n < MIN_NOTIONAL_USD || n > MAX_NOTIONAL_USD) {
     throw new CoreError(
       `invalid notionalUsd (expected ${MIN_NOTIONAL_USD}–${MAX_NOTIONAL_USD})`,
+      'validation',
+    );
+  }
+  return n;
+}
+
+/** The capital every pair is sized to; absent = size by `notionalUsd`. */
+function parseCapitalUsd(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < MIN_CAPITAL_USD || n > MAX_CAPITAL_USD) {
+    throw new CoreError(
+      `invalid capitalUsd (expected ${MIN_CAPITAL_USD}–${MAX_CAPITAL_USD})`,
       'validation',
     );
   }
@@ -128,29 +145,29 @@ export function ruleClient(deps: AppDeps): CrossExApi {
 }
 
 /**
- * CrossEx symbol → venue max leverage, the divisor the capital model sizes each
- * perp leg's initial margin by. Cached on the same `risk:<symbol>` keys
+ * CrossEx symbol → venue max leverage and largest position, which size each
+ * perp leg's initial margin and cap its notional. Cached on the same `risk:<symbol>` keys
  * `/api/leverage` and `/api/symbols` read (so a scan warms the ticket flow), but
- * filled from ONE comma-joined `getLeverageMax` rather than a call per symbol.
+ * filled from ONE comma-joined `getPositionLimits` rather than a call per symbol.
  *
  * A failed read or a symbol with no row leaves that symbol absent, which nulls
  * only that pair's capital — the notional-basis numbers still price.
  *
  * Returns a warning when the read failed for EVERY symbol. One shared
- * `getLeverageMax` call backs them all, so a single outage empties the whole
+ * `getPositionLimits` call backs them all, so a single outage empties the whole
  * map — and with no leverage cap anywhere, no pair can model its capital, no
  * pair prices an APR on capital, and the terminal shows an empty list. Silence
  * there reads as "no opportunities at this notional", sending the reader to
  * re-tune a size that was never the problem.
  */
-async function loadLeverageMax(
+async function loadPositionLimits(
   deps: AppDeps,
   symbols: string[],
   fresh: boolean,
-  out: Map<string, number>,
+  out: Map<string, PositionLimit>,
   observe: (result: { observedAt: number; stale: boolean }) => void,
 ): Promise<string | null> {
-  let batch: Promise<Map<string, number>> | undefined;
+  let batch: Promise<Map<string, PositionLimit | null>> | undefined;
   let failure: unknown;
   await Promise.all(
     symbols.map(async (symbol) => {
@@ -159,13 +176,13 @@ async function loadLeverageMax(
           `risk:${symbol}`,
           TTL.static,
           async () => {
-            batch ??= getLeverageMax(ruleClient(deps), symbols);
-            return requireLeverageMax(await batch, symbol);
+            batch ??= getPositionLimits(ruleClient(deps), symbols);
+            return requirePositionLimit(await batch, symbol);
           },
           { fresh },
         );
         observe(snapshot);
-        if (snapshot.value > 0) out.set(symbol, snapshot.value);
+        out.set(symbol, snapshot.value);
       } catch (err) {
         // Omit the symbol; the math turns that into a reason naming the venue.
         failure ??= err;
@@ -174,7 +191,7 @@ async function loadLeverageMax(
   );
   if (symbols.length === 0 || out.size > 0 || failure === undefined) return null;
   const { category } = classifyGateError(failure);
-  return `Couldn't load the CrossEx risk limits right now (${category}) — without a max leverage per venue no opportunity can model the capital it consumes, so none can be ranked. This isn't about your notional; the caps return on the next refresh.`;
+  return `Couldn't load CrossEx leverage limits (${category}), so no pair can be ranked. This fixes itself on the next refresh.`;
 }
 
 export function opportunitiesRoutes(deps: AppDeps) {
@@ -188,6 +205,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
     app.get('/opportunities', async (req, reply) => {
       const query = req.query as OpportunitiesQuery;
       const notionalUsd = parseNotionalUsd(query.notionalUsd);
+      const capitalUsd = parseCapitalUsd(query.capitalUsd);
       const borosEntry = parseMode<BorosEntryMode>(
         query.borosEntry,
         ['mark', 'market'],
@@ -259,7 +277,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
         const { category } = classifyGateError(err);
         warningEvidence.push({ code: 'symbol-list-unavailable' });
         warnings.push(
-          `Couldn't load the CrossEx symbol list right now (${category}) — pricing the perp legs from the venues' public books instead; listings and leverage return on the next refresh.`,
+          `Couldn't load the CrossEx market list (${category}). Prices use public books until the next refresh.`,
         );
       }
       const crossexVenues: ReadonlySet<string> = rulesAvailable
@@ -291,7 +309,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
       if (assumedTier !== undefined) {
         warningEvidence.push({ code: 'assumed-fee-schedule' });
         warnings.push(
-          `Perp fees assume the ${feeTierLabel(assumedTier)} Gate CrossEx schedule — everything else here is live. Your real rates follow your Gate VIP tier; connect Gate keys to price from them.`,
+          `Perp fees assume ${feeTierLabel(assumedTier)}. Add your Gate API key to use your own fee tier.`,
         );
       }
 
@@ -329,7 +347,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
       const borosBooks = new Map<number, BorosOrderBook | null>();
       const venueBooks = new Map<string, NormalizedBook | null>();
       const venueBookFailures: Array<VenueBookFailure & { symbol: string; observedAt: number; stale: boolean }> = [];
-      const leverageMaxBySymbol = new Map<string, number>();
+      const positionLimitBySymbol = new Map<string, PositionLimit>();
       await Promise.all([
         ...(borosEntry === 'market' ? bookMarketIds : []).map(async (marketId) => {
           try {
@@ -376,7 +394,7 @@ export function opportunitiesRoutes(deps: AppDeps) {
           venueBooks.set(key, snapshot.value.book);
           if (snapshot.value.failure) venueBookFailures.push({ ...snapshot.value.failure, symbol: key, observedAt: snapshot.observedAt, stale: snapshot.stale });
         }),
-        loadLeverageMax(deps, [...perpSymbols], fresh, leverageMaxBySymbol, (snapshot) => observe(snapshot, 'staticData')).then((warning) => {
+        loadPositionLimits(deps, [...perpSymbols], fresh, positionLimitBySymbol, (snapshot) => observe(snapshot, 'staticData')).then((warning) => {
           if (warning !== null) {
             warnings.push(warning);
             warningEvidence.push({ code: 'risk-limits-unavailable' });
@@ -392,11 +410,11 @@ export function opportunitiesRoutes(deps: AppDeps) {
           venueBooks,
           symbolsByVenueBase,
           crossexVenues,
-          leverageMaxBySymbol,
+          positionLimitBySymbol,
           feeRows,
           nowSec,
         },
-        { notionalUsd, borosEntry, entryMode, exitMode, takerFeeOverride },
+        { notionalUsd, capitalUsd, borosEntry, entryMode, exitMode, takerFeeOverride },
       );
       return reply.ok(
         {
