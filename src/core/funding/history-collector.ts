@@ -26,7 +26,8 @@ const DAY = 24 * 60 * MINUTE;
 /**
  * Internal per-round guards from 07's research — not venue capacity promises.
  * Lower venue limits apply through `VENUE_SPACING_MS`: OKX 10 req/2 s per IP and
- * contract; Hyperliquid 1200 weight/min with weight growing with response size.
+ * contract; Hyperliquid 1200 weight/min with weight growing with response size;
+ * Lighter 60 requests/min per IP across every endpoint.
  */
 export const HISTORY_BUDGET = {
   /**
@@ -49,7 +50,7 @@ export const HISTORY_BUDGET = {
 export type HistoryBudget = typeof HISTORY_BUDGET;
 
 /** Minimum gap between request starts per venue; a venue whose limit 07 could not find gets the slow default. */
-export const VENUE_SPACING_MS: Record<string, number> = { BINANCE: 0, BYBIT: 0, OKX: 250, HYPERLIQUID: 2_500 };
+export const VENUE_SPACING_MS: Record<string, number> = { BINANCE: 0, BYBIT: 0, OKX: 250, HYPERLIQUID: 2_500, LIGHTER: 3_000 };
 const DEFAULT_SPACING_MS = 1_000;
 
 /**
@@ -76,6 +77,11 @@ export interface FundingHistorySource {
   version: string;
   /** Longest window the endpoint can serve, when shorter than a year. */
   maxDays?: number;
+  /**
+   * Hourly history read as a resumable backfill: a due round re-reads only the
+   * first segment, and the older ones continue across rounds.
+   */
+  staged?: boolean;
   /** Optional first segment, at least 7 and at most 30 days; still proves the 7d window first. */
   initialReadDays?: number;
   /** Known contract context. Missing listing/cadence blocks eligibility, but not collection of actual rates. */
@@ -266,7 +272,7 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       const call = makeCall(state, venue, budget, deps.random ?? Math.random);
       for (const key of queue) {
         const id = legKey(key);
-        const resumes = venue === 'HYPERLIQUID' && progress.get(id)?.done === false;
+        const resumes = source.staged === true && progress.get(id)?.done === false;
         const verdict = legDue(prior?.get(id), cutoff, hint(key), startedAt, resumes);
         if (verdict.due) due.add(id);
         else next.set(id, verdict.carried ? { ...prior!.get(id)!, carried: verdict.carried } : prior!.get(id)!);
@@ -282,7 +288,7 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
       const process = async (key: HistoryLegKey, recentOnly = false) => {
         const id = legKey(key);
         attempted += 1;
-        const staged = venue === 'HYPERLIQUID';
+        const staged = source.staged === true;
         const saved = staged && !recentOnly ? progress.get(id) : undefined;
         const before = tally.requests;
         const collected = await collectLeg(key, source, call, state, budget, deps.inferCadence, saved, recentOnly);
@@ -310,7 +316,7 @@ export function createFundingHistoryRefresher(deps: FundingHistoryRefresherDeps)
         };
         await Promise.all(Array.from({ length: budget.venueConcurrency }, worker));
       };
-      if (venue === 'HYPERLIQUID') {
+      if (source.staged) {
         await workers(pending.filter(isDue), true);
         // Due legs start a new job above; a job left unfinished by an earlier round continues.
         await workers(pending.filter((key) => isDue(key) || progress.get(legKey(key))?.done === false)

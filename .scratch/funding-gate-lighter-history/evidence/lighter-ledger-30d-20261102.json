@@ -1,0 +1,183 @@
+{
+ "end": 1793577600,
+ "pages": [
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600",
+   "sha256": "9e6d59fbe4f873c8334993157a88b41547a4ef01f98752dd9f06f32ccfa38fd7",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTA1Mjk0NTA3MX0=",
+   "sha256": "a9e47f1309829c4a6cdca616d228ac1c95ef67ea3c7244745f193523c155bda0",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTA1MDMwMDk4Nn0=",
+   "sha256": "b4f15fe70b971b6afc42a07b3b85561ab7fc97735b305ff663fd713f16f4c5e1",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTA0NzU1Nzg2OX0=",
+   "sha256": "4f90ded18226d4a1c6633d21762d729c91abcbeb264bf9408a2be7937a7d0793",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTA0NDkyOTc1NX0=",
+   "sha256": "e90c169067edcdc8570b86c5c550fe6afaa8d917aa7f1f7c5a38197874132473",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTA0MjM0NTM3Nn0=",
+   "sha256": "d9f9c06f3efb4823b0ccfa2ef897aacc0d40fc616f59bc11e0a375908a752661",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAzOTgzMjgwMX0=",
+   "sha256": "0b90debd2e9b4ca17cae6c90ab1802e44519c5d916208b3e63efce97875d3f5c",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAzNzQzODA3NX0=",
+   "sha256": "2fa610678307c50da35d30eed6ac822a8f8fb9403fd65e4b7ea79477f854708c",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAzNTA0MTEyMX0=",
+   "sha256": "df4849ca441b4e5c0894c68f381feab47517ce06c03c565208af00d9cf2b23dc",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAzMjU3NzEwMX0=",
+   "sha256": "85f3a9575e0219aa65ef93f6522e60ab7b2685443ddca902cc80a678dc2533bc",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAzMDEwNTMxOX0=",
+   "sha256": "c0dd7365e8001ca1646d0134458930eea4649db81faecfd7971c76ed199aef70",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAyNzY5ODg1N30=",
+   "sha256": "87424ebd3d826c41994e32f86bb20f1d5cddc7dfde27b77eb1ebdd5b6a6a1b23",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAyNTMyMjAzNn0=",
+   "sha256": "fb56576e40e5431a4a3028a25dc4d251a18938326ec30167f2a252326eee69b8",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAyMjg4NDYwMH0=",
+   "sha256": "6dfb4a9fc50815209bbe3acc49d2e360bcab616534bed1077acd759b15d73ef0",
+   "count": 100
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/positionFunding?account_index=281474976710654&limit=100&market_ids=0,1&start_timestamp=1790985600&end_timestamp=1793577600&cursor=eyJpbmRleCI6MTAyMDQ5NTM0M30=",
+   "sha256": "73c2b6c723883fac7d02c9824a9f732e55eb6d62bca408d9217dbe7327180fd0",
+   "count": 42
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/fundings?market_id=0&resolution=1h&start_timestamp=1790985600&end_timestamp=1793577600&count_back=0",
+   "sha256": "aab427bc8429a5dc0afa94495f6531c743836f1883d5ac29bd4fda1c631dffbb"
+  },
+  {
+   "request": "GET https://mainnet.zklighter.elliot.ai/api/v1/fundings?market_id=1&resolution=1h&start_timestamp=1790985600&end_timestamp=1793577600&count_back=0",
+   "sha256": "c1e57ec05557539bfc7ccbec6457421f3b6632a266b57925c80a556d635d4e49"
+  }
+ ],
+ "records": 1442,
+ "checks": {
+  "matched": 1438,
+  "rate_mismatch": [],
+  "change_mismatch": [],
+  "no_history": [
+   {
+    "timestamp": 1793577600,
+    "market_id": 1,
+    "funding_id": 1794745,
+    "change": "-0.811799",
+    "rate": "0.000012",
+    "position_size": "0.86353",
+    "position_side": "long",
+    "discount": "0.000000"
+   },
+   {
+    "timestamp": 1793577600,
+    "market_id": 0,
+    "funding_id": 1794744,
+    "change": "11.878912",
+    "rate": "0.000012",
+    "position_size": "435.0848",
+    "position_side": "short",
+    "discount": "0.000000"
+   },
+   {
+    "timestamp": 1790985600,
+    "market_id": 1,
+    "funding_id": 1641401,
+    "change": "-0.009817",
+    "rate": "0.000004",
+    "position_size": "0.02904",
+    "position_side": "long",
+    "discount": "0.000000"
+   },
+   {
+    "timestamp": 1790985600,
+    "market_id": 0,
+    "funding_id": 1641400,
+    "change": "12.535927",
+    "rate": "0.000012",
+    "position_size": "391.4507",
+    "position_side": "short",
+    "discount": "0.000000"
+   }
+  ],
+  "by_direction": {
+   "long": 1230,
+   "short": 208
+  },
+  "zero": 47
+ },
+ "samples": [
+  {
+   "timestamp": 1793577600,
+   "market_id": 1,
+   "funding_id": 1794745,
+   "change": "-0.811799",
+   "rate": "0.000012",
+   "position_size": "0.86353",
+   "position_side": "long",
+   "discount": "0.000000"
+  },
+  {
+   "timestamp": 1793577600,
+   "market_id": 0,
+   "funding_id": 1794744,
+   "change": "11.878912",
+   "rate": "0.000012",
+   "position_size": "435.0848",
+   "position_side": "short",
+   "discount": "0.000000"
+  },
+  {
+   "timestamp": 1793574000,
+   "market_id": 1,
+   "funding_id": 1794532,
+   "change": "-0.489400",
+   "rate": "0.000012",
+   "position_size": "0.52409",
+   "position_side": "long",
+   "discount": "0.000000"
+  },
+  {
+   "timestamp": 1793574000,
+   "market_id": 0,
+   "funding_id": 1794531,
+   "change": "9.832656",
+   "rate": "0.000010",
+   "position_size": "435.0848",
+   "position_side": "short",
+   "discount": "0.000000"
+  }
+ ]
+}

@@ -7,6 +7,7 @@ import { withOkxArchive } from './okx-history';
 import { HYPERLIQUID_HOURLY_POLICY, type HyperliquidHourlyPolicy } from './hyperliquid-policy';
 import { createHyperliquidHistoryContext } from './hyperliquid-history';
 import { gateHistorySource } from './gate-history';
+import { lighterHistorySource } from './lighter-history';
 
 type Row = Record<string, unknown>;
 interface Endpoint { venue: string; host: string; api: string; limit: number; direction: 'forward' | 'backward'; }
@@ -51,7 +52,7 @@ function restSource(e: Endpoint, read: PublicRead, opts: OfficialHistoryOptions)
     ...(e.venue === 'OKX' ? { maxDays: 90 } : {}),
     // 20 hourly days fit below the 500-row page cap, retaining 7d coverage
     // while saving a page per cold leg for the budgeted document proof.
-    ...(hlContext ? { initialReadDays: 20 } : {}),
+    ...(hlContext ? { staged: true, initialReadDays: 20 } : {}),
     ...(['HYPERLIQUID', 'ASTER'].includes(e.venue) ? { timeMapping: (row: Row) => {
       const time = e.venue === 'HYPERLIQUID' ? row.time : row.fundingTime;
       return e.venue === 'HYPERLIQUID' && opts.hlSettlements
@@ -109,5 +110,6 @@ export function createOfficialHistorySources(opts: OfficialHistoryOptions = {}):
   return [...ENDPOINTS.map((endpoint) => {
     const source = restSource(endpoint, read, opts);
     return endpoint.venue === 'OKX' ? withOkxArchive(source, read, now) : source;
-  }), gateHistorySource(read, now, (id, call) => opts.context?.('GATE', id, call) ?? null)];
+  }), gateHistorySource(read, now, (id, call) => opts.context?.('GATE', id, call) ?? null),
+  lighterHistorySource(read, now, (id, call) => opts.context?.('LIGHTER', id, call) ?? null)];
 }

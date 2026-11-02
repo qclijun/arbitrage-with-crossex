@@ -201,7 +201,8 @@ describe('funding history contract', () => {
     expect(sourceBoundary('GATE', '/futures/usdt/funding_rate', 180)).toBe('verified');
     expect(sourceBoundary('GATE', '/futures/usdt/funding_rate', 365)).toBe('unsupported');
     expect(sourceBoundary('GATE', '/futures/usdt/contracts', 7)).toBe('unknown');
-    expect(sourceBoundary('LIGHTER', '/api/v1/fundings', 7)).toBe('unknown');
+    expect(sourceBoundary('LIGHTER', '/api/v1/fundings', 365)).toBe('verified');
+    expect(sourceBoundary('LIGHTER', '/api/v1/funding-rates', 7)).toBe('unknown');
     const unproved = leg('A', '0.001');
     unproved.source.api = '/fapi/v1/premiumIndex';
     expect(evaluate(unproved, leg('B', '0')).short.coverage).toBe('unknown');

@@ -4,10 +4,12 @@ import { hasSettlementDelay } from './settlement-time';
 /** Gate's REST history; it refuses a `from` more than 180 days before its clock. */
 export const GATE_HISTORY_API = '/futures/usdt/funding_rate';
 export const GATE_HISTORY_DAYS = 180;
+/** Lighter's hourly perp fundings, read by market id. */
+export const LIGHTER_HISTORY_API = '/api/v1/fundings';
 
 /**
  * 07 verified these historical records as settled; other feeds need further proof.
- * Gate: .scratch/funding-gate-lighter-history/evidence/gate-settled-history.md.
+ * Gate and Lighter: .scratch/funding-gate-lighter-history/evidence/.
  */
 const SETTLED_ENDPOINTS: Record<string, string> = {
   BINANCE: '/fapi/v1/fundingRate',
@@ -16,6 +18,7 @@ const SETTLED_ENDPOINTS: Record<string, string> = {
   BYBIT: '/v5/market/funding/history',
   HYPERLIQUID: 'info:fundingHistory',
   GATE: GATE_HISTORY_API,
+  LIGHTER: LIGHTER_HISTORY_API,
 };
 
 /** REST's three-month limit is retained; this source also reads official monthly files. */
@@ -42,6 +45,26 @@ function safeTimestamp(value: unknown): number | null {
   const time = Number(value);
   return Number.isSafeInteger(time) ? time : null;
 }
+
+/**
+ * Lighter writes an unsigned percent per hour; `direction: short` means shorts
+ * pay, a negative rate. Returns the signed hourly fraction, the unit of the
+ * current rate (its feed's 8-hour equivalent / 8). Verified against the LLP
+ * public pool's settled position fundings (evidence/lighter-settled-history.md).
+ */
+function lighterRate(rate: unknown, direction: unknown): string | null {
+  const match = typeof rate === 'string' ? /^(\d+)(?:\.(\d+))?$/.exec(rate) : null;
+  if (!match || (direction !== 'long' && direction !== 'short')) return null;
+  const places = (match[2] ?? '').length + 2;
+  const digits = `${match[1]}${match[2] ?? ''}`.replace(/^0+/, '').padStart(places + 1, '0');
+  const fraction = digits.slice(-places).replace(/0+$/, '');
+  const value = `${digits.slice(0, -places)}${fraction ? `.${fraction}` : ''}`;
+  return direction === 'short' && /[1-9]/.test(value) ? `-${value}` : value;
+}
+
+/** Unix seconds as milliseconds; a value already in milliseconds is refused. */
+const fromSeconds = (value: unknown): number | null =>
+  Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) < 10_000_000_000 ? (value as number) * 1_000 : null;
 
 /** Parse official final rates independently of the caller's pagination, listing and cadence checks. */
 export function normalizeOfficialSettlement(
@@ -84,10 +107,16 @@ export function normalizeOfficialSettlement(
       time = raw.time;
       rate = raw.fundingRate;
       break;
+    case 'LIGHTER':
+      // Rows name no market; the source tags each with the one it requested.
+      contract = raw.market;
+      time = fromSeconds(raw.timestamp);
+      rate = lighterRate(raw.rate, raw.direction);
+      break;
     case 'GATE':
       // Rows name no contract; the source tags each with the one it requested.
       contract = raw.contract;
-      time = Number.isSafeInteger(raw.t) && Number.isSafeInteger((raw.t as number) * 1_000) ? (raw.t as number) * 1_000 : null;
+      time = fromSeconds(raw.t);
       rate = raw.r;
       break;
     default:

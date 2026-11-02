@@ -11,7 +11,7 @@ export function hlBackfillWorld() {
   const calls: Array<{ coin: string; start: number; end: number; cursor: string | null }> = [];
   const control = { failure: null as 'timeout' | 'rate-limited' | null, failBefore: Infinity, revised: false, reviseBefore: -Infinity, allowBeforeFailure: 0 };
   const source: FundingHistorySource = {
-    venue: 'HYPERLIQUID', api: 'info:fundingHistory', version: 'fixture',
+    venue: 'HYPERLIQUID', api: 'info:fundingHistory', version: 'fixture', staged: true,
     context: async () => ({ listing: { at: 0, evidence: 'synthetic listing' }, rules: [] }),
     page(coin, range, cursor, call) {
       return call(`${coin}:${range.start}:${range.end}:${cursor}`, async () => {

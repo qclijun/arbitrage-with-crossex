@@ -89,4 +89,5 @@ it('normalizes a delayed Gate record to its settlement hour, keeping the raw tim
   expect(normalizeOfficialSettlement(ref, late, 8, 'e', source.timeMapping?.(late))).toBeNull();
   expect(normalizeOfficialSettlement(ref, { ...row, contract: 'ETH_USDT' }, 8, 'e', source.timeMapping?.(row))).toBeNull();
   expect(normalizeOfficialSettlement(ref, { ...row, t: s(cutoff) + 0.5 }, 8, 'e', source.timeMapping?.(row))).toBeNull();
+  expect(normalizeOfficialSettlement(ref, { ...row, t: cutoff }, 8, 'e')).toBeNull();
 });

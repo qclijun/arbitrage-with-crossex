@@ -13,6 +13,10 @@ const QUOTAS: Record<string, [number, number]> = {
   BINANCE: [400, 300_000], ASTER: [30, 60_000], OKX: [8, 2_000], BYBIT: [100, 5_000], HYPERLIQUID: [900, 60_000],
   // Gate public REST: 200 per 10 s per endpoint and IP (x-gate-ratelimit-limit, 2026-11-01); keep half.
   GATE: [100, 10_000],
+  // Lighter allows 60 requests per rolling minute per IP for every endpoint
+  // (docs.lighter.xyz/developers/reference/rate-limits). History's 3 s spacing
+  // stays within 20 of these 30, leaving room for the catalog's order-book reads.
+  LIGHTER: [30, 60_000],
 };
 const HEADER_NAMES = ['retry-after', 'x-mbx-used-weight', 'x-mbx-used-weight-1m',
   'x-bapi-limit', 'x-bapi-limit-status', 'x-bapi-limit-reset-timestamp'];
