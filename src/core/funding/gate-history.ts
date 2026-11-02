@@ -22,6 +22,39 @@ const seconds = (value: unknown): number => {
   return value;
 };
 
+/** Gate's REST floor in seconds: it refuses a `from` before its clock minus 180 days (a minute's margin). */
+export const gateRestFloor = (now: number): number => Math.ceil((now - GATE_HISTORY_DAYS * DAY) / 1_000) + 60;
+
+/** A Gate record tagged with the contract its per-contract request named. */
+export type GateRow = { contract: string; t: number; r: unknown };
+
+/**
+ * One REST read of [from, to) seconds, newest first and checked row by row.
+ * `after`: the previous page's oldest record, whose hour must not repeat.
+ */
+export async function readGateRows(read: PublicRead, call: HistoryCall, contractId: string, from: number, to: number,
+  after: number | null = null): Promise<{ rows: GateRow[]; data: unknown }> {
+  const url = new URL(URL_BASE);
+  for (const [key, value] of Object.entries({ contract: contractId, from, to, limit: LIMIT })) url.searchParams.set(key, String(value));
+  const data = await call(`GET ${url}`, (signal) => read('GATE', url.toString(), signal));
+  if (!Array.isArray(data) || data.some((r) => !r || typeof r !== 'object' || Array.isArray(r))) throw new Error('invalid-history-page');
+  // The previous page ended inside this hour: a second record for it is a duplicate too.
+  let previous = after;
+  const rows = (data as Array<Record<string, unknown>>).map((row) => {
+    if (row.contract !== undefined && row.contract !== contractId) throw new Error('history-contract-mismatch');
+    const t = seconds(row.t);
+    if (t < from || t >= to) throw new Error('history-outside-request');
+    // Newest first: a cursor at the oldest row is only sound when every page is.
+    if (previous !== null && t > previous) throw new Error('invalid-history-order');
+    if (previous !== null && Math.floor(t / 3_600) === Math.floor(previous / 3_600)) throw new Error('history-duplicate');
+    previous = t;
+    // Per-contract endpoint: the request names the contract the rows belong to.
+    return { contract: contractId, t, r: row.r };
+  });
+  if (rows.length > LIMIT) throw new Error('pagination-stalled');
+  return { rows, data };
+}
+
 type Context = Awaited<ReturnType<FundingHistorySource['context']>>;
 
 export function gateHistorySource(read: PublicRead, now: () => number,
@@ -39,29 +72,12 @@ export function gateHistorySource(read: PublicRead, now: () => number,
       // The settlement at range.start is outside (start, end], but its record is
       // stamped a few seconds later; the next settlement is no earlier than the next hour.
       const nextHour = Math.floor(range.start / HOUR) * HOUR + HOUR;
-      const floor = Math.ceil((now() - GATE_HISTORY_DAYS * DAY) / 1_000) + 60;
+      const floor = gateRestFloor(now());
       const from = Math.max(range.start / 1_000 + 60, floor);
       const end = range.end / 1_000 + 60;
       const to = cursor === null ? end : Number(cursor);
       if (from > nextHour / 1_000 || !Number.isSafeInteger(to) || to <= from || to > end) throw new Error('invalid-history-range');
-      const url = new URL(URL_BASE);
-      for (const [key, value] of Object.entries({ contract: contractId, from, to, limit: LIMIT })) url.searchParams.set(key, String(value));
-      const data = await call(`GET ${url}`, (signal) => read('GATE', url.toString(), signal));
-      if (!Array.isArray(data) || data.some((r) => !r || typeof r !== 'object' || Array.isArray(r))) throw new Error('invalid-history-page');
-      // The previous page ended inside this hour: a second record for it is a duplicate too.
-      let previous = cursor === null ? null : to;
-      const rows = (data as Array<Record<string, unknown>>).map((row) => {
-        if (row.contract !== undefined && row.contract !== contractId) throw new Error('history-contract-mismatch');
-        const t = seconds(row.t);
-        if (t < from || t >= to) throw new Error('history-outside-request');
-        // Newest first: the cursor below is only sound when every page is.
-        if (previous !== null && t > previous) throw new Error('invalid-history-order');
-        if (previous !== null && Math.floor(t / 3_600) === Math.floor(previous / 3_600)) throw new Error('history-duplicate');
-        previous = t;
-        // Per-contract endpoint: the request names the contract the rows belong to.
-        return { contract: contractId, t, r: row.r };
-      });
-      if (rows.length > LIMIT) throw new Error('pagination-stalled');
+      const { rows, data } = await readGateRows(read, call, contractId, from, to, cursor === null ? null : to);
       const oldest = rows.at(-1)?.t ?? null;
       // A full page is the newest rows of [from, to): older ones remain unless it reached `from`.
       const done = rows.length < LIMIT || oldest === from;

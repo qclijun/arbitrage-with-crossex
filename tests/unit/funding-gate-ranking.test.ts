@@ -24,20 +24,26 @@ async function collect(opts: Parameters<typeof gateHistory>[2] = {}) {
 const window = (cache: FundingHistoryCache, days: 7 | 30 | 90 | 180 | 365) =>
   cache.evaluate({ underlying: 'BTC', short: key, long: key, days }, Date.now())!;
 
-it('collects Gate BTC from settled times, inferring the 8h to 4h change without backfilling today\'s cadence', async () => {
+it('collects a Gate BTC year from REST and the monthly archive, inferring the 8h to 4h change without backfilling today\'s cadence', async () => {
   const { cache, report, requests, entry } = await collect();
   expect(report.venues.GATE).toMatchObject({ stopped: null, refreshed: 1 });
-  // 7/30/90/180-day segments, one page each, never more than 180 days back.
-  expect(requests).toHaveLength(4);
+  // REST: the 7/30/90/180-day segments, one page each, never more than 180 days back.
+  // Archive: October 2025 to April 2026 for the 365-day segment, first checked against
+  // one REST read from REST's floor (in April) through May; April's file is read once.
+  expect(requests.filter((u) => u.includes('api.gateio.ws'))).toHaveLength(5);
+  expect(requests.filter((u) => u.includes('download.gatedata.org')).map((u) => u.split('/')[5])).toEqual(
+    ['202605', '202604', '202603', '202602', '202601', '202512', '202511', '202510']);
+  // Every settlement past REST's reach cites the archive file it came from, never the overlap's REST read.
+  const archived = entry.leg.events.filter((e) => e.settledAt <= CUTOFF - 180 * D);
+  expect(archived.length).toBeGreaterThan(0);
+  expect(archived.every((e) => /^GET https:\/\/download\.gatedata\.org\/.+-(\d{6})\.csv\.gz#/.test(e.evidence))).toBe(true);
   expect(entry.leg.cadence).toMatchObject({ basis: 'inferred', intervals: [8, 4] });
   expect(entry.leg.rules.map((r) => r.everyHours)).toEqual([8, 4]);
-  // 14 cycles of (0.0003, 0, -0.0001); 60; 90 days at 0.0001 + 120 cycles; 120 days + 120 cycles.
-  const totals = { 7: '0.0028', 30: '0.012', 90: '0.033', 180: '0.06' } as const;
-  for (const days of [7, 30, 90, 180] as const) {
+  // 14 cycles of (0.0003, 0, -0.0001); 60; 90 days at 0.0001 + 120 cycles; 120 days + 120 cycles; 305 days + 120 cycles.
+  const totals = { 7: '0.0028', 30: '0.012', 90: '0.033', 180: '0.06', 365: '0.1155' } as const;
+  for (const days of [7, 30, 90, 180, 365] as const) {
     expect(window(cache, days)).toMatchObject({ coverage: 'complete', historyEligible: true, short: { total: totals[days] } });
   }
-  expect(window(cache, 365)).toMatchObject({ coverage: 'unsupported', historyEligible: false,
-    short: { reasons: ['historical-source-unsupported'], total: null } });
 });
 
 it('leaves the windows a failed or gapped read cannot prove UNKNOWN or PARTIAL, never zero', async () => {
@@ -61,20 +67,23 @@ it('ranks Gate against a CEX on one basis and against HL as a rate estimate, wit
   // Gate 7d 0.0028; Binance 21 x 0.00008 = 0.00168; HL 168 x 0.00002 = 0.00336.
   expect(row('GATE', 'BINANCE')).toMatchObject({ rank: expect.any(Number), windows: [
     { days: 7, eligible: true, netTotal: '0.00112' }, { days: 30, eligible: true }, { days: 90, eligible: true },
-    { days: 180, eligible: true }, { days: 365, eligible: false, coverage: 'unsupported' }] });
+    { days: 180, eligible: true }, { days: 365, eligible: true }] });
   expect(row('GATE', 'BINANCE').candidate).not.toHaveProperty('rateEstimate');
   expect(row('HYPERLIQUID', 'GATE')).toMatchObject({ rank: expect.any(Number), candidate: { rateEstimate: expect.any(Object) },
-    windows: [{ days: 7, eligible: true, netTotal: '0.00056' }, {}, {}, {}, { coverage: 'unsupported' }] });
+    windows: [{ days: 7, eligible: true, netTotal: '0.00056' }, {}, {}, {}, { days: 365, eligible: true }] });
   const positive = rankFundingCandidates({ candidates, history: cache, now: Date.now(), days: 7, filter: { venues: ['GATE'], positiveOnly: true } });
   const ids = positive.rows.map((r) => r.candidate.id);
   expect(ids).toContain(id('GATE', 'BINANCE'));
   expect(ids).toContain(id('HYPERLIQUID', 'GATE'));
   expect(ids).not.toContain(id('GATE', 'HYPERLIQUID'));
-  // At 365 days no Gate pair ranks, and none passes the positive filter.
-  expect(rankFundingCandidates({ candidates, history: cache, now: Date.now(), days: 365, filter: { venues: ['GATE'], positiveOnly: true } }).rows).toEqual([]);
+  // 365 days: Gate 0.1155 against Binance 1095 x 0.00008 = 0.0876 and HL 8760 x 0.00002 = 0.1752.
+  const year = rankFundingCandidates({ candidates, history: cache, now: Date.now(), days: 365, filter: { venues: ['GATE'], positiveOnly: true } });
+  expect(year.rows.find((r) => r.candidate.id === id('GATE', 'BINANCE'))?.windows[4]).toMatchObject({ netTotal: '0.0279' });
+  expect(year.rows.find((r) => r.candidate.id === id('HYPERLIQUID', 'GATE'))?.windows[4]).toMatchObject({ netTotal: '0.0597' });
+  expect(year.rows.map((r) => r.candidate.id)).not.toContain(id('BINANCE', 'GATE'));
 });
 
-it('reads Gate again only when a settlement is due, four segment pages per leg', async () => {
+it('reads Gate again only when a settlement is due, thirteen requests per leg', async () => {
   const gate = gateHistory(CUTOFF, Date.now);
   const cache = new FundingHistoryCache();
   const sources = createOfficialHistorySources({ read: gate.read, now: Date.now,
@@ -82,11 +91,12 @@ it('reads Gate again only when a settlement is due, four segment pages per leg',
   const eth = { venue: 'GATE', contractId: 'ETH_USDT' };
   const refresher = createFundingHistoryRefresher({ cache, sources, legs: async () => [key, eth], inferCadence: true });
   await run(refresher);
-  expect(gate.requests).toHaveLength(8);
+  expect(gate.requests).toHaveLength(26);
   vi.setSystemTime(CUTOFF + H + 60_000);
   expect(await run(refresher)).toMatchObject({ requests: 0 });
-  // The next settlement on the inferred 4-hour cadence re-reads both legs' 7/30/90/180-day segments:
-  // eight requests, against Gate's 200 per 10 seconds.
+  // The next settlement on the inferred 4-hour cadence re-reads both legs' year: per leg four REST
+  // pages, seven archive months and the overlap check (one REST read, one more month).
+  // 26 requests, against Gate's 200 per 10 seconds.
   vi.setSystemTime(CUTOFF + 4 * H + 60_000);
-  expect(await run(refresher)).toMatchObject({ requests: 8 });
+  expect(await run(refresher)).toMatchObject({ requests: 26 });
 });

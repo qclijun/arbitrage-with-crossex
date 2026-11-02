@@ -24,7 +24,7 @@
 - 行为 `{r: string, t: number}`，没有合约字段，按时间从新到旧排列。`limit` 上限 1000，1001 返回 400 `INVALID_PARAM_VALUE`。传了 `from`/`to` 时，结果截断为区间内最新的 `limit` 条。
 - `from` 包含、`to` 不包含：`from=to=t` 返回空；`from=t-8h, to=t` 只返回 t-8h 那一条；`to=t+1` 能返回 t 那一条。
 - `from` 早于 Gate 时钟 −180 天约 10 秒以上时返回 400 `from time exceeds 180-day limit`（−10 s 可以，−60 s 被拒）。实现中 180 天段的 `from` 取 `max(start+60s, now−180d+60s)`：起点之后、下一个整点之前没有结算，所以不会漏期。若读取发生在整点前最后一分钟，这个下限会越过下一个整点，实现会明确报错而不是跳过。
-- 只传 `to`（不传 `from`）时能读到约 205 天前的数据，留给工单 03 研究。
+- 只传 `to`（不传 `from`）时能读到约 205 天前的数据。工单 03 改用官方月度归档补齐 365 天，见 [gate-archive-history.md](gate-archive-history.md)。
 - `t` 是结算整点加处理延迟：180 天内 BTC 为 +0..3 s，ETH 为 +0..5 s，没有负偏移。实现接受 60 s 以内的延迟，并保留原始时间和映射依据；60 s 远小于最短 1h 周期。
 - 合约不存在时返回 400 `CONTRACT_NOT_FOUND`。行里没有合约字段，所以“合约不匹配”只能通过三点保证：请求按合约发出；ID 必须是 catalog 已证明的 `BTC_USDT`/`ETH_USDT` 格式；如果 Gate 将来在行里返回 `contract` 字段，就逐条比对。
 - 限流头：`x-gate-ratelimit-limit: 200`，约 10 秒重置。读取器按 100 次/10 秒配额。生产只读 BTC/ETH，到期才读：冷启动每腿 4 页，之后每次结算每腿 4 页。

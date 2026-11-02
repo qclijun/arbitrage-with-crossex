@@ -4,6 +4,8 @@ import { hasSettlementDelay } from './settlement-time';
 /** Gate's REST history; it refuses a `from` more than 180 days before its clock. */
 export const GATE_HISTORY_API = '/futures/usdt/funding_rate';
 export const GATE_HISTORY_DAYS = 180;
+/** REST's 180-day limit is retained; this source also reads Gate's official monthly archive. */
+export const GATE_ARCHIVE_API = '/futures/usdt/funding_rate+funding_applies';
 /** Lighter's hourly perp fundings, read by market id. */
 export const LIGHTER_HISTORY_API = '/api/v1/fundings';
 
@@ -25,7 +27,7 @@ const SETTLED_ENDPOINTS: Record<string, string> = {
 export const OKX_ARCHIVE_API = '/api/v5/public/funding-rate-history+market-data-history';
 
 export function sourceBoundary(venue: string, api: string, days: HistoryDays): 'verified' | 'unknown' | 'unsupported' {
-  if (venue === 'OKX' && api === OKX_ARCHIVE_API) return 'verified';
+  if ((venue === 'OKX' && api === OKX_ARCHIVE_API) || (venue === 'GATE' && api === GATE_ARCHIVE_API)) return 'verified';
   if (SETTLED_ENDPOINTS[venue] !== api) return 'unknown';
   if (venue === 'OKX' && days >= 180) return 'unsupported';
   if (venue === 'GATE' && days > GATE_HISTORY_DAYS) return 'unsupported';

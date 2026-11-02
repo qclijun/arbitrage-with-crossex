@@ -1,0 +1,401 @@
+{
+ "readAt": 1793599001,
+ "contracts": {
+  "BTC_USDT": {
+   "files": [
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202509/BTC_USDT-202509.csv.gz",
+     "sha256": "dd3f20b2fbdbbce305eb7a1f0ea97814481cdbc45b73bd3ba616a895e78076af",
+     "rows": 90,
+     "first": 1756684800,
+     "last": 1759248000
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202510/BTC_USDT-202510.csv.gz",
+     "sha256": "34c2843f7dd2d8c7829c5c7d462177c3d8ee80e8adfd7f11c2b986d8081c89cd",
+     "rows": 93,
+     "first": 1759276800,
+     "last": 1761926400
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202511/BTC_USDT-202511.csv.gz",
+     "sha256": "f353910a4f4916f7666d795c8cf5d3574edb35e510b750e9d964d08c5635acd6",
+     "rows": 90,
+     "first": 1761955200,
+     "last": 1764518400
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202512/BTC_USDT-202512.csv.gz",
+     "sha256": "60c0c3f5113c07287af1fe1197295dbf475cb7d61cc3b3822a144d9576ed95d1",
+     "rows": 93,
+     "first": 1764547200,
+     "last": 1767196800
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202601/BTC_USDT-202601.csv.gz",
+     "sha256": "b61a0c83f11de7f981db6b033689e40dce69851212ccf89b270e71c49731f527",
+     "rows": 93,
+     "first": 1767225600,
+     "last": 1769875200
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202602/BTC_USDT-202602.csv.gz",
+     "sha256": "e5b403acc32c5fd585c9ea96786886eb0d622557e377704f50539c552e13021e",
+     "rows": 84,
+     "first": 1769904000,
+     "last": 1772294400
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202603/BTC_USDT-202603.csv.gz",
+     "sha256": "08e878acc3b818e1a45d855941044b0b51e2f61e4b2a84aa606dc99df2c661dd",
+     "rows": 93,
+     "first": 1772323200,
+     "last": 1774972800
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202604/BTC_USDT-202604.csv.gz",
+     "sha256": "8812b3adba582eec0225fb793556409769d442dacd8023e73f92e5079a59e0b8",
+     "rows": 90,
+     "first": 1775001600,
+     "last": 1777564800
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202605/BTC_USDT-202605.csv.gz",
+     "sha256": "4b8e3b5dee26dc9317326817550639c0e85da4c6a0a2eed56b288ce9ff623597",
+     "rows": 93,
+     "first": 1777593600,
+     "last": 1780243200
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202606/BTC_USDT-202606.csv.gz",
+     "sha256": "b9ffe2a268aaf1b32800c7054b4d114862bcaab7987ad62f12f892aaf38076a6",
+     "rows": 90,
+     "first": 1780272000,
+     "last": 1782835200
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202607/BTC_USDT-202607.csv.gz",
+     "sha256": "929dc36fdac9d173087ceb8b51e7dc778953423b2d8b22d484ae4f503013eb20",
+     "rows": 93,
+     "first": 1782864000,
+     "last": 1785513600
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202608/BTC_USDT-202608.csv.gz",
+     "sha256": "0440a867a112852fa99d278b59091e553692e4b983445180f4f620233e45e305",
+     "rows": 93,
+     "first": 1785542400,
+     "last": 1788192000
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202609/BTC_USDT-202609.csv.gz",
+     "sha256": "ec2343af159e152270f46e0e591a4e8769c27efa6dc91a3a8b8d2d70ed1a1e8e",
+     "rows": 90,
+     "first": 1788220800,
+     "last": 1790784000
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202610/BTC_USDT-202610.csv.gz",
+     "sha256": "f3f3fae12cf9c0f46913d1ac2b25be7e4dbb456766e9cfec335a4996d9fd64ce",
+     "rows": 93,
+     "first": 1790812800,
+     "last": 1793462400
+    }
+   ],
+   "restPages": [
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1793599018&limit=1000",
+     "sha256": "231d381d179ffa084a24d8dc2be42b44ec9ebb0e39ba3cc5e4cbc03186fcfe91",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1791014400&limit=1000",
+     "sha256": "5971ab6c1786edfd7eea9ed4ea78d10e9a309343a422688b1b4e93a9b64d5ca7",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1788422401&limit=1000",
+     "sha256": "75db28b4956664aff44c27040c76edbeca8f81e6b1f3a03f99ed6b6812323c0f",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1785830401&limit=1000",
+     "sha256": "5ab7c9031cf896ff4283349bb418817f8ff1981928413126dd89f2bb85fe362e",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1783238401&limit=1000",
+     "sha256": "b1fefc7128be0248bc1ed7040776a94b3ce1abd680827e249b20d76911888495",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1780646401&limit=1000",
+     "sha256": "37b1497d6a8bf8b35ad9e210c0e48649e727e26b6c15ebc2e09a1c63a379edfc",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1778054401&limit=1000",
+     "sha256": "8fdbc5412c2d7d276643af42d7f6ea539b8e2f36135f2c09671b8c2b4e892d83",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1775462401&limit=1000",
+     "sha256": "0f14f95233b747657a15618bc221b4265be453e2e2c2a99309d6c021ddec71f7",
+     "rows": 89
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1772899200&limit=1000",
+     "sha256": "461c1a120803bb44c6fcbc502028c20566c0e103c5c9a05f1ba0dbec317682b2",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1770307200&limit=1000",
+     "sha256": "73ad41eebc23a59b376bcdc2bb3df4edc5d0d710986d661d657bac03075c2863",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1767715200&limit=1000",
+     "sha256": "f2b07c6df7d41b94a8938cb0cae0819cf080b3cb7c7ccbd046a9483fcba81036",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1765123200&limit=1000",
+     "sha256": "a2151469b5bfeec1e1fbed71d466633e77c89592d20ceb606da9082591bbe067",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1762531200&limit=1000",
+     "sha256": "66bda82cf5ad48eea0eab2d0946ed0cd8cd93b3a55fc1ab100f9f39058e40948",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1759939200&limit=1000",
+     "sha256": "217a6d3d8b5019feff574dc6615465333eb17fe3648dee0654b120fe6f557744",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=BTC_USDT&to=1757347200&limit=1000",
+     "sha256": "d39a62317eee124d3f90d68b864f0caac0ea90bd41b8738a2c5da91f55b7ff92",
+     "rows": 90
+    }
+   ],
+   "archiveRows": 1278,
+   "restRowsInArchiveSpan": 1278,
+   "matched": 1278,
+   "textEqual": 1278,
+   "valueMismatch": [],
+   "textOnlyDiff": [],
+   "archiveOnly": [],
+   "restOnly": [],
+   "skew": {
+    "0": 716,
+    "1": 458,
+    "2": 89,
+    "3": 15
+   },
+   "rawTimeDiffers": 0,
+   "gaps": [
+    28800
+   ]
+  },
+  "ETH_USDT": {
+   "files": [
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202509/ETH_USDT-202509.csv.gz",
+     "sha256": "678cccf9854e85bad69ed7c1ad2d733642fcc59e2b7883993a327c5e6e7af0ff",
+     "rows": 90,
+     "first": 1756684800,
+     "last": 1759248000
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202510/ETH_USDT-202510.csv.gz",
+     "sha256": "1b8cf73c21161ed1b235139a8608b69d2e12700d54f1a92319278e45bfb43798",
+     "rows": 93,
+     "first": 1759276800,
+     "last": 1761926400
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202511/ETH_USDT-202511.csv.gz",
+     "sha256": "8a98fdd1949220bb5fe7bcaf3ca8b11aa070c0328d0173141287ea7159bf9d7e",
+     "rows": 90,
+     "first": 1761955200,
+     "last": 1764518400
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202512/ETH_USDT-202512.csv.gz",
+     "sha256": "284c0e5b8f1d4055d0f2e834273a97cbe5607f17c4aba7a33a166ab5e3400ea0",
+     "rows": 93,
+     "first": 1764547200,
+     "last": 1767196800
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202601/ETH_USDT-202601.csv.gz",
+     "sha256": "677de94a336d65e0b7d1dc5f554e82d2a0226d326a80561ff8f78980812c6f58",
+     "rows": 93,
+     "first": 1767225600,
+     "last": 1769875200
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202602/ETH_USDT-202602.csv.gz",
+     "sha256": "b9de524620a386f6ac1dd73898872a51d9c101688d412a0d01aa3cda70f91c12",
+     "rows": 84,
+     "first": 1769904000,
+     "last": 1772294400
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202603/ETH_USDT-202603.csv.gz",
+     "sha256": "a8d927c75d8bcdea657c0ea99d5f8a5c2c10b74bfb54e5aaa7831fdfb08f10fb",
+     "rows": 93,
+     "first": 1772323200,
+     "last": 1774972800
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202604/ETH_USDT-202604.csv.gz",
+     "sha256": "a51f12765001a938fbe945c5fe434b7510b95c9227a4ac58163b9ee69b062d0d",
+     "rows": 90,
+     "first": 1775001600,
+     "last": 1777564800
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202605/ETH_USDT-202605.csv.gz",
+     "sha256": "618cbf7522d98c8447e0cc3d4bc91ca5df0ca5b24fd7c1e680acf936085c7040",
+     "rows": 93,
+     "first": 1777593600,
+     "last": 1780243200
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202606/ETH_USDT-202606.csv.gz",
+     "sha256": "433d5db6e77f3c318e49af5f11069c90aaffe54896100fad8c13621621f20853",
+     "rows": 90,
+     "first": 1780272000,
+     "last": 1782835200
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202607/ETH_USDT-202607.csv.gz",
+     "sha256": "cbe0b065577993822a488b792e1c62c024e305aa2fe58feaf7748dfde884a130",
+     "rows": 93,
+     "first": 1782864000,
+     "last": 1785513600
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202608/ETH_USDT-202608.csv.gz",
+     "sha256": "32f6374d6128c7b330ec45c861341322dd6d9c2d49e2893c09ff29b0b5cad8b5",
+     "rows": 93,
+     "first": 1785542400,
+     "last": 1788192000
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202609/ETH_USDT-202609.csv.gz",
+     "sha256": "c7684e81eda39e96f27c6ba350064006892f1a808e31abfca63625525f6bf7e1",
+     "rows": 90,
+     "first": 1788220800,
+     "last": 1790784000
+    },
+    {
+     "url": "https://download.gatedata.org/futures_usdt/funding_applies/202610/ETH_USDT-202610.csv.gz",
+     "sha256": "f0bbe0fba8adf1f2ed102cd31a64e7203154e1b98e6ac68dcf4db8e477ce2f31",
+     "rows": 93,
+     "first": 1790812800,
+     "last": 1793462400
+    }
+   ],
+   "restPages": [
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1793599054&limit=1000",
+     "sha256": "e4524e4e67d3dd790c7a906342b3b881971043024447995b21a6dbd4504b593c",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1791014400&limit=1000",
+     "sha256": "b6cdcdf321dbef64aa0a61c4eab684fcc09c4820fc679b6438f27de26ca63885",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1788422403&limit=1000",
+     "sha256": "0eabbf96a6134749cedc768e518471ba1d687ae989652743f6d6d7f13ecc70e7",
+     "rows": 89
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1785859202&limit=1000",
+     "sha256": "3ca5b0d2437aae86e0a61cdf54f8023b8dd88a5af7e79a9171fcb7b25fc52cea",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1783267202&limit=1000",
+     "sha256": "5e695e7b35124738e634bd6fc2f520e4af99164d46715e47193e5b5b77262d6f",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1780675202&limit=1000",
+     "sha256": "2cf685f7d17a74cf5d69f80abaee802b4e42eda6118d57c7421ceac6d3b9fa63",
+     "rows": 89
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1778112001&limit=1000",
+     "sha256": "fd1d764d2a81cfa40a0ef3261d38a620cac548d6b03032f8dc6a6c343ebed94e",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1775520001&limit=1000",
+     "sha256": "6a6635cba411ecbd1871d1eab5a726f5a0f828fc737f373d44ba3912dab0e673",
+     "rows": 89
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1772956800&limit=1000",
+     "sha256": "b991fa143999bd6adc99dea3a3b0164bda5a6139acc3a1281101440102ba7e34",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1770364800&limit=1000",
+     "sha256": "86ba4bcd17beebaee5b068f400baf7b650179506305aedd50313ad765ec3ac6f",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1767772800&limit=1000",
+     "sha256": "2678b6a67af742bab55c6d228b6c524c581974651ac81503247cbdd9cbaad816",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1765180800&limit=1000",
+     "sha256": "c2eb7e84f21f8014f069e0ac3a6a667c6d34dbc0247bc4ef89a215f92d03b8fb",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1762588800&limit=1000",
+     "sha256": "8b474655f0acae824a2a3d3912ddc8a8967e60cbb83f3c40fc6170eefe5af9a5",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1759996800&limit=1000",
+     "sha256": "707b91a80d0ee0e293bf10133a0d1a19f9cfed0a8819224d5dc2e509d6b65b01",
+     "rows": 90
+    },
+    {
+     "request": "GET https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=ETH_USDT&to=1757404800&limit=1000",
+     "sha256": "235adbd2f4625587e453d0f351d98b97fbf53368ef32211cbe7291e7c22229e7",
+     "rows": 90
+    }
+   ],
+   "archiveRows": 1278,
+   "restRowsInArchiveSpan": 1278,
+   "matched": 1278,
+   "textEqual": 1278,
+   "valueMismatch": [],
+   "textOnlyDiff": [],
+   "archiveOnly": [],
+   "restOnly": [],
+   "skew": {
+    "0": 717,
+    "1": 192,
+    "2": 261,
+    "3": 56,
+    "4": 34,
+    "5": 18
+   },
+   "rawTimeDiffers": 0,
+   "gaps": [
+    28800
+   ]
+  }
+ }
+}

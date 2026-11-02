@@ -7,6 +7,7 @@ import { withOkxArchive } from './okx-history';
 import { HYPERLIQUID_HOURLY_POLICY, type HyperliquidHourlyPolicy } from './hyperliquid-policy';
 import { createHyperliquidHistoryContext } from './hyperliquid-history';
 import { gateHistorySource } from './gate-history';
+import { withGateArchive } from './gate-archive';
 import { lighterHistorySource } from './lighter-history';
 
 type Row = Record<string, unknown>;
@@ -110,6 +111,6 @@ export function createOfficialHistorySources(opts: OfficialHistoryOptions = {}):
   return [...ENDPOINTS.map((endpoint) => {
     const source = restSource(endpoint, read, opts);
     return endpoint.venue === 'OKX' ? withOkxArchive(source, read, now) : source;
-  }), gateHistorySource(read, now, (id, call) => opts.context?.('GATE', id, call) ?? null),
+  }), withGateArchive(gateHistorySource(read, now, (id, call) => opts.context?.('GATE', id, call) ?? null), read, now),
   lighterHistorySource(read, now, (id, call) => opts.context?.('LIGHTER', id, call) ?? null)];
 }
